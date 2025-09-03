@@ -39,8 +39,7 @@ import psutil
 from bin.commands_widgets import CreateCommandsWidget, CommandsWidget, ProcessLinksWidget
 from bin.other_options_widgets import CensorCounterWidget, CheckUpdateWidget, DebugLoggerWidget, \
     RelaxWidget
-from bin.utils import handler_links, handler_folder, get_config_value, set_config_value, update_version, \
-    is_url_string
+from bin.utils import get_config_value, set_config_value, update_version, CommandsManager
 from bin.function_list_main import *
 from path_builder import get_path
 import threading
@@ -54,7 +53,7 @@ from bin.lists import get_audio_paths
 from vosk import Model, KaldiRecognizer
 from PyQt5.QtGui import QIcon, QCursor, QFont, QColor, QDesktopServices
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, \
-                             QPushButton, QCheckBox, QSystemTrayIcon, QAction, qApp, QMenu, QMessageBox, \
+                             QPushButton, QSystemTrayIcon, QAction, qApp, QMenu, QMessageBox, \
                              QTextEdit, QDialog, QLabel, QTextBrowser, QMainWindow, QSizePolicy,
                              QGraphicsColorizeEffect, QTabWidget, QSpacerItem, QTabBar)
 from PyQt5.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, pyqtSignal, QPropertyAnimation, \
@@ -62,7 +61,7 @@ from PyQt5.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, pyqtSignal, QPr
 
 MUTEX_NAME = "Assistant_123456789AB"
 build_ini = get_config_value("app", "build")
-version_file = "1.5.3"
+version_file = "1.5.4"
 update_version(version_file)
 
 def activate_existing_window():
@@ -170,6 +169,7 @@ class Assistant(QMainWindow):
         self.input_device_id = None
         self.input_device_name = None
         self.install_settings()
+        self.commands_manager = CommandsManager()
         self.audio_stream = None
         self.last_audio_time = None  # Время последнего НЕтихого пакета
         self.silence_timer = QTimer()  # Таймер для проверки тишины
@@ -1115,6 +1115,8 @@ class Assistant(QMainWindow):
                 value = "dev"
             set_config_value("app", "build", f"{value}")
 
+            self.commands_manager.update_vaults()  # Синхронизация настроек в менеджере команд
+
             self.show_notification_message("Настройки сохранены!")
             debug_logger.debug("Настройки сохранены.")
         except Exception as e:
@@ -1174,14 +1176,25 @@ class Assistant(QMainWindow):
             if self.isVisible():
                 self.hide()
             else:
-                screen_geometry = self.screen().availableGeometry()
-                self.move(
-                    (screen_geometry.width() - self.width()) // 2,
-                    (screen_geometry.height() - self.height()) // 2
-                )
-                self.showNormal()
-                self.show()
-                self.activateWindow()
+                self.proper_show()
+
+    def proper_show(self):
+        """Универсальный метод показа окна с активацией"""
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
+
+        self.activateWindow()
+        self.raise_()
+        self.setFocus()
+
+        # Центрирование (как в трее)
+        screen_geometry = self.screen().availableGeometry()
+        self.move(
+            (screen_geometry.width() - self.width()) // 2,
+            (screen_geometry.height() - self.height()) // 2
+        )
 
     def custom_hide(self):
         self.close_child_windows.emit()
@@ -2020,9 +2033,10 @@ class Assistant(QMainWindow):
         """Обработка команд для приложений"""
         for keyword, filename in self.commands.items():
             if keyword in text:
-                if not filename.endswith('.lnk') and not filename.endswith('.url') and not is_url_string(filename):
+                if (not filename.endswith('.lnk') and not filename.endswith('.url')
+                        and not self.commands_manager.is_url_string(filename)):
                     return False  # Прекращаем обработку, если это папка
-                handler_links(filename, action)  # Вызываем обработчик ярлыков
+                self.commands_manager.handler_links(filename, action)  # Вызываем обработчик ярлыков
                 return True  # Возвращаем True, если команда была успешно обработана
         return False  # Возвращаем False, если команда не была найдена
 
@@ -2030,9 +2044,10 @@ class Assistant(QMainWindow):
         """Обработка команд для папок"""
         for keyword, folder_path in self.commands.items():
             if keyword in text:
-                if folder_path.endswith('.lnk') or folder_path.endswith('.url') or is_url_string(folder_path):
+                if (folder_path.endswith('.lnk') or folder_path.endswith('.url')
+                        or self.commands_manager.is_url_string(folder_path)):
                     return False  # Прекращаем обработку, если это файл приложения
-                handler_folder(folder_path, action)  # Вызываем обработчик папок
+                self.commands_manager.handler_folder(folder_path, action)  # Вызываем обработчик папок
                 return True  # Возвращаем True, если команда была успешно обработана
         return False  # Возвращаем False, если команда не была найдена
 
@@ -2048,10 +2063,11 @@ class Assistant(QMainWindow):
         except Exception as e:
             debug_logger.error(f"Ошибка при запуске сигнала виджета (на закрытие): {e}")
 
-    def open_widget(self):
-        QTimer.singleShot(200, self._show_smart_widget)
+    def open_widget(self, is_auto_start=False):
+        QTimer.singleShot(100, lambda: self._show_smart_widget(is_auto_start))
 
-    def _show_smart_widget(self):
+    def _show_smart_widget(self, is_auto_start=False):
+        approve_file_voice = self.audio_paths.get("approve_folder")
         try:
             # Полная проверка существующего виджета
             widget_exists = (
@@ -2070,18 +2086,22 @@ class Assistant(QMainWindow):
                 self.widget_window = SmartWidget(self)
                 self.widget_window.show()
 
+            # Воспроизводим звук только если это не автоматический запуск
+            if not is_auto_start:
+                thread_react(approve_file_voice)
+
         except Exception as e:
             debug_logger.error(f"Ошибка при открытии виджета: {str(e)}")
             self.show_notification_message(f"Ошибка при открытии виджета: {str(e)}")
 
     def close_widget(self):
+        error_message = self.audio_paths.get("error_file")
+        approve_file_voice = self.audio_paths.get("approve_folder")
         try:
             if hasattr(self, "widget_window"):
                 self.widget_window.close()
-                self.show()
-                self.hide()
+                thread_react(approve_file_voice)
         except Exception as e:
-            error_message = self.audio_paths("error_file")
             thread_react_detail(error_message)
             self.show_notification_message(f"Ошибка при закрытии виджета (close_widget): {e}")
             debug_logger.error(f"Ошибка при закрытии виджета (close_widget): {e}")
@@ -2619,7 +2639,7 @@ class Assistant(QMainWindow):
 
     def check_start_widget(self):
         if self.is_widget:
-            self.open_widget()
+            self.open_widget(is_auto_start=True)
 
     def toggle_start_win(self):
         """Переключает состояние и меняет цвет иконки"""

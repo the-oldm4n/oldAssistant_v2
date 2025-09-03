@@ -7,7 +7,6 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QFileDialog, QPushButton, QLineEdit, QLabel, QComboBox, \
     QVBoxLayout, QWidget, QDialog, QFrame, QStackedWidget, QHBoxLayout, QListWidget, QListWidgetItem, \
     QCompleter, QDialogButtonBox, QMessageBox
-from bin.utils import search_links, scan_and_copy_shortcuts
 from bin.signals import commands_signal
 from logging_config import debug_logger
 from path_builder import get_path
@@ -80,8 +79,8 @@ class CreateCommandsWidget(QWidget):
 
     def autosearch_shortcuts(self):
         """Поиск ярлыков в стандартном расположении"""
-        scan_and_copy_shortcuts()
-        search_links()
+        self.assistant.commands_manager.scan_and_copy_shortcuts()
+        self.assistant.commands_manager.search_links()
         self.assistant.show_notification_message(f"Поиск завершен!")
 
         # Обновляем список в форме
@@ -133,7 +132,7 @@ class AppCommandForm(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
-        search_links()
+        self.assistant.commands_manager.search_links()
         self.init_ui()
 
     def init_ui(self):

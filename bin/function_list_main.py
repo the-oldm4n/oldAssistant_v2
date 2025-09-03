@@ -1,10 +1,10 @@
 """
 Модуль с основными функциями: поиск в яндекс, выключение компа
 """
+import json
 import os
 from datetime import datetime
 from bin.lists import get_audio_paths
-from bin.utils import get_current_speaker
 from logging_config import logger, debug_logger
 import subprocess
 import webbrowser
@@ -12,6 +12,23 @@ from bin.speak_functions import thread_react_detail, thread_react, react_detail
 from path_builder import get_path
 
 settings_file = get_path('user_settings', "settings.json")
+
+def load_settings():
+    if os.path.exists(settings_file):
+        try:
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+                return settings  # Возвращаем все настройки
+        except json.JSONDecodeError:
+            logger.error(f"Ошибка: файл {settings_file} содержит некорректный JSON.")
+            debug_logger.error(f"Ошибка: файл {settings_file} содержит некорректный JSON.")
+    else:
+        logger.error(f"Файл настроек {settings_file} не найден.")
+        debug_logger.error(f"Файл настроек {settings_file} не найден.")
+
+def get_current_speaker():
+    settings = load_settings()
+    return settings.get("voice", "johnny")
 
 def search_yandex(command, name=None, name_2=None, name_3=None):
     """
@@ -43,7 +60,7 @@ def shutdown_windows():
     """
     Выключение компа
     """
-    speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+    speaker = get_current_speaker()  # Получаем текущий голос
     audio_paths = get_audio_paths(speaker)
     off_file = audio_paths['off_file']
     react_detail(off_file)
@@ -53,7 +70,7 @@ def restart_windows():
     """
     Выключение компа
     """
-    speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+    speaker = get_current_speaker()  # Получаем текущий голос
     audio_paths = get_audio_paths(speaker)
     off_file = audio_paths['off_file']
     react_detail(off_file)
@@ -64,12 +81,12 @@ def open_volume_mixer():
     try:
         subprocess.Popen(["sndvol.exe", "/R"])
         debug_logger.info("Микшер громкости открыт")
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         start_folder = audio_paths.get('start_folder')
         thread_react(start_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -87,12 +104,12 @@ def close_volume_mixer():
                                 check=True)
         debug_logger.info("Микшер громкости закрыт")
         debug_logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         close_folder = audio_paths['close_folder']
         thread_react(close_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -103,12 +120,12 @@ def open_calc():
     try:
         subprocess.Popen(["calc.exe", "/R"])
         debug_logger.info("Калькулятор открыт")
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         start_folder = audio_paths.get('start_folder')
         thread_react(start_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -126,12 +143,12 @@ def close_calc():
                                 check=True)
         debug_logger.info(f"Процесс успешно завершен.")
         debug_logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         close_folder = audio_paths['close_folder']
         thread_react(close_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -143,12 +160,12 @@ def open_paint():
     try:
         subprocess.Popen("mspaint.exe")
         debug_logger.info("Paint открыт")
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         start_folder = audio_paths.get('start_folder')
         thread_react(start_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -166,12 +183,12 @@ def close_paint():
                                 check=True)
         debug_logger.info(f"Пейнт закрыт.")
         debug_logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         close_folder = audio_paths['close_folder']
         thread_react(close_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -180,13 +197,13 @@ def close_paint():
 
 def open_path():
     try:
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         start_folder = audio_paths.get('start_folder')
         thread_react(start_folder)
         subprocess.run("rundll32 sysdm.cpl,EditEnvironmentVariables")
     except Exception as e:
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -197,7 +214,7 @@ def greeting():
     # Получаем текущий час
     current_hour = datetime.now().hour
 
-    speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+    speaker = get_current_speaker()  # Получаем текущий голос
     audio_paths = get_audio_paths(speaker)
 
     # Определяем, какое приветствие воспроизвести
@@ -213,12 +230,12 @@ def open_taskmgr():
     try:
         subprocess.Popen("taskmgr.exe")
         debug_logger.info("Диспетчер задач открыт")
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         start_folder = audio_paths.get('start_folder')
         thread_react(start_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -236,12 +253,12 @@ def close_taskmgr():
                                 check=True)
         debug_logger.info(f"Диспетчер задач открыт")
         debug_logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         close_folder = audio_paths['close_folder']
         thread_react(close_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)  # Получаем текущий голос
+        speaker = get_current_speaker()  # Получаем текущий голос
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -254,12 +271,12 @@ def open_recycle_bin():
         # Используем explorer для открытия корзины
         subprocess.Popen('explorer.exe shell:RecycleBinFolder')
         debug_logger.info("Корзина открыта")
-        speaker = get_current_speaker(settings_file)
+        speaker = get_current_speaker()
         audio_paths = get_audio_paths(speaker)
         start_folder = audio_paths.get('start_folder')
         thread_react(start_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)
+        speaker = get_current_speaker()
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -278,12 +295,12 @@ def close_recycle_bin():
                                 check=True)
         debug_logger.info("Корзина закрыта")
         debug_logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
-        speaker = get_current_speaker(settings_file)
+        speaker = get_current_speaker()
         audio_paths = get_audio_paths(speaker)
         close_folder = audio_paths['close_folder']
         thread_react(close_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)
+        speaker = get_current_speaker()
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -300,12 +317,12 @@ def open_appdata():
         subprocess.Popen(f'explorer "{appdata_path}"')
 
         debug_logger.info("Папка %appdata% открыта")
-        speaker = get_current_speaker(settings_file)
+        speaker = get_current_speaker()
         audio_paths = get_audio_paths(speaker)
         start_folder = audio_paths.get('start_folder')
         thread_react(start_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)
+        speaker = get_current_speaker()
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
@@ -328,12 +345,12 @@ def close_appdata():
 
             debug_logger.info("Папка %appdata% закрыта")
             debug_logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
-        speaker = get_current_speaker(settings_file)
+        speaker = get_current_speaker()
         audio_paths = get_audio_paths(speaker)
         close_folder = audio_paths['close_folder']
         thread_react(close_folder)
     except Exception as e:
-        speaker = get_current_speaker(settings_file)
+        speaker = get_current_speaker()
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)

@@ -1,13 +1,11 @@
 import json
 import os
 import subprocess
-from urllib.parse import parse_qsl
-
 import wmi
-from PyQt5.QtGui import QFont, QFontDatabase, QRegion
+from PyQt5.QtGui import QFont, QFontDatabase
 from PyQt5.QtSvg import QSvgWidget
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, \
-    QDialog, QLabel, QGridLayout, QStackedWidget, QSizePolicy, QTextEdit
+    QDialog, QLabel, QGridLayout, QStackedWidget, QSizePolicy, QTextEdit, QApplication
 from PyQt5.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve
 
 from bin.apply_color_methods import ApplyColor
@@ -395,7 +393,7 @@ class SmartWidget(QWidget):
                     border: none;
                 }
                 QPushButton:hover {
-                    background: rgba(60, 60, 60, 150);
+                    background: rgba(90, 90, 90, 0.7);
                     border-radius: 5px;
                 }
             """)
@@ -437,7 +435,7 @@ class SmartWidget(QWidget):
                     border: none;
                 }
                 QPushButton:hover {
-                    background: rgba(60, 60, 60, 150);
+                    background: rgba(90, 90, 90, 0.7);
                 }
             """)
             svg = QSvgWidget(config['icon'], btn)
@@ -672,7 +670,6 @@ class SmartWidget(QWidget):
         if self.is_compact:
             self.tab_widget.hide()
             self.relayout_buttons(vertical=True)
-            # self.buttons_widget.setFixedWidth(80)
             self.audio_widget.show()
             self.clock_mini.show()
             self.clock_widget.hide()
@@ -731,20 +728,21 @@ class SmartWidget(QWidget):
             # Создаем кастомное окно вместо QMessageBox
             confirm_dialog = QDialog(self)
             confirm_dialog.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
+            confirm_dialog.setAttribute(Qt.WA_TranslucentBackground)
             confirm_dialog.setFixedSize(120, 70)
-            confirm_dialog.setStyleSheet(
-                "background-color: rgba(60, 60, 60, 100);"
-                "border: none;"
-                "border-radius: 5px;"
+
+            container = QWidget(confirm_dialog)
+            container.setObjectName("MessageContainer")
+            container.setGeometry(0, 0, confirm_dialog.width(), confirm_dialog.height())
+            container.setStyleSheet(
+                "background-color: rgba(30, 30, 32, 0.8);"
+                "border-radius: 10px;"
             )
+            container_layout = QVBoxLayout(container)
+            container_layout.setContentsMargins(5, 5, 5, 5)
+            container_layout.setSpacing(5)
 
-            # Основной контейнер
-            main_layout = QVBoxLayout(confirm_dialog)
-            main_layout.setContentsMargins(5, 5, 5, 5)
-            main_layout.setSpacing(5)
-
-            # Текст (с автоматическим переносом слов)
-            label = QLabel("Выключить комп?")  # Укороченный текст для маленького окна
+            label = QLabel("Выключить комп?")
             label.setAlignment(Qt.AlignCenter)
             label.setStyleSheet("""
                 QLabel {
@@ -754,7 +752,7 @@ class SmartWidget(QWidget):
                     background-color: transparent;
                 }
             """)
-            main_layout.addWidget(label)
+            container_layout.addWidget(label)
 
             # Контейнер для кнопок
             btn_container = QWidget()
@@ -767,15 +765,10 @@ class SmartWidget(QWidget):
             yes_btn = QPushButton("Да")
             no_btn = QPushButton("Нет")
 
-            # Стилизация кнопок
             btn_style = """
                 QPushButton {
-                    background: rgba(70, 70, 70, 160);
-                    color: white;
-                    border: 1px solid #555;
-                    border-radius: 3px;
                     padding: 3px;
-                    width: 20px;
+                    width: 30px;
                     height: 20px;
                     font-size: 12px;
                 }
@@ -791,7 +784,9 @@ class SmartWidget(QWidget):
             btn_layout.addWidget(no_btn)
             btn_layout.addStretch()
 
-            main_layout.addWidget(btn_container)
+            container_layout.addWidget(btn_container)
+
+            self.apply_styles()
 
             # Обработчики кнопок
             yes_btn.clicked.connect(lambda: confirm_dialog.accept())
@@ -831,7 +826,7 @@ class SmartWidget(QWidget):
             if self.assistant.isVisible():
                 self.assistant.custom_hide()
             else:
-                self.assistant.show()
+                self.assistant.proper_show()
         except Exception as e:
             debug_logger.error(f"Ошибка при открытии основного окна через виджет {e}")
 
@@ -984,45 +979,6 @@ class SmartWidget(QWidget):
         self.gpu_clock_label.setText("⚙️--МГц")
         self.ram_usage_label.setText("💾--Гб")
         self.ram_over_label.setText("💾--Гб")
-
-    # def switch_tab(self, index):
-    #     if not hasattr(self, 'tab_content'):
-    #         return
-    #     self.tab_content.setCurrentIndex(index)
-    #     self.current_tab = index
-    #
-    #     # Сброс стилей
-    #     for btn in [self.btn_sensors, self.btn_notes]:
-    #         btn.setStyleSheet("""
-    #             QPushButton {
-    #                 background: rgba(50, 50, 50, 150);
-    #                 color: white;
-    #                 border: none;
-    #                 border-radius: 5px;
-    #                 padding: 5px;
-    #                 font-size: 12px;
-    #             }
-    #             QPushButton:hover {
-    #                 background: rgba(70, 70, 70, 200);
-    #             }
-    #         """)
-    #     # Активный
-    #     active_btn = [self.btn_sensors, self.btn_notes][index]
-    #     active_btn.setStyleSheet("""
-    #         QPushButton {
-    #             background: rgba(40, 110, 230, 200);
-    #             color: white;
-    #             border: none;
-    #             border-radius: 5px;
-    #             padding: 5px;
-    #             font-size: 12px;
-    #         }
-    #     """)
-    #
-    #     if index == 0:
-    #         self.open_sensors()
-    #     else:
-    #         self.close_sensors()
 
     def switch_tab(self, index):
         """Переключает вкладки и подсвечивает активную кнопку"""
