@@ -1,6 +1,6 @@
 {
     "QWidget": {
-        "background-color": "qlineargradient(x1:0.86, y1:0.15, x2:0.14, y2:0.85, stop:0 #080808, stop:1 #161927)",
+        "background-color": "qlineargradient(x1:0.85, y1:0.15, x2:0.15, y2:0.85, stop:0 #080808, stop:1 #161927)",
         "color": "#ebecff",
         "font-size": "13px"
     },
@@ -22,27 +22,56 @@
         "padding-left": "3px",
         "padding-top": "3px"
     },
-    "TabWidget::pane": {
-        "margin": "0px",
-        "padding": "0px"
-    },
     "QTabBar::tab": {
         "background-color": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 #0d0d0d, stop:1 #151523)",
         "color": "#ebecff",
         "height": "30px",
         "border": "1px solid qlineargradient(x1:0.96, y1:0.30, x2:0.04, y2:0.70, stop:0 #547cff, stop:1 #f19a72)",
-        "border-radius": "3px",
+        "border-radius": "2px",
         "font-size": "13px",
-        "margin": "3px",
+        "margin": "0",
         "padding": "3px"
     },
     "QTabBar::tab:selected": {
         "background-color": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 #151523, stop:1 #0d0d0d)",
         "color": "#ebecff",
         "font-size": "13px",
-        "margin": "3px",
+        "margin": "0",
         "padding": "3px",
         "padding-top": "10px"
+    },
+    "WSTabsContainer": {
+        "background": "transparent",
+        "border-radius": "10px"
+    },
+    "WSBottomContainer": {
+        "background-color": "transparent"
+    },
+    "WSMainTabBar": {
+        "background-color": "transparent"
+    },
+    "WMLeftContainer": {
+        "background-color": "transparent"
+    },
+    "WMLeftButtonsPanel": {
+        "background-color": "transparent"
+    },
+    "WMSettingsWidget": {
+        "background-color": "transparent"
+    },
+    "WMSettingsContent": {
+        "background-color": "transparent"
+    },
+    "WM_MutablePanel": {
+        "background-color": "transparent"
+    },
+    "TabWidget": {
+        "background": "transparent"
+    },
+    "TabWidget::pane": {
+        "margin": "0px",
+        "padding": "0px",
+        "background": "transparent"
     },
     "QLineEdit": {
         "background-color": "transparent",
@@ -78,7 +107,6 @@
         "background": "transparent",
         "color": "#fff4ee",
         "border": "none",
-        "border-radius": "4px",
         "font-size": "15px"
     },
     "label_version": {
@@ -96,7 +124,10 @@
         "font-size": "12px"
     },
     "TitleBar": {
-        "border-bottom": "1px solid qlineargradient(x1:0.96, y1:0.30, x2:0.04, y2:0.70, stop:0 #547cff, stop:1 #f19a72)"
+        "background": "transparent",
+        "border-bottom": "1px solid qlineargradient(x1:0.96, y1:0.30, x2:0.04, y2:0.70, stop:0 #547cff, stop:1 #f19a72)",
+        "border-bottom-left-radius": "0px",
+        "border-bottom-right-radius": "0px"
     },
     "TrayButton": {
         "background-color": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 #0d0d0d, stop:1 #151523)",
@@ -126,11 +157,26 @@
     },
     "MessageContainer": {
         "border": "1px solid qlineargradient(x1:0.96, y1:0.30, x2:0.04, y2:0.70, stop:0 #547cff, stop:1 #f19a72)",
-        "border-radius": "25px"
+        "border-radius": "10px"
     },
     "WindowContainer": {
         "border": "1px solid qlineargradient(x1:0.96, y1:0.30, x2:0.04, y2:0.70, stop:0 #547cff, stop:1 #f19a72)",
-        "border-radius": "3px"
+        "border-radius": "10px"
+    },
+    "MainWindowWidget": {
+        "border": "none",
+        "border-radius": "15px"
+    },
+    "SettingsWidget": {
+        "border": "none",
+        "border-radius": "10px"
+    },
+    "ContentWidget": {
+        "background-color": "transparent"
+    },
+    "QMainWindow": {
+        "background-color": "transparent",
+        "border": "none"
     },
     "QMenu": {
         "background-color": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 #0d0d0d, stop:1 #151523)",

@@ -61,7 +61,7 @@ from PyQt5.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, pyqtSignal, QPr
 
 MUTEX_NAME = "Assistant_123456789AB"
 build_ini = get_config_value("app", "build")
-version_file = "1.5.4"
+version_file = "1.5.5"
 update_version(version_file)
 
 def activate_existing_window():
@@ -284,6 +284,7 @@ class Assistant(QMainWindow):
             self.setWindowFlags(Qt.FramelessWindowHint)
             self.setWindowIcon(QIcon(get_path('icon_assist.ico')))
             self.setWindowTitle("Ассистент")
+            self.setAttribute(Qt.WA_TranslucentBackground)
             self.resize(900, 700)
 
             # Центрирование окна
@@ -297,7 +298,7 @@ class Assistant(QMainWindow):
 
             # Главный контейнер
             self.central_widget = QWidget()
-            self.central_widget.setObjectName("CentralWidget")
+            self.central_widget.setObjectName("MainWindowWidget")
             self.setCentralWidget(self.central_widget)
 
             # Главный layout
@@ -367,9 +368,11 @@ class Assistant(QMainWindow):
             self.left_container_layout = QVBoxLayout(self.left_container)
             self.left_container_layout.setContentsMargins(5, 5, 5, 5)
             self.left_container_layout.setSpacing(5)
+            self.left_container.setObjectName("WMLeftContainer")
 
             # === 1. Основные кнопки ===
             self.left_buttons_panel = QWidget()
+            self.left_buttons_panel.setObjectName("WMLeftButtonsPanel")
             self.buttons_layout = QVBoxLayout(self.left_buttons_panel)
             self.buttons_layout.setContentsMargins(0, 0, 0, 0)
             self.buttons_layout.setSpacing(10)
@@ -465,6 +468,7 @@ class Assistant(QMainWindow):
 
             # === 2. Панель настроек (изначально скрыта) ===
             self.mutable_panel = QWidget()
+            self.mutable_panel.setObjectName("WM_MutablePanel")
             self.mutable_layout = QVBoxLayout(self.mutable_panel)
             self.mutable_layout.setContentsMargins(5, 5, 5, 5)
             self.mutable_panel.hide()
@@ -647,12 +651,12 @@ class Assistant(QMainWindow):
             self.style_manager.apply_color_svg(self.icon_svg, strength=0.95)
 
             # Применение общего стиля окна
-            if hasattr(self, 'central_widget'):
-                self.central_widget.setObjectName("CentralWidget")
+            # if hasattr(self, 'central_widget'):
+            #     self.central_widget.setObjectName("MainWindowWidget")
             if hasattr(self, 'title_bar_widget'):
                 self.title_bar_widget.setObjectName("TitleBar")
             if hasattr(self, 'container'):
-                self.title_bar_widget.setObjectName("ConfirmDialogContainer")
+                self.container.setObjectName("WindowContainer")
             # Применяем стили к текущему окну
             style_sheet = ""
             for widget, styles in self.styles.items():
@@ -2325,6 +2329,9 @@ class Assistant(QMainWindow):
         self.tabs.setObjectName("SettingsTabs")
         self.tabs.setDocumentMode(True)
 
+        self.tab_bar = self.tabs.tabBar()
+        self.tab_bar.setObjectName("WSMainTabBar")
+
         # Создаем виджеты для содержимого вкладок
         main_widget = SettingsWidget(self)
         other_widget = OtherSettingsWidget(self)
@@ -2338,13 +2345,14 @@ class Assistant(QMainWindow):
 
         def create_centered_svg_tab(svg_path):
             svg = QSvgWidget(svg_path)
-            svg.setFixedSize(32, 32)
+            svg.setFixedSize(30, 30)
+
             svg.setStyleSheet("background: transparent;")
             self.style_manager.apply_color_svg(svg, strength=0.90)
             self.svg_settings_list.append({"svg": svg})
             container = QWidget()
             layout = QHBoxLayout(container)
-            layout.setContentsMargins(10, 0, 0, 5)
+            layout.setContentsMargins(5, 0, 0, 5)
             layout.addStretch()
             layout.addWidget(svg)
             layout.addStretch()
@@ -2393,6 +2401,9 @@ class Assistant(QMainWindow):
         self.tabs.setObjectName("CommandsTabs")
         self.tabs.setDocumentMode(True)
 
+        self.tab_bar = self.tabs.tabBar()
+        self.tab_bar.setObjectName("WSMainTabBar")
+
         # Создаем виджеты для содержимого вкладок
         new_com_widget = CreateCommandsWidget(self)
         added_com_widget = CommandsWidget(self)
@@ -2406,13 +2417,13 @@ class Assistant(QMainWindow):
 
         def create_centered_svg_tab(svg_path):
             svg = QSvgWidget(svg_path)
-            svg.setFixedSize(32, 32)
+            svg.setFixedSize(30, 30)
             svg.setStyleSheet("background: transparent;")
             self.style_manager.apply_color_svg(svg, strength=0.90)
             self.svg_settings_list.append({"svg": svg})
             container = QWidget()
             layout = QHBoxLayout(container)
-            layout.setContentsMargins(10, 0, 0, 5)
+            layout.setContentsMargins(5, 0, 0, 5)
             layout.addStretch()
             layout.addWidget(svg)
             layout.addStretch()
@@ -2459,6 +2470,9 @@ class Assistant(QMainWindow):
         self.tabs.setDocumentMode(True)
         self.svg_others_list = []
 
+        self.tab_bar = self.tabs.tabBar()
+        self.tab_bar.setObjectName("WSMainTabBar")
+
         # Добавляем вкладки
         self.tabs.addTab(CensorCounterWidget(self), "")
         self.tabs.addTab(CheckUpdateWidget(self), "")
@@ -2473,13 +2487,13 @@ class Assistant(QMainWindow):
 
         def create_centered_svg_tab(svg_path):
             svg = QSvgWidget(svg_path)
-            svg.setFixedSize(32, 32)
+            svg.setFixedSize(30, 30)
             svg.setStyleSheet("background: transparent;")
             self.style_manager.apply_color_svg(svg, strength=0.90)
             self.svg_others_list.append({"svg": svg})
             container = QWidget()
             layout = QHBoxLayout(container)
-            layout.setContentsMargins(10, 0, 0, 5)
+            layout.setContentsMargins(5, 0, 0, 5)
             layout.addStretch()
             layout.addWidget(svg)
             layout.addStretch()
@@ -3038,6 +3052,7 @@ class ChangelogWindow(QDialog):
 
         # Основное содержимое
         content_widget = QWidget(container)
+        content_widget.setObjectName("ContentWidget")
         content_widget.setGeometry(1, 36, self.width() - 2, self.height() - 37)
 
         # Вертикальный layout

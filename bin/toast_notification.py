@@ -295,7 +295,10 @@ class SimpleNotice():
         self.main = QDialog(self.parent) if self.parent else QDialog()
         self.main.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
         self.main.setAttribute(Qt.WA_TranslucentBackground)
-        self.main.setFixedSize(300, 200)
+        self.main.setMinimumWidth(250)
+        self.main.setMaximumWidth(500)
+        self.main.setMinimumHeight(170)
+        self.main.setMaximumHeight(250)
 
         screen_geometry = self.main.screen().availableGeometry()
         self.main.move(
@@ -310,7 +313,7 @@ class SimpleNotice():
 
         # Основной layout для всего контента
         main_layout = QVBoxLayout(self.container)
-        main_layout.setContentsMargins(1, 1, 1, 1)  # Изменено с (0, 0, 0, 0)
+        main_layout.setContentsMargins(1, 1, 1, 1)
         main_layout.setSpacing(0)
 
         # Панель заголовка
@@ -318,13 +321,6 @@ class SimpleNotice():
         title_bar.setObjectName("TitleBar")
         title_bar.setFixedHeight(35)
         title_bar.setGeometry(1, 1, self.main.width() - 2, 34)
-        # Скругление только для верхней части
-        title_bar.setStyleSheet("""
-            #TitleBar {
-                border-top-left-radius: 26px;
-                border-top-right-radius: 26px;
-            }
-        """)
 
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(10, 5, 10, 5)
@@ -342,7 +338,7 @@ class SimpleNotice():
 
         close_btn.clicked.connect(self.main.reject)
         title_layout.addWidget(close_btn)
-        title_layout.addSpacing(7)
+        title_layout.addSpacing(0)
 
         main_layout.addWidget(title_bar)
 
@@ -350,18 +346,11 @@ class SimpleNotice():
         content_widget = QWidget()
         content_widget.setObjectName("ContentWidget")
         content_widget.setGeometry(
-            1,  # X: 1px от левого края
-            36,  # Y: 1px бордер + 35px заголовка
-            self.main.width() - 2,  # Ширина минус бордер
-            self.main.height() - 36 - 45  # Высота: общая - заголовок - место для кнопок
+            1,
+            36,
+            self.main.width() - 2,
+            self.main.height() - 36 - 45
         )
-        content_widget.setStyleSheet("""
-            #ContentWidget {
-                border-bottom-left-radius: 26px;
-                border-bottom-right-radius: 26px;
-
-            }
-        """)
         content_layout = QVBoxLayout(content_widget)
 
         # Текст сообщения

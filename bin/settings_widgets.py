@@ -222,6 +222,7 @@ class SettingsWidget(QWidget):
         self.current_volume = None
         self.name_1 = None
         self.load_current_settings()
+        self.setObjectName("WMSettingsWidget")
         self.init_ui()
 
     def load_current_settings(self):
@@ -242,6 +243,7 @@ class SettingsWidget(QWidget):
     def init_ui(self):
         # Создаем виджет-контейнер для содержимого
         content_widget = QWidget()
+        content_widget.setObjectName("WMSettingsContent")
         self.setLayout(QVBoxLayout())
         self.layout().addWidget(content_widget)
 
@@ -291,6 +293,7 @@ class SettingsWidget(QWidget):
         layout.addWidget(volume_label, alignment=Qt.AlignLeft)
 
         self.volume_slider = QSlider(Qt.Horizontal, self)
+        self.volume_slider.setStyleSheet("background: transparent;")
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(int(self.assistant.volume_assist * 100))
         self.volume_slider.valueChanged.connect(self.update_volume)
