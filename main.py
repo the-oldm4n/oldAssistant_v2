@@ -61,7 +61,7 @@ from PyQt5.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, pyqtSignal, QPr
 
 MUTEX_NAME = "Assistant_123456789AB"
 build_ini = get_config_value("app", "build")
-version_file = "1.5.5"
+version_file = "1.5.6"
 update_version(version_file)
 
 def activate_existing_window():
@@ -134,6 +134,7 @@ class Assistant(QMainWindow):
         self.widget_window = None
         self.is_manual_check = False
         self.stop_checking = False
+        self.is_force_close = False
         gui_signals.open_widget_signal.connect(self.open_widget)
         gui_signals.close_widget_signal.connect(self.close_widget)
         color_signal.color_changed.connect(self.update_colors)
@@ -1213,11 +1214,15 @@ class Assistant(QMainWindow):
 
     def closeEvent(self, event):
         """Обработка закрытия окна"""
-        self.close_child_windows.emit()
+        if self.is_force_close:
+            self.close_child_windows.emit()
 
-        if self.is_assistant_running:
-            self.stop_assist()
-        event.accept()
+            if self.is_assistant_running:
+                self.stop_assist()
+            event.accept()
+        else:
+            self.custom_hide()
+            event.ignore()
 
     def on_shutdown(self):
         try:
@@ -1227,6 +1232,7 @@ class Assistant(QMainWindow):
 
     def force_close(self):
         """Принудительное закрытие, игнорируя все подтверждения"""
+        self.is_force_close = True
         self.close()
 
         # Гарантированное завершение через 100 мс

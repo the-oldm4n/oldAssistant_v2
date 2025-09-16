@@ -24,11 +24,11 @@ if not os.path.exists(os.path.join(internal_dir, "log")):
 debug_file_path = os.path.join(internal_dir, "log", "debug_assist.log")
 
 logger = logging.getLogger("assistant")
-logger.setLevel(logging.INFO)  # Уровень логирования (INFO, DEBUG, ERROR и т.д.)
+logger.setLevel(logging.INFO)
 handler = RotatingFileHandler(
     log_file_path,
-    maxBytes=5 * 1024 * 1024,  # Максимальный размер файла (5 МБ)
-    backupCount=5,  # Количество резервных файлов
+    maxBytes=0.5 * 1024 * 1024,  # Максимальный размер файла
+    backupCount=2,  # Количество резервных файлов
     encoding='utf-8'
 )
 formatter = logging.Formatter("%(message)s")
@@ -39,8 +39,8 @@ debug_logger = logging.getLogger("debug_assist")
 debug_logger.setLevel(logging.DEBUG)
 debug_handler = RotatingFileHandler(
     debug_file_path,
-    maxBytes=5 * 1024 * 1024,  # Максимальный размер файла (5 МБ)
-    backupCount=5,  # Количество резервных файлов
+    maxBytes=2 * 1024 * 1024,  # Максимальный размер файла (2 МБ)
+    backupCount=2,  # Количество резервных файлов
     encoding='utf-8'
 )
 debug_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
