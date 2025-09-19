@@ -448,6 +448,7 @@ class DebuglogWindow(QDialog):
         super().__init__(parent)
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setAttribute(Qt.WA_TranslucentBackground)
         self.setFixedSize(1000, 900)
         screen_geometry = QDesktopWidget().screenGeometry()
         x = (screen_geometry.width() - self.width()) // 2
@@ -483,6 +484,7 @@ class DebuglogWindow(QDialog):
 
         # Основное содержимое
         content_widget = QWidget(container)
+        content_widget.setObjectName("ContentWidget")
         content_widget.setGeometry(1, 36, self.width() - 2, self.height() - 37)
 
         # Вертикальный layout

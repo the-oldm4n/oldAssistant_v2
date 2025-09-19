@@ -455,3 +455,254 @@ class SimpleNotice():
     def show(self):
         """Показать диалог без ожидания результата"""
         self.main.show()
+
+
+class SupplyNotice(QDialog):
+    """
+    Окно всплывающего уведомления
+    """
+    _active_toast = None
+
+    def __init__(self, parent=None, message="", timeout=10000):
+        super().__init__(parent)
+        if SupplyNotice._active_toast:
+            SupplyNotice._active_toast.close_immediately()
+
+            # Сохраняем ссылку на текущее уведомление
+        SupplyNotice._active_toast = self
+        self.parent = parent
+        if self.parent:
+            self.parent.installEventFilter(self)
+        self.timeout = timeout
+        self.message = message
+        self.svg_path = get_path("bin", "logo.svg")
+        self.style_path = get_path('user_settings', 'color_settings.json')
+        self.style_manager = ApplyColor(self)
+        self.styles = self.style_manager.load_styles()
+        self.init_ui()
+        self.apply_styles()
+
+        self.opacity_animation = QPropertyAnimation(self, b"windowOpacity")
+        self.opacity_animation.setDuration(300)  # Продолжительность анимации прозрачности
+        self.opacity_animation.setKeyValueAt(0.0, 0.0)
+        self.opacity_animation.setKeyValueAt(0.7, 0.0)
+        self.opacity_animation.setKeyValueAt(1.0, 1.0)
+
+        # Модифицируем анимацию позиции для движения сверху вниз
+        self.animation = QPropertyAnimation(self, b"pos")
+        self.animation.setEasingCurve(QEasingCurve.OutQuad)
+        self.animation.setDuration(700)
+
+    def init_ui(self):
+        # Настройки окна
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setFixedSize(300, 100)
+
+        # Основной layout
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # --- Заголовок (TitleBar) ---
+        self.title_bar = QWidget()
+        self.title_bar.setObjectName("TitleBar")
+        self.title_bar.setFixedHeight(1)
+        main_layout.addWidget(self.title_bar)
+
+        # --- Контент: иконка + текст ---
+        content_widget = QWidget()
+        content_widget.setStyleSheet("background: transparent;")
+        content_layout = QHBoxLayout(content_widget)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+        content_layout.setSpacing(10)
+
+        # Иконка
+        self.svg_image = QSvgWidget()
+        self.svg_image.load(self.svg_path)
+        self.svg_image.setFixedSize(50, 50)
+        self.svg_image.setStyleSheet("background: transparent; border: none;")
+        self.color_svg = QGraphicsColorizeEffect()
+        self.svg_image.setGraphicsEffect(self.color_svg)
+        content_layout.addWidget(self.svg_image, alignment=Qt.AlignCenter | Qt.AlignRight)
+
+        # Текст
+        self.label = QLabel(self.message)
+        self.label.setWordWrap(True)
+        self.label.setAlignment(Qt.AlignVCenter)
+        content_layout.addWidget(self.label, stretch=1)
+
+        main_layout.addWidget(content_widget)
+
+        self.setLayout(main_layout)
+
+        # --- Анимация и таймер ---
+        self.animation = QPropertyAnimation(self, b"pos")
+        self.animation.setEasingCurve(QEasingCurve.OutQuad)
+        self.animation.setDuration(500)
+
+        self.timer = QTimer()
+        self.timer.setSingleShot(True)
+        self.timer.timeout.connect(self.hide_animated)
+
+    def eventFilter(self, obj, event):
+        """Обработка событий родительского окна"""
+        if SupplyNotice._active_toast:
+            if obj == self.parent:
+                if event.type() == QEvent.WindowStateChange:
+                    if self.parent.isActiveWindow():
+                        self.handle_parent_restored()
+                elif event.type() == QEvent.Hide:
+                    if self.parent.isHidden():
+                        self.handle_parent_hidden()
+        return super().eventFilter(obj, event)
+
+    def handle_parent_minimized(self):
+        """Родитель свернут в трей"""
+        if hasattr(self, 'animation_group') and self.animation_group.state() == QAbstractAnimation.Running:
+            self.animation_group.stop()
+
+        self.close_immediately()
+
+    def handle_parent_restored(self):
+        """Родитель восстановлен из трея"""
+        # Можно автоматически показать уведомление снова, если нужно
+        pass
+
+    def handle_parent_hidden(self):
+        """Родитель скрыт (например, закрыт)"""
+        self.close_immediately()
+
+    def recalculate_position(self):
+        """Пересчет позиции уведомления"""
+        if self.parent and not self.parent.isMinimized():
+            parent_geo = self.parent.geometry()
+            end_x = parent_geo.right() - self.width()
+            end_y = parent_geo.top() + 34
+            self.move(end_x, end_y)
+        else:
+            screen_geo = QApplication.primaryScreen().geometry()
+            end_x = screen_geo.width() - self.width()
+            end_y = 0
+            self.move(end_x, end_y)
+
+    def close_immediately(self):
+        """Безопасное закрытие уведомления без анимации"""
+        try:
+            # 1. Останавливаем все анимации и таймеры
+            if hasattr(self, 'timer') and self.timer.isActive():
+                self.timer.stop()
+
+            if hasattr(self, 'animation') and self.animation.state() == QPropertyAnimation.Running:
+                self.animation.stop()
+
+            if hasattr(self, 'animation_group') and self.animation_group.state() == QParallelAnimationGroup.Running:
+                self.animation_group.stop()
+
+            if hasattr(self, 'opacity_animation') and self.opacity_animation.state() == QPropertyAnimation.Running:
+                self.opacity_animation.stop()
+
+            # 2. Проверяем, существует ли еще виджет
+            if not sip.isdeleted(self):
+                # 3. Скрываем вместо закрытия (более безопасно)
+                self.hide()
+
+                # 4. Отсоединяем от родителя, если он существует
+                if self.parent and not sip.isdeleted(self.parent):
+                    self.setParent(None)
+
+                # 5. Планируем реальное удаление
+                self.deleteLater()
+
+            # 6. Очищаем ссылку
+            if SupplyNotice._active_toast is self:
+                SupplyNotice._active_toast = None
+
+        except Exception as e:
+            debug_logger.error(f"Ошибка при закрытии уведомления: {e}")
+
+    def showEvent(self, event):
+        # Устанавливаем начальную прозрачность
+        self.setWindowOpacity(0.0)
+
+        screen_geo = QApplication.primaryScreen().availableGeometry()
+
+        if self.parent and self.parent.isVisible() and not self.parent.isMinimized():
+            # Если есть видимый родитель - позиционируем относительно него
+            parent_geo = self.parent.geometry()
+            start_x = parent_geo.right() - self.width()
+            start_y = parent_geo.top() - self.height()
+            end_x = start_x
+            end_y = parent_geo.top() + 90
+        else:
+            # Иначе - позиционируем в правом верхнем углу экрана
+            start_x = screen_geo.width() - self.width()  # 10px отступ от края
+            start_y = -self.height()
+            end_x = start_x
+            end_y = 21  # 10px отступ сверху
+
+        self.move(start_x, start_y)
+        self.show()
+
+        # Настраиваем анимацию позиции
+        self.animation.setStartValue(QPoint(start_x, start_y))
+        self.animation.setEndValue(QPoint(end_x, end_y))
+
+        # Запускаем обе анимации параллельно
+        self.animation.start()
+        self.opacity_animation.start()
+
+        # Таймер для автоматического скрытия
+        self.timer.start(self.timeout)
+
+    def hide_animated(self):
+        """Анимация скрытия с изменением прозрачности"""
+        # Создаем анимацию для исчезновения
+        hide_opacity_animation = QPropertyAnimation(self, b"windowOpacity")
+        hide_opacity_animation.setDuration(500)
+        hide_opacity_animation.setKeyValueAt(0.0, 1.0)
+        hide_opacity_animation.setKeyValueAt(0.1, 0.8)
+        hide_opacity_animation.setKeyValueAt(0.4, 0.0)
+        hide_opacity_animation.setKeyValueAt(1.0, 0.0)
+
+        current_pos = self.pos()
+        end_pos = QPoint(current_pos.x(), -self.height())
+
+        # Настраиваем анимацию движения вверх
+        move_animation = QPropertyAnimation(self, b"pos")
+        move_animation.setDuration(500)
+        move_animation.setStartValue(current_pos)
+        move_animation.setEndValue(end_pos)
+        move_animation.setEasingCurve(QEasingCurve.InQuad)
+
+        # Группируем анимации
+        self.animation_group = QParallelAnimationGroup()
+        self.animation_group.addAnimation(hide_opacity_animation)
+        self.animation_group.addAnimation(move_animation)
+        self.animation_group.finished.connect(self.close_immediately)
+        self.animation_group.start()
+
+    def apply_styles(self):
+        try:
+            self.styles = self.style_manager.load_styles()
+            # Применение к SVG
+            self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
+
+            # Применяем стили к текущему окну
+            style_sheet = ""
+            for widget, styles in self.styles.items():
+                if widget.startswith("Q"):  # Для стандартных виджетов (например, QMainWindow, QPushButton)
+                    selector = widget
+                else:  # Для виджетов с objectName (например, TitleBar, CentralWidget)
+                    selector = f"#{widget}"
+
+                style_sheet += f"{selector} {{\n"
+                for prop, value in styles.items():
+                    style_sheet += f"    {prop}: {value};\n"
+                style_sheet += "}\n"
+
+            # Устанавливаем стиль для текущего окна
+            self.setStyleSheet(style_sheet)
+
+        except Exception as e:
+            debug_logger.error(f"Ошибка в методе apply_styles: {e}")

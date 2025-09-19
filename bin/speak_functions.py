@@ -104,3 +104,29 @@ def thread_react_detail(file_path):
     """
     thread = threading.Thread(target=react_detail, args=(file_path,), daemon=True)
     thread.start()
+
+def play_sound(type):
+    ok_path = get_path("bin", "speak_voice", "sounds", "ok.wav")
+    error_path = get_path("bin", "speak_voice", "sounds", "error.wav")
+    try:
+        if type == "ok":
+            file_path = ok_path
+        else:
+            file_path = error_path
+
+        pygame.mixer.init()
+        # Остановить текущее воспроизведение
+        pygame.mixer.music.stop()
+
+        # Загрузка и воспроизведение аудиофайла
+        pygame.mixer.music.load(file_path)
+        pygame.mixer.music.set_volume(0.5)  # Установка громкости
+        pygame.mixer.music.play()
+
+        # Ожидание завершения воспроизведения
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
+
+    except Exception as e:
+        logger.error(f"Ошибка при воспроизведении аудио: {e}")
+        debug_logger.error(f"Ошибка при воспроизведении аудио: {e}")

@@ -12,16 +12,18 @@ import shutil
 import numpy as np
 import win32clipboard
 from PIL import ImageGrab, Image
+from sympy.codegen.ast import continue_
+
 from bin.apply_color_methods import ApplyColor
 from bin.check_update import load_changelog, VersionCheckThread
 from bin.download_thread import DownloadThread, SliderProgressBar
 from bin.init import InitScreen
 from bin.signals import gui_signals, color_signal, progress_signal, commands_signal
-from bin.toast_notification import ToastNotification, SimpleNotice
+from bin.toast_notification import ToastNotification, SimpleNotice, SupplyNotice
+from bin.toggle_mute_discord import ToggleMuteDiscord
 from bin.widget_window import SmartWidget
 ctypes.windll.user32.SetProcessDPIAware()
 import io
-import json
 import logging
 import os.path
 import random
@@ -47,7 +49,7 @@ import sounddevice as sd
 import subprocess
 from bin.audio_control import controller
 from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget
-from bin.speak_functions import thread_react_detail, thread_react, react
+from bin.speak_functions import thread_react_detail, thread_react, react, play_sound
 from logging_config import logger, debug_logger
 from bin.lists import get_audio_paths
 from vosk import Model, KaldiRecognizer
@@ -61,7 +63,7 @@ from PyQt5.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, pyqtSignal, QPr
 
 MUTEX_NAME = "Assistant_123456789AB"
 build_ini = get_config_value("app", "build")
-version_file = "1.5.6"
+version_file = "1.5.7"
 update_version(version_file)
 
 def activate_existing_window():
@@ -97,6 +99,7 @@ class Assistant(QMainWindow):
     close_child_windows = pyqtSignal()
     save_settings_signal = pyqtSignal()
     update_checked = pyqtSignal(bool, str)
+    supply_notice_signal = pyqtSignal(str)
 
     def check_memory_usage(self, limit_mb):
         """
@@ -138,6 +141,7 @@ class Assistant(QMainWindow):
         gui_signals.open_widget_signal.connect(self.open_widget)
         gui_signals.close_widget_signal.connect(self.close_widget)
         color_signal.color_changed.connect(self.update_colors)
+        self.supply_notice_signal.connect(self._handle_supply_notice)
         commands_signal.commands_updated.connect(self.save_commands)
         self.update_checked.connect(self.handle_update_status)
         self.close_child_windows.connect(self.hide_widget)
@@ -728,6 +732,28 @@ class Assistant(QMainWindow):
             debug_logger.error(f"Ошибка при показе уведомления(оконного): {e}")
             # В случае ошибки тоже нужно что-то вернуть, например, QDialog.Rejected или None
             return QDialog.Rejected  # или return None
+
+    def show_supply_notice(self, message):
+        """Вызывается из фонового потока - emits signal"""
+        try:
+            # Отправляем сигнал в главный поток Qt
+            self.supply_notice_signal.emit(message)
+        except Exception as e:
+            debug_logger.error(f"Ошибка при отправке сигнала уведомления: {e}")
+
+    def _handle_supply_notice(self, message):
+        """Выполняется в главном потоке Qt (обработчик сигнала)"""
+        try:
+            if not self.isVisible():
+                toast = SupplyNotice(
+                    parent=None,
+                    message=f"Распознано: {message}",
+                    timeout=5000
+                )
+                toast.show()
+
+        except Exception as e:
+            debug_logger.error(f"Ошибка при показе всплывающего уведомления: {e}")
 
     def keyPressEvent(self, event):
         """Сворачивает основное окно в трей по нажатию на Esc"""
@@ -1393,7 +1419,7 @@ class Assistant(QMainWindow):
                 # Обновляем время последней активности при получении текста
                 last_activity_time = current_time
 
-                # Проверка памяти и цензуры (без изменений)
+                # Проверка памяти и цензуры
                 if not self.check_memory_usage(self.MEMORY_LIMIT_MB):
                     logger.error("Превышен лимит памяти")
                     debug_logger.error("Превышен лимит памяти")
@@ -1457,6 +1483,7 @@ class Assistant(QMainWindow):
                             'корзин': (open_recycle_bin, close_recycle_bin),
                             'дат': (open_appdata, close_appdata),
                             'панел': (self._open_widget_signal, self._close_widget_signal),
+                            "микро": (self.toggle_mute_discord, self.toggle_mute_discord)
                         }
 
                         # Ищем совпадение со специальными командами
@@ -1490,15 +1517,16 @@ class Assistant(QMainWindow):
                                 logger.warning(f"Не удалось обработать команду: {restored_command}")
                                 debug_logger.warning(f"Не удалось обработать команду: {restored_command}")
                                 what_folder = self.audio_paths.get('what_folder')
-                                if what_folder:
-                                    thread_react(what_folder)
+                                thread_react(what_folder)
+                                self.show_supply_notice(text)
+                                last_unrecognized_command = None
                                 continue
 
                             last_unrecognized_command = None
                         if not matched_special and not matched_keyword:
                             what_folder = self.audio_paths.get('what_folder')
-                            if what_folder:
-                                thread_react(what_folder)
+                            thread_react(what_folder)
+                            self.show_supply_notice(text)
 
                 if has_assistant_name:
                     reaction_triggered = False
@@ -1582,6 +1610,8 @@ class Assistant(QMainWindow):
                                     self._open_widget_signal()
                                 elif action_type == 'close':
                                     self._close_widget_signal()
+                            elif "микро" in command:
+                                self.toggle_mute_discord()
                             else:
                                 # Пытаемся обработать команду
                                 app_processed = self.handle_app_command(command, action_type)
@@ -1595,6 +1625,7 @@ class Assistant(QMainWindow):
                                         'original_text': text
                                     }
                                     reaction_triggered = True
+                                    self.show_supply_notice(text)
                         else:
                             # Если есть имя ассистента, но нет команды или непонятная команда
                             if (self.assistant_name in command or
@@ -1608,6 +1639,7 @@ class Assistant(QMainWindow):
                                     if what_folder:
                                         thread_react(what_folder)
                                     reaction_triggered = True
+                                    self.show_supply_notice(text)
                                 else:
                                     if any(word in command for word in ["найди", "поищи", "посмотри", "гугли"]):
                                         search_yandex(command, self.assistant_name,
@@ -1629,6 +1661,7 @@ class Assistant(QMainWindow):
                                         pass
 
                     if reaction_triggered:
+                        self.show_supply_notice(text)
                         what_folder = self.audio_paths.get('what_folder')
                         if what_folder:
                             thread_react(what_folder)
@@ -1720,13 +1753,13 @@ class Assistant(QMainWindow):
         debug_logger.debug("Загрузка моделей для распознавания...")
 
         model_path_ru = get_path("bin", "model_ru")
-        model_path_en = get_path("bin", "model_en")
+        # model_path_en = get_path("bin", "model_en")
         debug_logger.debug(f"Загружена модель RU - {model_path_ru}")
-        debug_logger.debug(f"Загружена модель EN - {model_path_en}")
+        # debug_logger.debug(f"Загружена модель EN - {model_path_en}")
 
         try:
             self.model_ru = Model(model_path_ru)
-            self.model_en = Model(model_path_en)
+            # self.model_en = Model(model_path_en)
             logger.info("Модели успешно загружены.")
             debug_logger.info("Модели успешно загружены.")
         except Exception as e:
@@ -1737,7 +1770,7 @@ class Assistant(QMainWindow):
         try:
             # Инициализация распознавателей
             self.rec_ru = KaldiRecognizer(self.model_ru, 16000)
-            self.rec_en = KaldiRecognizer(self.model_en, 16000)
+            # self.rec_en = KaldiRecognizer(self.model_en, 16000)
 
             target_id = self.get_microphone_id(self.input_device_name)
             if target_id is None:
@@ -1868,11 +1901,11 @@ class Assistant(QMainWindow):
                 result = json.loads(self.rec_ru.Result())
                 ru_text = result.get("text", "").strip().lower()
 
-            if self.rec_en.AcceptWaveform(data):
-                result = json.loads(self.rec_en.Result())
-                temp_en = result.get("text", "").strip().lower()
-                if temp_en and temp_en != "huh":
-                    en_text = temp_en
+            # if self.rec_en.AcceptWaveform(data):
+            #     result = json.loads(self.rec_en.Result())
+            #     temp_en = result.get("text", "").strip().lower()
+            #     if temp_en and temp_en != "huh":
+            #         en_text = temp_en
 
             final_text = ru_text or en_text
             if final_text:
@@ -2060,6 +2093,10 @@ class Assistant(QMainWindow):
                 self.commands_manager.handler_folder(folder_path, action)  # Вызываем обработчик папок
                 return True  # Возвращаем True, если команда была успешно обработана
         return False  # Возвращаем False, если команда не была найдена
+
+    def toggle_mute_discord(self):
+        toggle = ToggleMuteDiscord()
+        toggle.main()
 
     def _open_widget_signal(self):
         try:
@@ -2599,7 +2636,7 @@ class Assistant(QMainWindow):
              "'Имя ассистента'\n+\n'Открой, запусти, включи'/'закрой выключи'\n+\n'команда, созданная вручную или из списка встроенных'"),
             ("Встроенные команды (открыть/закрыть)",
              "'Пейнт', 'Калькулятор', 'Корзина', 'АппДата', 'Переменные окружения', 'Диспетчер задач', 'Микшер',"
-             "'Панель(для вызова виджета)'"),
+             "'Панель(для вызова виджета)', 'Микро'"),
             ("Прочие команды",
              "'Выключи комп', 'Перезагрузи комп', 'Найди, поищи, загугли', 'Скрин, область', 'Фулл скрин, сфоткай, весь экран'"),
             ("Управление плеером без произношения имени бота", "(Плеер) + (Действие)\n\n" +
@@ -2895,8 +2932,6 @@ class Assistant(QMainWindow):
 
     def capture_area(self):
         try:
-            approve_folder = self.audio_paths.get('approve_folder')
-            thread_react(approve_folder)
             self.screenshot_tool.capture_area()
         except Exception as e:
             logger.error(f'Ошибка {e}')
@@ -2905,9 +2940,9 @@ class Assistant(QMainWindow):
     def capture_fullscreen(self):
         try:
             self.screenshot_tool.capture_fullscreen()
-            approve_folder = self.audio_paths.get('approve_folder')
-            thread_react(approve_folder)
+            play_sound(type="ok")
         except Exception as e:
+            play_sound(type="error")
             logger.error(f'Ошибка {e}')
             debug_logger.error(f'Ошибка {e}')
 
@@ -3197,11 +3232,28 @@ class SystemScreenshot:
             logger.info("Выделите область на экране...")
             debug_logger.info("Выделите область на экране...")
 
-            # Ждем и сохраняем с улучшенной проверкой
-            return self._wait_and_save_screenshot()
+            result = self._wait_and_save_screenshot()
+
+            if result:
+                play_sound(type="ok")
+                logger.info("Скриншот успешно сохранен")
+                debug_logger.info("Скриншот успешно сохранен")
+            else:
+                play_sound(type="error")
+                logger.warning("Не удалось сохранить скриншот")
+                debug_logger.warning("Не удалось сохранить скриншот")
+
+            return result
+
         except Exception as e:
             logger.error(f"Ошибка: {e}")
             debug_logger.error(f"Ошибка: {e}")
+
+            # Звук ошибки при исключении
+            error_folder = self.audio_paths.get('error_folder')
+            if error_folder:
+                thread_react(error_folder)
+
             return None
 
     def capture_fullscreen(self):
@@ -3319,10 +3371,43 @@ class SystemScreenshot:
 
         return None
 
+    # def _wait_and_save_screenshot(self, timeout=10):
+    #     """Улучшенная версия с проверкой последовательности буфера"""
+    #     start_time = time.time()
+    #     last_sequence = -1
+    #     success = False
+    #
+    #     while time.time() - start_time < timeout:
+    #         try:
+    #             # Проверяем номер последовательности буфера
+    #             current_sequence = self._get_clipboard_sequence()
+    #
+    #             # Если буфер изменился
+    #             if current_sequence != last_sequence:
+    #                 image = self._get_image_from_clipboard()
+    #                 if image:
+    #                     filename = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+    #                     filepath = os.path.join(self.save_dir, filename)
+    #                     image.save(filepath, "PNG")
+    #                     success = True
+    #                     return True  # Успешное сохранение
+    #
+    #                 last_sequence = current_sequence
+    #
+    #         except Exception as e:
+    #             debug_logger.error(f"Ошибка проверки буфера: {e}")
+    #
+    #         time.sleep(0.3)
+    #
+    #     logger.error("Таймаут: скриншот не обнаружен")
+    #     debug_logger.error("Таймаут: скриншот не обнаружен")
+    #     return False  # Не удалось сохранить
+
     def _wait_and_save_screenshot(self, timeout=10):
-        """Улучшенная версия с проверкой последовательности буфера"""
+        """Улучшенная версия с быстрым выходом при отмене"""
         start_time = time.time()
         last_sequence = -1
+        last_change_time = time.time()
 
         while time.time() - start_time < timeout:
             try:
@@ -3336,18 +3421,23 @@ class SystemScreenshot:
                         filename = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
                         filepath = os.path.join(self.save_dir, filename)
                         image.save(filepath, "PNG")
-                        return filepath
+                        return True  # Успешное сохранение
 
                     last_sequence = current_sequence
+                    last_change_time = time.time()  # Сбрасываем таймер изменений
+                else:
+                    # Если буфер не менялся более 1 секунды - вероятно пользователь отменил
+                    if time.time() - last_change_time > 1.0:
+                        debug_logger.info("Буфер не меняется - пользователь отменил захват")
+                        return False
 
             except Exception as e:
                 debug_logger.error(f"Ошибка проверки буфера: {e}")
 
-            time.sleep(0.3)
+            time.sleep(0.1)  # Уменьшаем задержку
 
-        logger.error("Таймаут: скриншот не обнаружен")
-        debug_logger.error("Таймаут: скриншот не обнаружен")
-        return None
+        debug_logger.warning("Таймаут ожидания скриншота")
+        return False
 
 
 def should_launch_updater():

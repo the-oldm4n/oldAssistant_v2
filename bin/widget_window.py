@@ -12,6 +12,7 @@ from bin.apply_color_methods import ApplyColor
 from bin.audio_control import controller
 from bin.function_list_main import shutdown_windows
 from bin.signals import color_signal
+from bin.toggle_mute_discord import ToggleMuteDiscord
 from logging_config import debug_logger
 from path_builder import get_path
 
@@ -94,6 +95,7 @@ class SmartWidget(QWidget):
         self.buttons_data = {}
         self.player_buttons = {}
         self.is_paused = False
+        self.is_muted = False
         color_signal.color_changed.connect(self.update_colors)
         self.notes_file = get_path("user_settings", "notes.txt")
 
@@ -113,6 +115,8 @@ class SmartWidget(QWidget):
         self.unlock_path = get_path("bin", "icons", "unlock.svg")
         self.close_path = get_path("bin", "icons", "cancel.svg")
         self.resize_path = get_path("bin", "icons", "resize.svg")
+        self.mic_on_path = get_path("bin", "icons", "mic_on.svg")
+        self.mic_off_path = get_path("bin", "icons", "mic_off.svg")
         self.ohm_path = self.assistant.ohm_path
         self.ohm_namespace = "root\\OpenHardwareMonitor"
 
@@ -208,6 +212,12 @@ class SmartWidget(QWidget):
         # Аудио
         self.audio_widget = self.create_audio_controls()
         self.content_layout.addWidget(self.audio_widget, alignment=Qt.AlignCenter)
+
+        # Кнопка-тогл для переключения показа основных кнопок
+        self.hide_btns = QPushButton()
+        self.hide_btns.setStyleSheet("height: 4px; border-radius: 2px; background: transparent")
+        self.hide_btns.clicked.connect(self.hide_main_btns)
+        self.content_layout.addWidget(self.hide_btns)
 
         # Кнопки
         self.buttons_widget = self.create_main_buttons()
@@ -355,6 +365,11 @@ class SmartWidget(QWidget):
         buttons_layout.setContentsMargins(0, 0, 0, 0)
         buttons_layout.setSpacing(0)
 
+        # Сохраняем ссылку на layout для управления видимостью
+        self.buttons_layout = buttons_layout
+        self.buttons_widget = widget
+        self.buttons_visible = True  # Флаг видимости кнопок
+
         buttons_config = {
             'power_btn': {
                 'icon': self.power_path,
@@ -370,6 +385,11 @@ class SmartWidget(QWidget):
                 'icon': self.camera_path,
                 'tooltip': 'Скриншот области',
                 'action': self.assistant.capture_area
+            },
+            'mic_toggle_btn': {
+                'icon': self.mic_on_path,
+                'tooltip': 'Переключить мут в Discord',
+                'action': self.toggle_mute
             },
             'link_btn': {
                 'icon': self.shortcut_path,
@@ -410,6 +430,75 @@ class SmartWidget(QWidget):
             buttons_layout.addStretch()
 
         return widget
+
+    # def create_main_buttons(self, vertical=False):
+    #     widget = QWidget()
+    #     widget.setStyleSheet("background: transparent;")
+    #     layout_class = QVBoxLayout if vertical else QHBoxLayout
+    #     buttons_layout = layout_class(widget)
+    #     buttons_layout.setContentsMargins(0, 0, 0, 0)
+    #     buttons_layout.setSpacing(0)
+    #
+    #     buttons_config = {
+    #         'power_btn': {
+    #             'icon': self.power_path,
+    #             'tooltip': 'Выключить Компьютер',
+    #             'action': self.shutdown_system
+    #         },
+    #         'settings_btn': {
+    #             'icon': self.settings_path,
+    #             'tooltip': 'Открыть настройки',
+    #             'action': self.open_settings
+    #         },
+    #         'screen_btn': {
+    #             'icon': self.camera_path,
+    #             'tooltip': 'Скриншот области',
+    #             'action': self.assistant.capture_area
+    #         },
+    #         'mic_toggle_btn': {
+    #             'icon': self.mic_on_path,
+    #             'tooltip': 'Переключить мут в Discord',
+    #             'action': self.toggle_mute
+    #         },
+    #         'link_btn': {
+    #             'icon': self.shortcut_path,
+    #             'tooltip': 'Открыть папку с ярлыками',
+    #             'action': self.assistant.open_folder_shortcuts
+    #         },
+    #         'open_main_btn': {
+    #             'icon': self.open_main_path,
+    #             'tooltip': 'Развернуть основное окно',
+    #             'action': self.open_main_window
+    #         }
+    #     }
+    #
+    #     for btn_name, config in buttons_config.items():
+    #         btn = QPushButton()
+    #         btn.setFixedSize(40, 40)
+    #         btn.setToolTip(config['tooltip'])
+    #         btn.setStyleSheet("""
+    #             QPushButton {
+    #                 background: transparent;
+    #                 border: none;
+    #             }
+    #             QPushButton:hover {
+    #                 background: rgba(90, 90, 90, 0.7);
+    #                 border-radius: 5px;
+    #             }
+    #         """)
+    #         svg = QSvgWidget(config['icon'], btn)
+    #         svg.setFixedSize(30, 30)
+    #         svg.move(5, 5)
+    #         self.buttons_data[btn_name] = {'button': btn, 'svg': svg}
+    #         self.style_manager.apply_color_svg(svg, strength=0.90)
+    #         btn.clicked.connect(config['action'])
+    #         setattr(self, btn_name, btn)
+    #         buttons_layout.addWidget(btn)
+    #
+    #     if vertical:
+    #         buttons_layout.addStretch()
+    #
+    #     return widget
 
     def create_audio_controls(self):
         widget = QWidget()
@@ -641,6 +730,28 @@ class SmartWidget(QWidget):
         self.move(QPoint(pos["x"], pos["y"]))
         self.resize(QSize(size["width"], size["height"]))
 
+    def toggle_mute(self):
+        try:
+            toggle = ToggleMuteDiscord()
+            if toggle.main():
+                self.is_muted = not self.is_muted
+                svg = self.buttons_data['mic_toggle_btn']['svg']
+                # Меняем иконку в зависимости от состояния
+                if self.is_muted:
+                    svg.load(self.mic_off_path)
+                    self.is_muted = True
+                else:
+                    # Возвращаем стандартную иконку
+                    svg.load(self.mic_on_path)
+                    self.is_muted = False
+            else:
+                return
+
+            # Применяем цвет к SVG
+            self.style_manager.apply_color_svg(svg, strength=0.95)
+        except Exception as e:
+            debug_logger.error(f"Ошибка в toggle_mute: {e}")
+
     def pin_widget(self):
         try:
             self.is_pinned = not self.is_pinned
@@ -682,6 +793,49 @@ class SmartWidget(QWidget):
             self.clock_mini.hide()
             self.clock_widget.show()
 
+    def hide_main_btns(self):
+        """Переключает компактный режим по высоте (только для скрытия кнопок)"""
+        try:
+            if self.animation and self.animation.state() == QPropertyAnimation.Running:
+                self.animation.stop()
+
+            old_geometry = self.geometry()
+
+            if not hasattr(self, 'is_height_compact'):
+                self.is_height_compact = False
+
+            if self.is_height_compact:
+                # Возвращаем нормальную высоту (показываем кнопки)
+                new_height = 300
+                self.buttons_widget.show()
+            else:
+                # Компактная высота (скрываем кнопки)
+                new_height = 70  # Только заголовок или минимальная высота
+                self.buttons_widget.hide()
+
+            # Переключаем состояние
+            self.is_height_compact = not self.is_height_compact
+
+            # Сохраняем правый край и ширину
+            new_width = old_geometry.width()
+            new_x = old_geometry.x()
+
+            # Анимация изменения высоты
+            self.animation = QPropertyAnimation(self, b"geometry")
+            self.animation.setDuration(300)
+            self.animation.setStartValue(old_geometry)
+            self.animation.setEndValue(QRect(new_x, old_geometry.y(), new_width, new_height))
+            self.animation.setEasingCurve(QEasingCurve.InBack)
+
+            def on_animation_finished():
+                self.save_state()
+
+            self.animation.finished.connect(on_animation_finished)
+            self.animation.start()
+
+        except Exception as e:
+            debug_logger.error(f"Ошибка в toggle_compact_height_mode: {e}")
+
     def resize_widget(self):
         """Переключает между компактным и нормальным режимом"""
         try:
@@ -692,7 +846,7 @@ class SmartWidget(QWidget):
                 self.animation.stop()
 
             old_geometry = self.geometry()
-            new_width = 90 if not self.is_compact else 240
+            new_width = 90 if not self.is_compact else 280
             new_height = 300
 
             # Сохраняем правый край
@@ -847,6 +1001,7 @@ class SmartWidget(QWidget):
                     if hasattr(self, "audio_widget") and hasattr(self, "buttons_widget"):
                         self.audio_widget.setEnabled(False)
                         self.buttons_widget.setEnabled(False)
+                        self.hide_btns.setEnabled(False)
                     if hasattr(self, "tab_widget"):
                         self.tab_widget.setEnabled(False)
                 else:
@@ -857,6 +1012,7 @@ class SmartWidget(QWidget):
                     if hasattr(self, "audio_widget") and hasattr(self, "buttons_widget"):
                         self.audio_widget.setEnabled(True)
                         self.buttons_widget.setEnabled(True)
+                        self.hide_btns.setEnabled(True)
                     if hasattr(self, "tab_widget"):
                         self.tab_widget.setEnabled(True)
 
