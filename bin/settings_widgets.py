@@ -70,6 +70,10 @@ class InterfaceWidget(QWidget):
         btn_purple_neon.clicked.connect(lambda: self.apply_style_file("purple_neon.json"))
         left_col.addWidget(btn_purple_neon)
 
+        btn_ice_flame = QPushButton("Ice&Flame")
+        btn_ice_flame.clicked.connect(lambda: self.apply_style_file("ice_and_flame.json"))
+        left_col.addWidget(btn_ice_flame)
+
         # Правая колонка
         btn_dark = QPushButton("Dark")
         btn_dark.clicked.connect(lambda: self.apply_style_file("dark.json"))
@@ -98,6 +102,10 @@ class InterfaceWidget(QWidget):
         btn_orange_purple = QPushButton("Закат")
         btn_orange_purple.clicked.connect(lambda: self.apply_style_file("sunset.json"))
         right_col.addWidget(btn_orange_purple)
+
+        btn_mint = QPushButton("Mint")
+        btn_mint.clicked.connect(lambda: self.apply_style_file("mint.json"))
+        right_col.addWidget(btn_mint)
 
         cols.addLayout(left_col)
         cols.addLayout(right_col)
@@ -379,9 +387,9 @@ class SettingsWidget(QWidget):
     def set_default_settings(self):
         default_settings = {
             "voice": "johnny",
-            "assistant_name": "джо",
-            "assist_name2": "джо",
-            "assist_name3": "джо",
+            "assistant_name": "джонни",
+            "assist_name2": "джонни",
+            "assist_name3": "джонни",
             "steam_path": "D:/Steam/steam.exe",
             "is_censored": True,
             "volume_assist": 0.2,
@@ -389,6 +397,7 @@ class SettingsWidget(QWidget):
             "minimize_to_tray": False,
             "start_win": True,
             "is_widget": True,
+            "is_keep_watch": False,
             "input_device_id": None,
             "input_device_name": None
         }
@@ -493,6 +502,14 @@ class OtherSettingsWidget(QWidget):
         self.widget_check.stateChanged.connect(self.toggle_widget)
         layout.addWidget(self.widget_check)
 
+        self.keep_watch_check = QCheckBox("Обрабатывать команды без имени ассистента"
+                                          "\n(возможны ложные срабатывания)", self)
+        self.keep_watch_check.setStyleSheet("background: transparent;")
+        self.keep_watch_check.setToolTip("Расширенная обработка команд")
+        self.keep_watch_check.setChecked(self.assistant.is_keep_watch)
+        self.keep_watch_check.stateChanged.connect(self.toggle_keep_watch)
+        layout.addWidget(self.keep_watch_check)
+
         self.get_widget_btn = QPushButton("Открыть виджет", self)
         self.get_widget_btn.clicked.connect(self.get_widget)
         layout.addWidget(self.get_widget_btn)
@@ -527,6 +544,11 @@ class OtherSettingsWidget(QWidget):
     def toggle_widget(self):
         """Обработка чекбокса 'Запускать виджет'"""
         self.assistant.is_widget = self.widget_check.isChecked()
+        self.assistant.save_settings()
+
+    def toggle_keep_watch(self):
+        """Обработка чекбокса 'Запускать виджет'"""
+        self.assistant.is_keep_watch = self.keep_watch_check.isChecked()
         self.assistant.save_settings()
 
     def get_widget(self):

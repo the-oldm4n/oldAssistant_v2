@@ -505,6 +505,18 @@ class DebuglogWindow(QDialog):
         close_button.clicked.connect(self.close)
         layout.addWidget(close_button)
 
+    def mousePressEvent(self, event):
+        """Перетаскивание окна за заголовок"""
+        if event.button() == Qt.LeftButton and event.y() < 30:
+            self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        """Перетаскивание окна за заголовок"""
+        if hasattr(self, 'drag_position') and event.buttons() == Qt.LeftButton:
+            self.move(event.globalPos() - self.drag_position)
+            event.accept()
+
     def load_debuglog(self):
         path = get_path("log", "debug_assist.log")
         try:
@@ -514,9 +526,44 @@ class DebuglogWindow(QDialog):
                     pass  # Создаем пустой файл
 
             with open(path, "r", encoding="utf-8-sig", errors="replace") as file:
-                existing_logs = file.read()
+                # Эффективное чтение последних 1000 строк без загрузки всего файла в память
+                lines = []
+                buffer_size = 8192  # Размер буфера для чтения
+                file_size = os.path.getsize(path)
+
+                # Если файл небольшой, читаем обычным способом
+                if file_size <= buffer_size * 10:  # примерно 80KB
+                    lines = file.readlines()[-1000:]
+                else:
+                    # Для больших файлов используем эффективный алгоритм
+                    blocks = []
+                    block_count = 0
+
+                    # Читаем файл с конца блоками
+                    while file_size > 0 and len(lines) < 1000:
+                        read_size = min(buffer_size, file_size)
+                        file.seek(file_size - read_size)
+                        block = file.read(read_size)
+                        blocks.append(block)
+
+                        # Считаем строки в блоке
+                        line_count = block.count('\n')
+                        lines_found = line_count - (1 if file_size - read_size > 0 else 0)
+
+                        if len(lines) + lines_found >= 1000:
+                            break
+
+                        file_size -= read_size
+                        block_count += 1
+
+                    # Собираем все строки из прочитанных блоков
+                    all_text = ''.join(reversed(blocks))
+                    lines = all_text.splitlines()[-1000:]
+
+                existing_logs = "\n".join(lines)
                 self.log_area.append(existing_logs)
-                self.last_position = file.tell()  # Сохраняем позицию последнего прочитанного байта
+                self.last_position = file.tell()
+
         except Exception as e:
             self.logger.error(f"Ошибка при чтении файла логов: {e}")
             self.log_area.append(f"Ошибка при чтении файла логов: {e}")

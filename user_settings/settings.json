@@ -1,8 +1,8 @@
 {
     "voice": "johnny",
-    "assistant_name": "джо",
-    "assist_name2": "джо",
-    "assist_name3": "джо",
+    "assistant_name": "джонни",
+    "assist_name2": "джонни",
+    "assist_name3": "джонни",
     "steam_path": "D:/Steam/steam.exe",
     "is_censored": true,
     "volume_assist": 0.2,
@@ -10,6 +10,7 @@
     "minimize_to_tray": false,
     "start_win": true,
     "is_widget": true,
+    "is_keep_watch": false,
     "input_device_id": null,
     "input_device_name": null
 }

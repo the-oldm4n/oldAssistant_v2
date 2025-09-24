@@ -9,11 +9,10 @@ import csv
 import ctypes
 import re
 import shutil
+import jellyfish
 import numpy as np
 import win32clipboard
 from PIL import ImageGrab, Image
-from sympy.codegen.ast import continue_
-
 from bin.apply_color_methods import ApplyColor
 from bin.check_update import load_changelog, VersionCheckThread
 from bin.download_thread import DownloadThread, SliderProgressBar
@@ -26,7 +25,6 @@ ctypes.windll.user32.SetProcessDPIAware()
 import io
 import logging
 import os.path
-import random
 from pathlib import Path
 import sys
 import time
@@ -51,7 +49,7 @@ from bin.audio_control import controller
 from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget
 from bin.speak_functions import thread_react_detail, thread_react, react, play_sound
 from logging_config import logger, debug_logger
-from bin.lists import get_audio_paths
+from bin.lists import get_audio_paths, censored_list
 from vosk import Model, KaldiRecognizer
 from PyQt5.QtGui import QIcon, QCursor, QFont, QColor, QDesktopServices
 from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, \
@@ -63,7 +61,7 @@ from PyQt5.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, pyqtSignal, QPr
 
 MUTEX_NAME = "Assistant_123456789AB"
 build_ini = get_config_value("app", "build")
-version_file = "1.5.7"
+version_file = "1.6.0"
 update_version(version_file)
 
 def activate_existing_window():
@@ -99,7 +97,7 @@ class Assistant(QMainWindow):
     close_child_windows = pyqtSignal()
     save_settings_signal = pyqtSignal()
     update_checked = pyqtSignal(bool, str)
-    supply_notice_signal = pyqtSignal(str)
+    supply_notice_signal = pyqtSignal(str, bool)
 
     def check_memory_usage(self, limit_mb):
         """
@@ -113,6 +111,18 @@ class Assistant(QMainWindow):
             debug_logger.error(f"Превышен лимит памяти: {memory_usage} МБ > {limit_mb} МБ")
             return False
         return True
+
+    def setup_memory_monitor(self):
+        """Настройка мониторинга памяти через QTimer"""
+        self.memory_timer = QTimer()
+        self.memory_timer.timeout.connect(self.check_memory_with_cleanup)
+        self.memory_timer.start(10000)  # 10 секунд
+
+    def check_memory_with_cleanup(self):
+        """Проверка памяти с автоматической очисткой"""
+        if not self.check_memory_usage(limit_mb=800):
+            debug_logger.warning("Превышен лимит памяти")
+            self.show_notification_message("Превышен лимит оперативной памяти (800Мб), требуется перезагрузка")
 
     def __init__(self):
         super().__init__()
@@ -171,6 +181,7 @@ class Assistant(QMainWindow):
         self.run_updater = None
         self.is_min_tray = None
         self.is_widget = None
+        self.is_keep_watch = None
         self.input_device_id = None
         self.input_device_name = None
         self.install_settings()
@@ -180,6 +191,7 @@ class Assistant(QMainWindow):
         self.silence_timer = QTimer()  # Таймер для проверки тишины
         self.silence_timer.timeout.connect(self.check_silence_timeout)
         self.silence_timer.start(5000)
+        self.setup_memory_monitor()
         self.save_settings_signal.connect(self.restart_bot)
         self.type_version = "stable"
         self.commands = self.load_commands()
@@ -246,9 +258,9 @@ class Assistant(QMainWindow):
 
     def install_settings(self):
         self.settings = self.load_settings()
-        self.assistant_name = self.settings.get('assistant_name', "джо")
-        self.assist_name2 = self.settings.get('assist_name2', "джо")
-        self.assist_name3 = self.settings.get('assist_name3', "джо")
+        self.assistant_name = self.settings.get('assistant_name', "джонни")
+        self.assist_name2 = self.settings.get('assist_name2', "джонни")
+        self.assist_name3 = self.settings.get('assist_name3', "джонни")
         self.speaker = self.settings.get("voice", "johnny")
         self.volume_assist = self.settings.get('volume_assist', 0.2)
         self.steam_path = self.settings.get('steam_path', '')
@@ -256,6 +268,7 @@ class Assistant(QMainWindow):
         self.run_updater = self.settings.get("run_updater", True)
         self.is_min_tray = self.settings.get("minimize_to_tray", False)
         self.is_widget = self.settings.get("is_widget", True)
+        self.is_keep_watch = self.settings.get("is_keep_watch", False)
         self.input_device_id = self.settings.get("input_device_id", None)
         self.input_device_name = self.settings.get("input_device_name", None)
 
@@ -515,8 +528,8 @@ class Assistant(QMainWindow):
             self.tray_icon.setIcon(QIcon(self.icon_tray_path))
             self.tray_icon.setToolTip("Ассистент")
 
-            check_micro = QAction("Найти микрофон", self)
-            check_micro.triggered.connect(self._check_microphone_wrapper)
+            start_widget = QAction("Запустить виджет", self)
+            start_widget.triggered.connect(self.open_widget)
 
             settings = QAction("Настройки", self)
             settings.triggered.connect(self.open_settings_of_tray)
@@ -525,13 +538,13 @@ class Assistant(QMainWindow):
             show_action.triggered.connect(self.show)
 
             hide_action = QAction("Свернуть", self)
-            hide_action.triggered.connect(self.hide)
+            hide_action.triggered.connect(self.custom_hide)
 
             quit_action = QAction("Закрыть", self)
             quit_action.triggered.connect(self.close_app)
 
             self.menu_tray = QMenu()
-            self.menu_tray.addAction(check_micro)
+            self.menu_tray.addAction(start_widget)
             self.menu_tray.addAction(settings)
             self.menu_tray.addAction(show_action)
             self.menu_tray.addAction(hide_action)
@@ -733,24 +746,27 @@ class Assistant(QMainWindow):
             # В случае ошибки тоже нужно что-то вернуть, например, QDialog.Rejected или None
             return QDialog.Rejected  # или return None
 
-    def show_supply_notice(self, message):
+    def show_supply_notice(self, message, is_confirm=False):
         """Вызывается из фонового потока - emits signal"""
         try:
             # Отправляем сигнал в главный поток Qt
-            self.supply_notice_signal.emit(message)
+            self.supply_notice_signal.emit(message, is_confirm)
         except Exception as e:
             debug_logger.error(f"Ошибка при отправке сигнала уведомления: {e}")
 
-    def _handle_supply_notice(self, message):
+    def _handle_supply_notice(self, message, is_confirm=False):
         """Выполняется в главном потоке Qt (обработчик сигнала)"""
         try:
-            if not self.isVisible():
-                toast = SupplyNotice(
-                    parent=None,
-                    message=f"Распознано: {message}",
-                    timeout=5000
-                )
-                toast.show()
+            if is_confirm:
+                default_text = ""
+            else:
+                default_text = "Распознано: "
+            toast = SupplyNotice(
+                parent=None,
+                message=f"{default_text}{message}",
+                timeout=5000
+            )
+            toast.show()
 
         except Exception as e:
             debug_logger.error(f"Ошибка при показе всплывающего уведомления: {e}")
@@ -766,18 +782,6 @@ class Assistant(QMainWindow):
                 event.accept()
         else:
             super().keyPressEvent(event)
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            # Если есть дочерние окна — отправляем сигнал на закрытие
-            if any(child.isVisible() for child in self.findChildren(QDialog)):
-                self.close_child_windows.emit()  # Закрываем все дочерние окна
-                event.accept()
-                return
-
-            # Иначе перемещаем окно
-            self.drag_pos = event.globalPos() - self.frameGeometry().topLeft()
-            event.accept()
 
     def open_update_app(self, event):
         """Запускает скрипт для установки обновления при клике на текст."""
@@ -1129,6 +1133,7 @@ class Assistant(QMainWindow):
             "minimize_to_tray": self.is_min_tray,
             "start_win": self.toggle_start,
             "is_widget": self.is_widget,
+            "is_keep_watch": self.is_keep_watch,
             "input_device_id": self.input_device_id,
             "input_device_name": self.input_device_name
         }
@@ -1163,9 +1168,9 @@ class Assistant(QMainWindow):
         if default_settings is None:
             default_settings = {
                 "voice": "johnny",
-                "assistant_name": "джо",
-                "assist_name2": "джо",
-                "assist_name3": "джо",
+                "assistant_name": "джонни",
+                "assist_name2": "джонни",
+                "assist_name3": "джонни",
                 "steam_path": "",
                 "is_censored": True,
                 "volume_assist": 0.2,
@@ -1173,6 +1178,7 @@ class Assistant(QMainWindow):
                 "minimize_to_tray": True,
                 "start_win": True,
                 "is_widget": True,
+                "is_keep_watch": False,
                 "input_device_id": None,
                 "input_device_name": None
             }
@@ -1388,245 +1394,357 @@ class Assistant(QMainWindow):
     def run_script(self):
         """Основной цикл ассистента"""
         greeting()
+        default_commands = {
+            'микшер': (open_volume_mixer, close_volume_mixer),
+            'калькулятор': (open_calc, close_calc),
+            'пейнт': (open_paint, close_paint),
+            'пэйнт': (open_paint, close_paint),
+            'переменные': (open_path, None),
+            'диспетчер': (open_taskmgr, close_taskmgr),
+            'корзина': (open_recycle_bin, close_recycle_bin),
+            'ап дата': (open_appdata, close_appdata),
+            'панель': (self._open_widget_signal, self._close_widget_signal),
+            "микрофон": (self.toggle_mute_discord, self.toggle_mute_discord),
+            "микро": (self.toggle_mute_discord, self.toggle_mute_discord)
+        }
+        default_commands_keys = list(default_commands.keys())
+        keywords_shutdown = ["питание", "комп", "компьютер"]
+        keywords_restart = ["перезагрузка", "рестарт"]
+        keywords_search = ["найди", "поищи", "посмотри", "загугли"]
+        keywords_no = ['нет', 'не', 'no', 'отмена', 'не надо', 'стоп', 'нельзя']
+        keywords_yes = ['на', 'да', 'ага', 'угу', 'yes', 'конечно', 'давай', 'го']
+        screen_list = ["скрин", "область", "выдели область", "скриншот"]
+        fullscreen_list = ["фулл скрин", "весь экран", "сфоткать"]
+        action_up = ['открыть', 'включить', 'запустить', 'подключить']
+        action_down = ['закрыть', 'выключить', 'отключить', 'отрубить', 'вырубить']
+        all_actions = action_up + action_down
+        # Списки для плеера
+        keywords_player = ["плеер", "плейлист", "музыка", "проигрыватель", "аудио", "песня"]
+        keywords_playpause = ['пауза', 'пуск', 'запуск', 'включить', 'врубить', 'отрубить', 'выключить', 'стоп']
+        keywords_next = ["некст", "следующий", "дальше", "вперед", "переключить"]
+        keywords_prev = ["бэк", "назад", "обратно", "предыдущий"]
+
         last_unrecognized_command = None  # Хранит контекст неудачной команды
         last_activity_time = time.time()  # Время последней активности
         name_mentioned_time = None  # Время последнего упоминания имени ассистента
         name_mentioned = False  # Флаг, что имя было упомянуто
+        has_action_words = True
         if not self.initialize_audio():
             return
 
         try:
             for text in self.get_audio():
-                current_time = time.time()
-
-                # Сбрасываем контекст, если прошло более 7 секунд без активности
-                if last_unrecognized_command and (current_time - last_activity_time) > 7:
-                    last_unrecognized_command = None
-                    logger.info("Сброс контекста из-за неактивности (7 секунд)")
-                    debug_logger.info("Сброс контекста из-за неактивности (7 секунд)")
-                    continue
-
-                # Сбрасываем флаг упоминания имени, если прошло более 30 секунд
-                if name_mentioned and (current_time - name_mentioned_time) > 30:
-                    name_mentioned = False
-                    name_mentioned_time = None
-                    logger.info("Сброс флага упоминания имени (30 секунд)")
-                    debug_logger.info("Сброс флага упоминания имени (30 секунд)")
-
                 if not self.is_assistant_running:
                     break
+                debug_logger.info(f"[last_unrecognized_command]---> {last_unrecognized_command}")
+                current_time = time.time()
+
+                all_commands = self.get_command_names()
+                all_names = [self.assistant_name, self.assist_name2, self.assist_name3]
+
+                # Список фраз действие-команда, ["action command", ...]
+                action_command = self.handle_text_smart(text, all_actions)
+
+                # Чистая команда без действия, "command"
+                clean_target = self._extract_clean_target(text, all_actions)
+
+                # has_action_words = any(kw in text.lower() for kw in all_actions)
+                if self.find_action(text, action_up, action_down, all_actions)[0] is not None:
+                    has_action_words = True
+                else:
+                    has_action_words = False
+
+                debug_logger.info(f"[has_action_words] {has_action_words}")
+
+                debug_logger.info(f"[text------>] {text}"
+                                  f"\n[action_command------>] {action_command}"
+                                  f"\n[clean_target------>] {clean_target}")
+
+                # Сбрасываем контекст, если прошло более 10 секунд без активности
+                if last_unrecognized_command and (current_time - last_activity_time) > 10:
+                    last_unrecognized_command = None
+                    logger.info("Сброс контекста из-за неактивности")
+                    debug_logger.info("Сброс контекста из-за неактивности")
 
                 # Обновляем время последней активности при получении текста
                 last_activity_time = current_time
 
-                # Проверка памяти и цензуры
-                if not self.check_memory_usage(self.MEMORY_LIMIT_MB):
-                    logger.error("Превышен лимит памяти")
-                    debug_logger.error("Превышен лимит памяти")
-                    self.stop_assist()
-                    self.show_notification_message("Превышен лимит памяти, бот остановлен.")
-                    break
+                # Сбрасываем флаг упоминания имени, если прошло более 60 секунд
+                if name_mentioned and (current_time - name_mentioned_time) > 20:
+                    name_mentioned = False
+                    name_mentioned_time = None
+                    logger.info("Сброс флага упоминания имени (20 секунд)")
+                    debug_logger.info("Сброс флага упоминания имени (20 секунд)")
 
-                if any(keyword in text for keyword in ['сук', 'суч', 'пизд', 'ебан', 'ебат', 'ёбан',
-                                                       'нах', 'хуй', 'блять', 'блядь', 'ебу', 'епта',
-                                                       'ёпта', 'гандон', 'пидор', 'пидар', "хуё", "хуя",
-                                                       "хую", "хуе", "залуп", "залупа", "пиздюк",
-                                                       "ебанут", "ебарь", "ебанат", "еблан", "ебло",
-                                                       "еблив", "ебуч", "ёбыр", "заеб", "наеб", "объеб",
-                                                       "подъеб", "разъеб", "съеб"]):
-                    self.censor_counter()
-
-                if self.is_censored and any(
-                        keyword in text for keyword in ['сук', 'суч', 'пизд', 'ебан', 'ебат', 'ёбан',
-                                                        'нах', 'хуй', 'блять', 'блядь', 'ебу', 'епта',
-                                                        'ёпта', 'гандон', 'пидор', 'пидар', "хуё", "хуя",
-                                                        "хую", "хуе", "залуп", "залупа", "пиздюк",
-                                                        "ебанут", "ебарь", "ебанат", "еблан", "ебло",
-                                                        "еблив", "ебуч", "ёбыр", "заеб", "наеб", "объеб",
-                                                        "подъеб", "разъеб", "съеб"]):
-                    censored_folder = self.audio_paths.get('censored_folder')
-                    thread_react(censored_folder)
-                    continue
-
-                # Проверка на упоминание имени ассистента (одно слово)
+                # Проверка цензуры
                 words = text.split()
-                if len(words) <= 2 and any(
-                        name.lower() in words[0].lower()
-                        for name in [self.assistant_name, self.assist_name2, self.assist_name3]):
-                    echo_folder = self.audio_paths.get('echo_folder')
-                    if echo_folder:
+
+                if any(self.find_closest_command(word, censored_list, threshold=70) for word in words):
+                    self.censor_counter()
+                    if self.is_censored:
+                        censored_folder = self.audio_paths.get('censored_folder')
+                        thread_react(censored_folder)
+
+                # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+                # 🎯 ОБРАБОТКА ПОДТВЕРЖДЕНИЯ КОМАНДЫ ("ДА"/"НЕТ")
+                # Если мы ожидаем подтверждение — игнорируем всё, кроме "да" или "нет"
+                if last_unrecognized_command and last_unrecognized_command.get('mode') == 'confirm':
+
+                    text_lower = text.lower().strip()
+
+                    # Проверка таймаута
+                    if (current_time - last_activity_time) > 10:
+                        logger.info("Таймаут подтверждения — сброс")
+                        debug_logger.info("Таймаут подтверждения — сброс")
+                        last_unrecognized_command = None
+                        message = "Время ожидания истекло."
+                        self.show_supply_notice(message, is_confirm=True)
+                        debug_logger.info(f"Отправлено уведомление ---> {message}")
+                        continue
+
+                    # Подтверждение — "да"
+                    if any(word in text_lower for word in keywords_yes):
+                        debug_logger.info("Пользователь подтвердил команду(ы).")
+
+                        pending_commands = last_unrecognized_command.get('pending_commands')
+
+                        any_executed = False
+
+                        for cmd_info in pending_commands:
+                            action_type = cmd_info['action_type']
+                            suggested_cmd = cmd_info['suggested_command']
+
+                            debug_logger.info(f"Выполняем: {action_type} {suggested_cmd}")
+
+                            # Пробуем стандартные команды
+                            default_list = self.find_closest_command(suggested_cmd, default_commands_keys)
+                            if default_list:
+                                if action_type == 'open' and default_commands[default_list][0]:
+                                    default_commands[default_list][0]()
+                                    any_executed = True
+                                elif action_type == 'close' and default_commands[default_list][1]:
+                                    default_commands[default_list][1]()
+                                    any_executed = True
+                            else:
+                                # Пробуем кастомные команды
+                                restored_command = f"{action_type} {suggested_cmd}"
+                                app_processed = self.handle_app_command(restored_command, action_type)
+                                folder_processed = self.handle_folder_command(restored_command, action_type)
+                                if app_processed or folder_processed:
+                                    any_executed = True
+
+                        if any_executed:
+                            pass
+                            # approve_folder = self.audio_paths.get('approve_folder')
+                            # thread_react(approve_folder)
+                        else:
+                            error_file = self.audio_paths.get('error_file')
+                            thread_react_detail(error_file)
+                            message = "Не удалось выполнить команду(ы)."
+                            self.show_supply_notice(message, is_confirm=True)
+                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+
+                        last_unrecognized_command = None
+                        continue
+
+                    # Отмена — "нет"
+                    elif any(word in text_lower for word in keywords_no):
+                        debug_logger.info("Пользователь отменил команду(ы).")
+                        approve_folder = self.audio_paths.get('approve_folder')
+                        thread_react(approve_folder)
+                        last_unrecognized_command = None
+                        message = "Хорошо, отменяю."
+                        self.show_supply_notice(message, is_confirm=True)
+                        debug_logger.info(f"Отправлено уведомление ---> {message}")
+                        continue
+
+                    else:
+                        # Не распознан ответ — переспрашиваем
+                        debug_logger.info("Не удалось распознать ответ на подтверждение.")
+                        what_folder = self.audio_paths.get('what_folder')
+                        thread_react(what_folder)
+                        message = "Скажите 'да' или 'нет'"
+                        self.show_supply_notice(message, is_confirm=True)
+                        debug_logger.info(f"Отправлено уведомление ---> {message}")
+                        continue
+
+                # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                # Условие 1. Проверка на упоминание имени ассистента
+
+                words = text.split()
+                has_name = any(
+                    self.find_closest_command(word, all_names, threshold=60) is not None
+                    for word in words
+                )
+
+                if len(words) <= 4 and has_name:
+                    if not has_action_words:
+                        # Если нет слов-действий — воспроизводим эхо
+                        echo_folder = self.audio_paths.get('echo_folder')
                         thread_react(echo_folder)
                     name_mentioned = True
                     name_mentioned_time = current_time
-                    continue
 
                 # Проверка на наличие имени ассистента в тексте или флаг упоминания
                 has_assistant_name = (self.assistant_name in text or
                                       self.assist_name2 in text or
                                       self.assist_name3 in text or
                                       name_mentioned)
+
                 # Режим уточнения команды (если предыдущая попытка не удалась)
-                if last_unrecognized_command:
+                if last_unrecognized_command and last_unrecognized_command.get('mode') == 'correction':
                     if text:
                         # Обновляем время последней активности при обработке команды
                         last_activity_time = current_time
-                        # Проверяем, содержит ли текст только кириллические символы (исключаем английскую речь)
-                        # if any(cyr_char in text.lower() for cyr_char in 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя'):
-                        # Сначала проверяем специальные команды (калькулятор, диспетчер и т.д.)
-                        special_commands = {
-                            'микшер': (open_volume_mixer, close_volume_mixer),
-                            'калькул': (open_calc, close_calc),
-                            'пэйнт': (open_paint, close_paint),
-                            'пейнт': (open_paint, close_paint),
-                            'переменные': (open_path, None),
-                            'диспетчер': (open_taskmgr, close_taskmgr),
-                            'корзин': (open_recycle_bin, close_recycle_bin),
-                            'дат': (open_appdata, close_appdata),
-                            'панел': (self._open_widget_signal, self._close_widget_signal),
-                            "микро": (self.toggle_mute_discord, self.toggle_mute_discord)
-                        }
 
-                        # Ищем совпадение со специальными командами
-                        matched_special = next((kw for kw in special_commands if kw in text.lower()), None)
+                        _, new_action_type = self.find_action(text, action_up, action_down, all_actions)
 
-                        if matched_special:
-                            if last_unrecognized_command['action_type'] == 'open':
-                                special_commands[matched_special][0]()
-                            elif last_unrecognized_command['action_type'] == 'close':
-                                if special_commands[matched_special][1]:
-                                    special_commands[matched_special][1]()
+                        current_action_type = last_unrecognized_command['pending_commands'][0].get('action_type')
+
+                        # Если действие изменилось — обновляем контекст
+                        if new_action_type and new_action_type != current_action_type:
+                            last_unrecognized_command['pending_commands'][0]['action_type'] = new_action_type
+                            debug_logger.info(f"Действие обновлено на: {new_action_type}")
+
+                        # Блок А. Для поиска совпадений и запуска методов в соответствии с действием
+                        default_list = self.find_closest_command(clean_target, default_commands_keys)
+
+                        if default_list:
+                            action_to_use = last_unrecognized_command['pending_commands'][0].get('action_type')
+
+                            if action_to_use == 'open':
+                                default_commands[default_list][0]()
+                            elif action_to_use == 'close':
+                                if default_commands[default_list][1]:
+                                    default_commands[default_list][1]()
                             last_unrecognized_command = None
                             continue
+                        # Конец блока А.
 
-                        # Ищем прямое совпадение с командами из файла
-                        matched_keyword = next((kw for kw in self.commands if kw in text.lower()), None)
+                        # Блок В. Для поиска совпадений из кастомного списка команд и их активация
+                        file_commands = list(self.commands.keys()) if hasattr(self, 'commands') and isinstance(
+                            self.commands, dict) else []
+                        custom_list = self.find_closest_command(clean_target, file_commands)
 
-                        if matched_keyword:
+                        if custom_list:
+                            action_type = last_unrecognized_command['pending_commands'][0].get('action_type')
+
                             # Восстанавливаем полную команду
-                            restored_command = f"{last_unrecognized_command['action']} {matched_keyword}"
+                            restored_command = f"{action_type} {custom_list}"
                             debug_logger.info(f"Восстановленная команда: {restored_command}")
 
-                            # Определяем тип действия
-                            action_type = last_unrecognized_command['action_type']
-
-                            # Пытаемся обработать как приложение
+                            # Пытаемся обработать как приложение и как папку
                             app_processed = self.handle_app_command(restored_command, action_type)
                             folder_processed = self.handle_folder_command(restored_command, action_type)
 
                             if not folder_processed and not app_processed:
-                                logger.warning(f"Не удалось обработать команду: {restored_command}")
-                                debug_logger.warning(f"Не удалось обработать команду: {restored_command}")
+                                logger.warning(f"Команда не обработана: {restored_command}")
+                                debug_logger.warning(f"Команда не обработана: {restored_command}")
                                 what_folder = self.audio_paths.get('what_folder')
                                 thread_react(what_folder)
+
+                                last_unrecognized_command['pending_commands'][0]['suggested_command'] = clean_target
+
+                                debug_logger.info(f"Обновлена цель для уточнения: {clean_target}")
                                 self.show_supply_notice(text)
+                                debug_logger.info(f"Отправлено уведомление ---> {text}")
                                 last_unrecognized_command = None
                                 continue
+                                # Конец блока В.
 
                             last_unrecognized_command = None
-                        if not matched_special and not matched_keyword:
+                        if not default_list and not custom_list:
                             what_folder = self.audio_paths.get('what_folder')
                             thread_react(what_folder)
                             self.show_supply_notice(text)
+                            debug_logger.info(f"Отправлено уведомление ---> {text}")
 
                 if has_assistant_name:
-                    reaction_triggered = False
-                    # Системные команды (без изменений)
-                    if 'выключи комп' in text:
+                    debug_logger.info("<<< Условие, где есть Имя ассистента >>>")
+                    trigger_react = False
+                    if self.find_closest_command(clean_target, keywords_search):
+                        search_yandex(text, self.assistant_name,
+                                      self.assist_name2,
+                                      self.assist_name3)
+                        approve_folder = self.audio_paths.get('approve_folder')
+                        thread_react(approve_folder)
+                    elif self.find_closest_command(clean_target, fullscreen_list):
+                        self.capture_fullscreen()
+                    elif self.find_closest_command(clean_target, screen_list):
+                        self.capture_area()
+                    elif self.find_closest_command(clean_target, keywords_shutdown):
                         shutdown_windows()
-                        logger.info("shutdown")
-                        continue
-                    elif 'перезагрузить комп' in text:
+                    elif self.find_closest_command(clean_target, keywords_restart):
                         restart_windows()
-                        logger.info("restart")
-                        continue
-                    action_keywords = ['откр', 'закр', 'вкл', 'выкл', 'откл', 'запус',
-                                       'отруб', 'выруб']
-                    action = next((kw for kw in action_keywords if kw in text), None)
 
-                    # Проверяем, есть ли в тексте слова-действия
-                    has_action_words = any(kw in text.lower() for kw in action_keywords)
+                    final_commands = self.handle_text_smart(text, all_actions)
+                    debug_logger.info(f"[handle_text_smart]---> {final_commands}")
 
-                    commands = []
-                    if " и " in text:
-                        commands = text.split(" и ")
-                    elif " а также " in text:
-                        commands = text.split(" а также ")
-                    elif " потом " in text:
-                        commands = text.split(" потом ")
-                    elif " ещё " in text:
-                        commands = text.split(" ещё ")
-                    else:
-                        commands = [text]
-
-                    for command in commands:
+                    for command in final_commands:
                         command = command.strip()
+                        debug_logger.info(f"[Команда в цикле из списка выше] {command}")
 
-                        if action and not any(kw in command for kw in action_keywords):
-                            command = f"{action} {command}"
-
-                        # Определяем тип действия
-                        action_type = None
-                        if any(kw in command for kw in ['запус', 'откр', 'вкл', 'вруб']):
-                            action_type = 'open'
-                        elif any(kw in command for kw in ['закр', 'выкл', 'выруб', 'отруб', 'откл']):
-                            action_type = 'close'
+                        _, action_type = self.find_action(command, action_up, action_down, all_actions)
 
                         if action_type:
-                            if "микшер" in command:
+                            clean_target = self._extract_clean_target(command, all_actions)
+                            # Ищем совпадение со специальными командами
+
+                            default_list = self.find_closest_command(clean_target, default_commands_keys)
+                            debug_logger.info(f"[list] {default_list}")
+                            debug_logger.info(f"[action_type] {action_type}")
+                            debug_logger.info(f"[clean_target] {clean_target}")
+
+                            if default_list:
                                 if action_type == 'open':
-                                    open_volume_mixer()
-                                else:
-                                    close_volume_mixer()
-                            elif 'калькул' in command:
-                                if action_type == 'open':
-                                    open_calc()
-                                else:
-                                    close_calc()
-                            elif 'pain' in command or 'пэйнт' in command or 'prin' in command:
-                                if action_type == 'open':
-                                    open_paint()
-                                else:
-                                    close_paint()
-                            elif 'переменные' in command:
-                                if action_type == 'open':
-                                    open_path()
-                            elif 'диспетчер' in command:
-                                if action_type == 'open':
-                                    open_taskmgr()
-                                else:
-                                    close_taskmgr()
-                            elif 'корзин' in command:
-                                if action_type == 'open':
-                                    open_recycle_bin()
-                                else:
-                                    close_recycle_bin()
-                            elif 'дат' in command:
-                                if action_type == 'open':
-                                    open_appdata()
-                                else:
-                                    close_appdata()
-                            elif 'панел' in command:
-                                if action_type == 'open':
-                                    self._open_widget_signal()
+                                    default_commands[default_list][0]()
                                 elif action_type == 'close':
-                                    self._close_widget_signal()
-                            elif "микро" in command:
-                                self.toggle_mute_discord()
+                                    if default_commands[default_list][1]:
+                                        default_commands[default_list][1]()
                             else:
                                 # Пытаемся обработать команду
                                 app_processed = self.handle_app_command(command, action_type)
                                 folder_processed = self.handle_folder_command(command, action_type)
 
                                 if not app_processed and not folder_processed:
-                                    # Сохраняем контекст для уточнения
-                                    last_unrecognized_command = {
-                                        'action': action,
-                                        'action_type': action_type,
-                                        'original_text': text
-                                    }
-                                    reaction_triggered = True
-                                    self.show_supply_notice(text)
+                                    if clean_target:
+                                        debug_logger.info(f"[clean_target] {clean_target}")
+
+                                        # Ищем похожие команды
+                                        closest_cmd = self.find_closest_command(clean_target, all_commands)
+                                        debug_logger.info(f"[closest_cmd] {closest_cmd}")
+
+                                        if closest_cmd:
+                                            message = f"Вы имели в виду: '{closest_cmd}'?\nСкажите: Да/Нет"
+                                            self.show_supply_notice(message, is_confirm=True)
+                                            play_sound("what")
+                                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+
+                                            # Сохраняем контекст с предложенной командой + флаг ожидания подтверждения
+                                            last_unrecognized_command = {
+                                                'mode': 'confirm',
+                                                'original_text': text,
+                                                'pending_commands': [{
+                                                    'action_type': action_type,
+                                                    'suggested_command': closest_cmd
+                                                }]
+                                            }
+                                        else:
+                                            # Ничего похожего не найдено
+                                            what_folder = self.audio_paths.get('what_folder')
+                                            thread_react(what_folder)
+
+                                            last_unrecognized_command = {
+                                                'mode': 'correction',
+                                                'original_text': text,
+                                                'pending_commands': [{
+                                                    'action_type': action_type,
+                                                    'suggested_command': clean_target
+                                                }]
+                                            }
+                                            trigger_react = True
                         else:
+                            debug_logger.info("<<< Условие, где есть имя, но нет команды или она не распознана >>>")
                             # Если есть имя ассистента, но нет команды или непонятная команда
                             if (self.assistant_name in command or
                                     self.assist_name2 in command or
@@ -1638,67 +1756,99 @@ class Assistant(QMainWindow):
                                     what_folder = self.audio_paths.get('what_folder')
                                     if what_folder:
                                         thread_react(what_folder)
-                                    reaction_triggered = True
+                                    trigger_react = True
                                     self.show_supply_notice(text)
-                                else:
-                                    if any(word in command for word in ["найди", "поищи", "посмотри", "гугли"]):
-                                        search_yandex(command, self.assistant_name,
-                                                      self.assist_name2,
-                                                      self.assist_name3)
-                                        approve_folder = self.audio_paths.get('approve_folder')
-                                        thread_react(approve_folder)
-                                    elif any(word in command for word in ["фулл скрин", "весь экран", "сфотк"]):
-                                        self.capture_fullscreen()
-                                    elif any(word in command for word in ["скрин", "област"]):
-                                        self.capture_area()
-                                    # elif 'игровой режим' in command:
-                                    #     if action_type == 'open':
-                                    #         self.start_game_mode()
-                                    #     else:
-                                    #         self.stop_game_mode()
-                                    else:
-                                        # Если просто разговор, а не команда - не реагируем вопросом
-                                        pass
+                                    debug_logger.info(f"Отправлено уведомление ---> {text}")
+                                    continue
 
-                    if reaction_triggered:
+                    if trigger_react:
                         self.show_supply_notice(text)
                         what_folder = self.audio_paths.get('what_folder')
-                        if what_folder:
-                            thread_react(what_folder)
-                        if self.speaker == "sanboy" and random.random() <= 0.7:
-                            prorok_sanboy = self.audio_paths.get('prorok_sanboy')
-                            thread_react_detail(prorok_sanboy)
+                        thread_react(what_folder)
+                        debug_logger.info(f"Сработал триггер реакции. Отправлено уведомление ---> {text}")
 
-                # Обработка плеера (без изменений)
-                if 'плеер' in text:
-                    if any(keyword in text for keyword in
-                           ['пауз', 'пуск', 'пуст', 'вкл', 'вруб', 'отруб', 'выкл', 'стоп']):
-                        controller.play_pause()
-                        player_folder = self.audio_paths.get('player_folder')
-                        thread_react(player_folder)
-                    elif any(keyword in text for keyword in ['след', 'впер', 'дальш', 'перекл']):
-                        controller.next_track()
-                        player_folder = self.audio_paths.get('player_folder')
-                        thread_react(player_folder)
-                    elif any(keyword in text for keyword in ['пред', 'назад']):
-                        controller.previous_track()
-                        player_folder = self.audio_paths.get('player_folder')
-                        thread_react(player_folder)
+                # Флаг для контроля над обработкой команд без имени ассистента (не относится к плееру)
+                if self.is_keep_watch:
+                    if has_action_words and not has_assistant_name:
+                        debug_logger.info("<<< Условие без имени ассистента, только действие и команда >>>")
 
-                    # elif self.game_mode_bool:
-                    #     found_cmd = self.game_mode.find_command(text)
-                    #     if not found_cmd:
-                    #         logger.info("Команда не распознана")
-                    #         continue
-                    #     if "сброс" in text:
-                    #         self.game_mode.cleanup()
-                    #         logger.info("Все кнопки отпущены")
-                    #     elif "держи" in text:
-                    #         self.game_mode.trigger(found_cmd, hold=True)
-                    #         logger.info(f"Удерживаю {found_cmd}")
-                    #     else:
-                    #         self.game_mode.trigger(found_cmd)
-                    #         logger.info(f"Нажимаю {found_cmd}")
+                        if self.find_closest_command(clean_target, screen_list):
+                            self.capture_area()
+
+                        final_commands = self.handle_text_smart(text, all_actions)
+                        debug_logger.info(f"[final_commands] {final_commands}")
+
+                        pending_commands = []
+
+                        for command in final_commands:
+                            command = command.strip()
+                            clean_target = self._extract_clean_target(command, all_actions)
+                            if not clean_target:
+                                continue
+
+                            _, action_type = self.find_action(command, action_up, action_down, all_actions)
+                            if not action_type:
+                                continue
+
+                            closest_cmd = self.find_closest_command(clean_target, all_commands)
+                            if not closest_cmd:
+                                continue
+
+                            debug_logger.info(f"[command] {command}")
+                            debug_logger.info(f"[clean_target] {clean_target}")
+                            debug_logger.info(f"[closest_cmd] {closest_cmd}")
+
+                            pending_commands.append({
+                                'action_type': action_type,
+                                'suggested_command': closest_cmd,
+                                'original_command': command
+                            })
+
+                        if pending_commands:
+                            # Формируем сообщение
+                            action_groups = {'open': [], 'close': []}
+                            for cmd in pending_commands:
+                                action_groups[cmd['action_type']].append(cmd['suggested_command'])
+
+                            parts = []
+                            if action_groups['open']:
+                                parts.append(f"Включить: {', '.join(action_groups['open'])}")
+                            if action_groups['close']:
+                                parts.append(f"Выключить: {', '.join(action_groups['close'])}")
+
+                            message = ";\n".join(parts) + "\n\nСкажите: Да/Нет"
+                            self.show_supply_notice(message, is_confirm=True)
+                            play_sound("what")
+                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+
+                            last_unrecognized_command = {
+                                'mode': 'confirm',
+                                'original_text': text,
+                                'pending_commands': pending_commands
+                            }
+                            continue
+
+                # Обработка плеера
+                words = text.lower().split()
+
+                # Проверяем, упоминается ли плеер
+                if any(self.find_closest_command(word, keywords_player, threshold=70) for word in words):
+                    player_folder = self.audio_paths.get('player_folder')
+
+                    # Ищем первое подходящее действие (в порядке приоритета: пауза, след, пред)
+                    for word in words:
+                        if self.find_closest_command(word, keywords_playpause, threshold=70):
+                            controller.play_pause()
+                            thread_react(player_folder)
+                            break
+                        elif self.find_closest_command(word, keywords_next, threshold=70):
+                            controller.next_track()
+                            thread_react(player_folder)
+                            break
+                        elif self.find_closest_command(word, keywords_prev, threshold=70):
+                            controller.previous_track()
+                            thread_react(player_folder)
+                            break
 
         except Exception as e:
             logger.error(f"Ошибка в основном цикле ассистента: {e}")
@@ -1741,6 +1891,232 @@ class Assistant(QMainWindow):
     #         self.game_mode.cleanup()
     #         self.game_mode_bool = False
     #         logger.info("Игровой режим деактивирован")
+
+    def _extract_clean_target(self, text, all_actions):
+        """
+        Извлекает чистую цель из текста: удаляет имя ассистента, слова-действия (нечётко!), артикли, союзы.
+        Возвращает строку с предполагаемой целью.
+        """
+        if not text:
+            return ""
+
+        # Приводим к нижнему регистру
+        clean_text = text.lower()
+
+        # Разбиваем на слова
+        words = clean_text.split()
+
+        # Удаляем слова, содержащие имя ассистента (даже частично)
+        names = [name.lower() for name in [self.assistant_name, self.assist_name2, self.assist_name3] if name]
+        filtered_words = [
+            word for word in words
+            if not any(name in word for name in names)
+        ]
+
+        # Собираем обратно
+        clean_text = " ".join(filtered_words)
+
+        # Разбиваем снова для обработки действий
+        words = clean_text.split()
+        filtered_words = []
+
+        # ✅ НЕЧЁТКОЕ УДАЛЕНИЕ слов-действий
+        for word in words:
+            # Ищем ближайшее действие для этого слова
+            closest_action = self.find_closest_command(word, all_actions)
+            # Если слово похоже на действие — пропускаем (удаляем)
+            if not closest_action:
+                filtered_words.append(word)
+
+        clean_text = " ".join(filtered_words).strip()
+
+        # Удаляем мусорные слова (союзы, предлоги)
+        garbage_words = {"и", "а", "но", "или", "с", "на", "в", "по", "для", "это", "то", "там", "здесь", "же", "бы",
+                         "что", "как"}
+        words = clean_text.split()
+        final_words = [word for word in words if word not in garbage_words]
+
+        return " ".join(final_words).strip()
+
+    def find_action(self, text, action_up, action_down, all_actions, threshold=50):
+        """
+        Ищет в тексте слово, наиболее похожее на любое из all_actions.
+        Возвращает кортеж: (найденное_действие, тип_действия) или (None, None)
+        """
+        if not text:
+            return None, None
+
+        words = text.lower().split()
+        best_action = None
+        best_score = 0
+        best_word = None
+
+        for word in words:
+            # Для каждого слова ищем ближайшее действие
+            closest_action = self.find_closest_command(word, all_actions)
+            if closest_action:
+                # Получаем score (можно модифицировать find_closest_command, чтобы возвращал score)
+                score = self._get_similarity_score(word, closest_action)
+                if score > best_score:
+                    best_score = score
+                    best_action = closest_action
+                    best_word = word
+
+        if best_score >= threshold:
+            if best_action in action_up:
+                return best_action, 'open'
+            elif best_action in action_down:
+                return best_action, 'close'
+
+        return None, None
+
+    def _get_similarity_score(self, input_text, command):
+        """
+        Возвращает процент схожести между input_text и command (0-100)
+        """
+        if not input_text or not command:
+            return 0
+        distance = jellyfish.levenshtein_distance(input_text, command)
+        max_len = max(len(input_text), len(command))
+        if max_len == 0:
+            return 100
+        score = (1 - distance / max_len) * 100
+        return score
+
+    def find_closest_command(self, input_text, command_list, threshold=50):
+        """
+        Возвращает наиболее похожую команду из списка, если схожесть >= threshold.
+        """
+        best_match = None
+        best_score = 0
+
+        for command in command_list:
+            score = self._get_similarity_score(input_text, command)
+            if score > best_score:
+                best_score = score
+                best_match = command
+
+        # print("[best_match, best_score]", best_match, best_score)
+
+        return best_match if best_score >= threshold else None
+
+    def handle_text_smart(self, text, all_actions, threshold=50):
+        """
+        Умная обработка текста: берёт слова ПОСЛЕ каждого действия как цели.
+        Пример: "джонни запусти калькулятор и пейнт" → ["запустить калькулятор", "запустить пейнт"]
+        """
+        if not text:
+            return []
+
+        text_lower = text.lower()
+        words = text_lower.split()
+
+        # 1. Находим все действия с позициями
+        actions_in_text = []  # [(index, raw_word, normalized_action), ...]
+        for i, word in enumerate(words):
+            closest_action = self.find_closest_command(word, all_actions, threshold=threshold)
+            if closest_action:
+                actions_in_text.append((i, word, closest_action))
+
+        if not actions_in_text:
+            # Если нет действий — возвращаем пустой список (или можно вернуть чистые цели, но ты хочешь привязку к действию)
+            return []
+
+        # 2. Для каждого действия — определяем "область целей": от следующего слова до следующего действия
+        command_blocks = []  # [(action, start_idx, end_idx), ...]
+
+        for i, (action_index, raw_action, norm_action) in enumerate(actions_in_text):
+            start_idx = action_index + 1  # первое слово ПОСЛЕ действия
+            if i + 1 < len(actions_in_text):
+                end_idx = actions_in_text[i + 1][0]  # до следующего действия
+            else:
+                end_idx = len(words)  # до конца строки
+
+            if start_idx < end_idx:  # есть хотя бы одно слово после действия
+                command_blocks.append((norm_action, start_idx, end_idx))
+
+        # 3. Извлекаем цели из каждой области
+        final_commands = []
+        all_targets = self.get_command_names()
+
+        for action, start, end in command_blocks:
+            # Берём подмассив слов в области
+            target_words = words[start:end]
+
+            # Разбиваем на цели — учитываем разделители "и", "или", ","
+            # Сначала соберём все n-граммы и отдельные слова
+            candidates = []
+
+            # Добавляем отдельные слова
+            for i, word in enumerate(target_words):
+                candidates.append((i, word, word))  # (local_index, raw, candidate)
+
+            # Добавляем биграммы и триграммы
+            for n in [2, 3]:
+                for i in range(len(target_words) - n + 1):
+                    ngram = " ".join(target_words[i:i + n])
+                    candidates.append((i, ngram, ngram))
+
+            # Убираем дубликаты по raw-значению
+            seen = set()
+            unique_candidates = []
+            for local_idx, raw, candidate in candidates:
+                if raw not in seen:
+                    seen.add(raw)
+                    unique_candidates.append((local_idx, raw, candidate))
+
+            # Теперь для каждого кандидата ищем ближайшую команду
+            for local_idx, raw, candidate in unique_candidates:
+                # Пробуем найти похожую команду
+                closest_target = self.find_closest_command(candidate, all_targets, threshold=threshold)
+                if closest_target:
+                    final_commands.append(f"{action} {closest_target}")
+                else:
+                    # Если не нашли — всё равно добавляем как есть (можно закомментировать, если не нужно)
+                    final_commands.append(f"{action} {candidate}")
+
+        # 4. Убираем дубликаты команд (если вдруг получилось "запустить калькулятор" дважды)
+        seen_commands = set()
+        unique_commands = []
+        for cmd in final_commands:
+            if cmd not in seen_commands:
+                seen_commands.add(cmd)
+                unique_commands.append(cmd)
+
+        return unique_commands
+
+    def get_command_names(self):
+        """Возвращает объединённый список всех имён команд"""
+
+        standard_commands = getattr(self, 'standard_commands', [
+            "калькулятор",
+            "диспетчер",
+            "пейнт",
+            "пэйнт",
+            "панель",
+            "корзина",
+            "микшер",
+            "переменные",
+            "ап дата",
+            "микрофон",
+            "микро"
+        ])
+
+        file_commands = list(self.commands.keys()) if hasattr(self, 'commands') and isinstance(self.commands,
+                                                                                               dict) else []
+
+        standard_commands = [cmd.lower() for cmd in standard_commands]
+        file_commands = [cmd.lower() for cmd in file_commands]
+
+        # Убираем дубликаты с сохранением порядка
+        seen = set()
+        combined = []
+        for cmd in standard_commands + file_commands:
+            if cmd not in seen:
+                seen.add(cmd)
+                combined.append(cmd)
+
+        return combined
 
     def restart_bot(self):
         self.stop_assist(reaction=False)
@@ -1916,7 +2292,7 @@ class Assistant(QMainWindow):
 
     def on_final_result(self, text):
         """Вызывается при распознавании фразы. Логирует и отправляет дальше."""
-        logger.info(f"[Распознано] {text}")
+        self.log_area.append(f"[Распознано] {text}")
         debug_logger.info(f"[Распознано] {text}")
 
         # Если есть активная очередь (например, get_audio() ждёт), — кладём туда
@@ -2090,8 +2466,8 @@ class Assistant(QMainWindow):
                 if (folder_path.endswith('.lnk') or folder_path.endswith('.url')
                         or self.commands_manager.is_url_string(folder_path)):
                     return False  # Прекращаем обработку, если это файл приложения
-                self.commands_manager.handler_folder(folder_path, action)  # Вызываем обработчик папок
-                return True  # Возвращаем True, если команда была успешно обработана
+                if self.commands_manager.handler_folder(folder_path, action):  # Вызываем обработчик папок
+                    return True  # Возвращаем True, если команда была успешно обработана
         return False  # Возвращаем False, если команда не была найдена
 
     def toggle_mute_discord(self):
@@ -2481,7 +2857,8 @@ class Assistant(QMainWindow):
         self.tabs.setTabToolTip(2, "Процессы ярлыков")
 
         self.mutable_layout.addWidget(self.tabs)
-        self.mutable_layout.addSpacerItem(QSpacerItem(self._get_panel_width() + 30, 1, QSizePolicy.Fixed, QSizePolicy.Fixed))
+        self.mutable_layout.addSpacerItem(QSpacerItem(self._get_panel_width() + 30, 1, QSizePolicy.Fixed,
+                                                      QSizePolicy.Fixed))
 
     def other_options(self):
         """Открывает встроенную панель 'Прочее'"""
@@ -2633,9 +3010,9 @@ class Assistant(QMainWindow):
 
         sections = [
             ("Формула команды",
-             "'Имя ассистента'\n+\n'Открой, запусти, включи'/'закрой выключи'\n+\n'команда, созданная вручную или из списка встроенных'"),
+             "'Имя ассистента'\n+\n'открой, включи'/'закрой выключи'\n+\n'команда, созданная вручную или из списка встроенных'"),
             ("Встроенные команды (открыть/закрыть)",
-             "'Пейнт', 'Калькулятор', 'Корзина', 'АппДата', 'Переменные окружения', 'Диспетчер задач', 'Микшер',"
+             "'Пейнт', 'Калькулятор', 'Корзина', 'Ап Дата', 'Переменные окружения', 'Диспетчер задач', 'Микшер',"
              "'Панель(для вызова виджета)', 'Микро'"),
             ("Прочие команды",
              "'Выключи комп', 'Перезагрузи комп', 'Найди, поищи, загугли', 'Скрин, область', 'Фулл скрин, сфоткай, весь экран'"),
@@ -2751,7 +3128,7 @@ class Assistant(QMainWindow):
 
             # 5. Генерируем SVG с новым цветом
             svg_template = '''<?xml version="1.0" encoding="utf-8"?>
-            <svg fill="{color}" width="20px" height="20px" viewBox="0 0 24 24" 
+            <svg fill="{color}" width="20px" height="20px" viewBox="0 0 24 24"
                  xmlns="http://www.w3.org/2000/svg">
                 <path d="m9.84 12.663v9.39l-9.84-1.356v-8.034zm0-10.72v9.505h-9.84v-8.145zm14.16 10.72v11.337l-13.082-1.803v-9.534zm0-12.663v11.452h-13.082v-9.649z"/>
             </svg>'''
@@ -2780,7 +3157,7 @@ class Assistant(QMainWindow):
         # 4. Обновляем SVG
         try:
             svg_template = '''<?xml version="1.0" encoding="utf-8"?>
-                        <svg fill="{color}" width="20px" height="20px" viewBox="0 0 24 24" 
+                        <svg fill="{color}" width="20px" height="20px" viewBox="0 0 24 24"
                              xmlns="http://www.w3.org/2000/svg">
                             <path d="m9.84 12.663v9.39l-9.84-1.356v-8.034zm0-10.72v9.505h-9.84v-8.145zm14.16 10.72v11.337l-13.082-1.803v-9.534zm0-12.663v11.452h-13.082v-9.649z"/>
                         </svg>'''

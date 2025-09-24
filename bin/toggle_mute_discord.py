@@ -1,19 +1,21 @@
+import ctypes
+import random
 import psutil
 import subprocess
+import pydirectinput
 import pygetwindow as gw
 import pyautogui
 import time
 import keyboard
-
 from logging_config import debug_logger
 
 
-class ToggleMuteDiscord():
+class ToggleMuteDiscord:
     """Класс для мута микрофона в Discord"""
 
     def __init__(self):
         super().__init__()
-        self.discord_window = self.get_discord_window()  # переименовал для ясности
+        self.discord_window = self.get_discord_window()
 
     def is_discord_window_exists(self):
         """Проверяет, существует ли окно Discord"""
@@ -59,73 +61,156 @@ class ToggleMuteDiscord():
         return self.discord_window  # просто возвращаем найденное окно
 
     def simulate_key_combo(self):
-        """Симуляция нажатия клавиш с проверкой результата"""
+        """Симуляция нажатия клавиш с проверкой результата - один случайный метод за вызов"""
         debug_logger.info("Начинаем симуляцию клавиш Ctrl+Shift+M...")
 
-        success = False
-
-        # Пробуем все три способа последовательно
-        methods = [
-            self._try_pyautogui_hotkey,
-            self._try_keyboard_lib,
-            self._try_manual_emulation
+        # Список всех доступных методов
+        all_methods = [
+            self._try_pydirectinput_hotkey,
+            self._try_ctypes_hotkey,
+            # self._try_pyautogui_hotkey,
+            # self._try_keyboard_lib,
+            # self._try_pywinauto_send_keys,
+            # self._try_manual_emulation,
         ]
 
-        for method in methods:
-            if method():
-                success = True
-                break
-            time.sleep(0.1)  # небольшая пауза между попытками
+        # Инициализируем атрибут для хранения последнего метода, если его еще нет
+        if not hasattr(self, 'last_used_method'):
+            self.last_used_method = None
+
+        # Создаем список методов, исключая последний использованный (если он есть)
+        available_methods = all_methods.copy()
+        if self.last_used_method in available_methods:
+            available_methods.remove(self.last_used_method)
+
+        # Если есть доступные методы, выбираем случайный из них
+        if available_methods:
+            selected_method = random.choice(available_methods)
+        else:
+            # Если все методы были использованы, выбираем любой
+            selected_method = random.choice(all_methods)
+
+        debug_logger.info(f"Выбран метод: {selected_method.__name__}")
+
+        # Пробуем только один выбранный метод
+        success = selected_method()
+
+        # Запоминаем последний использованный метод
+        self.last_used_method = selected_method
 
         debug_logger.info(f"Результат симуляции клавиш: {success}")
         return success
 
-    def _try_pyautogui_hotkey(self):
-        """Пытается использовать pyautogui.hotkey"""
+    def _try_ctypes_hotkey(self):
+        """Пытается использовать низкоуровневый метод ctypes"""
+        low_level_kb = LowLevelKeyboard()
+        return low_level_kb._try_ctypes_hotkey()
+
+    def _try_pydirectinput_hotkey(self):
+        """Пытается использовать PyDirectInput для эмуляции Ctrl+Shift+M"""
         try:
-            debug_logger.info("Пробуем pyautogui.hotkey...")
-            pyautogui.hotkey('ctrl', 'shift', 'm')
-            debug_logger.info("Комбинация через pyautogui отправлена")
+            debug_logger.info("Метод <<<[PyDirectInput]>>>")
+
+            # Нажимаем Ctrl+Shift+M
+            pydirectinput.keyDown('ctrl')
+            pydirectinput.keyDown('shift')
+            pydirectinput.keyDown('m')
+            pydirectinput.keyUp('shift')
+            pydirectinput.keyUp('ctrl')
+            pydirectinput.keyUp('m')
+
+            debug_logger.info("Метод выполнен")
             return True
         except Exception as e:
-            debug_logger.error(f"Ошибка pyautogui: {e}")
+            debug_logger.error(f"Ошибка PyDirectInput: {e}")
             return False
 
-    def _try_keyboard_lib(self):
-        """Пытается использовать keyboard"""
+    def _reset_keyboard(self):
+        """Сбрасывает все зажатые клавиши"""
         try:
-            debug_logger.info("Пробуем keyboard...")
-            keyboard.press('ctrl')
-            keyboard.press('shift')
-            keyboard.press('m')
-            time.sleep(0.05)  # короткая задержка для нажатия
-            keyboard.release('m')
-            keyboard.release('shift')
-            keyboard.release('ctrl')
-            debug_logger.info("Комбинация через keyboard отправлена")
-            return True
-        except Exception as e:
-            debug_logger.error(f"Ошибка keyboard: {e}")
-            return False
+            for key in ['ctrl', 'shift', 'm']:
+                pyautogui.keyUp(key)
+                keyboard.release(key)
+        except:
+            pass
 
-    def _try_manual_emulation(self):
-        """Пытается использовать ручную эмуляцию"""
-        try:
-            debug_logger.info("Пробуем ручную эмуляцию...")
-            pyautogui.keyDown('ctrl')
-            time.sleep(0.05)
-            pyautogui.keyDown('shift')
-            time.sleep(0.05)
-            pyautogui.press('m')
-            time.sleep(0.05)
-            pyautogui.keyUp('shift')
-            time.sleep(0.05)
-            pyautogui.keyUp('ctrl')
-            debug_logger.info("Ручная эмуляция выполнена")
-            return True
-        except Exception as e:
-            debug_logger.error(f"Ошибка ручной эмуляции: {e}")
-            return False
+    # def _try_pyautogui_hotkey(self):
+    #     """Пытается использовать pyautogui.hotkey"""
+    #     self._reset_keyboard()
+    #     try:
+    #         debug_logger.info("Метод <<<[pyautogui.hotkey]>>>")
+    #         pyautogui.hotkey('ctrl', 'shift', 'm')
+    #         debug_logger.info("Метод выполнен")
+    #         self._reset_keyboard()
+    #         return True
+    #     except Exception as e:
+    #         debug_logger.error(f"Ошибка pyautogui: {e}")
+    #         return False
+    #
+    # def _try_keyboard_lib(self):
+    #     """Пытается использовать keyboard"""
+    #     self._reset_keyboard()
+    #     try:
+    #         debug_logger.info("Метод <<<[keyboard]>>>")
+    #         keyboard.press('ctrl')
+    #         keyboard.press('shift')
+    #         keyboard.press('m')
+    #         keyboard.release('ctrl')
+    #         keyboard.release('shift')
+    #         keyboard.release('m')
+    #         debug_logger.info("Метод выполнен")
+    #         self._reset_keyboard()
+    #         return True
+    #     except Exception as e:
+    #         debug_logger.error(f"Ошибка keyboard: {e}")
+    #         return False
+    #
+    # def _try_manual_emulation(self):
+    #     """Пытается использовать ручную эмуляцию"""
+    #     self._reset_keyboard()
+    #     try:
+    #         debug_logger.info("Метод <<<[Ручная эмуляция pyautogui]>>>")
+    #         pyautogui.keyDown('ctrl')
+    #         pyautogui.keyDown('shift')
+    #         pyautogui.keyDown('m')
+    #         pyautogui.keyUp('shift')
+    #         pyautogui.keyUp('ctrl')
+    #         pyautogui.keyUp('m')
+    #         debug_logger.info("Метод выполнен")
+    #         self._reset_keyboard()
+    #         return True
+    #     except Exception as e:
+    #         debug_logger.error(f"Ошибка ручной эмуляции: {e}")
+    #         return False
+    #
+    # def _try_pywinauto_send_keys(self):
+    #     """Пытается использовать PyWinAuto для отправки ^+m в окно Discord"""
+    #     from pywinauto import Application, ElementNotFoundError
+    #     try:
+    #         debug_logger.info("Метод <<<[PyWinAuto]>>>")
+    #
+    #         # Подключаемся к окну Discord по заголовку
+    #         app = Application(backend="uia").connect(title_re=".*Discord.*")
+    #
+    #         # Находим главное окно
+    #         main_window = app.top_window()
+    #
+    #         # Если окно свернуто — разворачиваем (опционально)
+    #         if main_window.is_minimized():
+    #             main_window.restore()
+    #             time.sleep(0.3)
+    #
+    #         # Отправляем хоткей: ^ = Ctrl, + = Shift, m = M
+    #         main_window.type_keys('^+m', set_foreground=True)  # set_foreground=False — не активировать окно!
+    #
+    #         debug_logger.info("Метод выполнен")
+    #         return True
+    #     except ElementNotFoundError:
+    #         debug_logger.error("Окно Discord не найдено через PyWinAuto")
+    #         return False
+    #     except Exception as e:
+    #         debug_logger.error(f"Ошибка PyWinAuto: {e}")
+    #         return False
 
     def activate_and_mute_discord(self):
         """Активирует окно Discord и выполняет мут с визуальной индикацией"""
@@ -149,7 +234,7 @@ class ToggleMuteDiscord():
 
             debug_logger.info("Активируем окно...")
             window.activate()
-            time.sleep(0.1)
+            # time.sleep(0.1)
 
             # Убедимся что окно активно
             active_window = gw.getActiveWindow()
@@ -162,16 +247,16 @@ class ToggleMuteDiscord():
             success = self.simulate_key_combo()
 
             if not success:
-                debug_logger.error("Все методы нажатия клавиш не сработали!")
+                debug_logger.error("Метод нажатия клавиш не сработал!")
                 return False
 
-            time.sleep(0.4)
+            time.sleep(0.5)
 
             # Сворачиваем окно Discord
             debug_logger.info("Сворачиваем окно...")
             window.minimize()
 
-            # Возвращаем фокус и мышь
+            # Возвращаем фокус
             if current_window:
                 try:
                     debug_logger.info("Восстанавливаем предыдущее окно...")
@@ -229,3 +314,58 @@ class ToggleMuteDiscord():
         except Exception as e:
             debug_logger.error(f"Не удалось выполнить мут микрофона в Discord. Ошибка: {e}")
             return False
+
+
+class LowLevelKeyboard:
+    """Низкоуровневый класс для работы с клавиатурой через ctypes"""
+    def __init__(self):
+        self.user32 = ctypes.windll.user32
+        # Константы Windows API
+        self.VK_CONTROL = 0x11
+        self.VK_SHIFT = 0x10
+        self.VK_M = 0x4D
+        self.KEYEVENTF_KEYDOWN = 0x0000
+        self.KEYEVENTF_KEYUP = 0x0002
+
+    def _try_ctypes_hotkey(self):
+        """Пытается использовать низкоуровневый метод ctypes"""
+        self._reset_keyboard()
+        try:
+            debug_logger.info("Метод <<<[ctypes hotkey]>>>")
+
+            # Нажимаем клавиши в правильном порядке
+            self.user32.keybd_event(self.VK_CONTROL, 0, self.KEYEVENTF_KEYDOWN, 0)
+            time.sleep(0.01)
+            self.user32.keybd_event(self.VK_SHIFT, 0, self.KEYEVENTF_KEYDOWN, 0)
+            time.sleep(0.01)
+            self.user32.keybd_event(self.VK_M, 0, self.KEYEVENTF_KEYDOWN, 0)
+            time.sleep(0.02)  # Задержка для нажатия
+
+            # Отпускаем в обратном порядке
+            self.user32.keybd_event(self.VK_M, 0, self.KEYEVENTF_KEYUP, 0)
+            time.sleep(0.01)
+            self.user32.keybd_event(self.VK_SHIFT, 0, self.KEYEVENTF_KEYUP, 0)
+            time.sleep(0.01)
+            self.user32.keybd_event(self.VK_CONTROL, 0, self.KEYEVENTF_KEYUP, 0)
+
+            debug_logger.info("Метод выполнен")
+            self._reset_keyboard()
+            return True
+        except Exception as e:
+            debug_logger.error(f"Ошибка ctypes: {e}")
+            self._reset_keyboard()
+            return False
+
+    def _reset_keyboard(self):
+        """Сбрасывает все зажатые клавиши"""
+        try:
+            # Сбрасываем конкретные клавиши, которые используем
+            keys_to_reset = [self.VK_CONTROL, self.VK_SHIFT, self.VK_M]
+            for key in keys_to_reset:
+                try:
+                    self.user32.keybd_event(key, 0, self.KEYEVENTF_KEYUP, 0)
+                except:
+                    pass
+            time.sleep(0.01)
+        except Exception as e:
+            debug_logger.debug(f"Ошибка при сбросе клавиатуры: {e}")

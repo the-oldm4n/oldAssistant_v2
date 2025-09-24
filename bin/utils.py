@@ -278,27 +278,48 @@ class CommandsManager():
         Обработчик команд для открытия и закрытия папок
         :param folder_path: путь к папке
         :param action: действие(open or close)
+        :return: True если успешно, False если не удалось
         """
         if action == 'open':
-            os.startfile(folder_path)
-            start_folder = self.audio_paths['start_folder']
-            thread_react(start_folder)
+            try:
+                os.startfile(folder_path)
+                start_folder = self.audio_paths['start_folder']
+                thread_react(start_folder)
+                return True
+            except Exception as e:
+                logger.error(f"Не удалось открыть папку {folder_path}: {e}")
+                debug_logger.error(f"Не удалось открыть папку {folder_path}: {e}")
+                return False
+
         if action == 'close':
             windows = gw.getAllTitles()  # Получаем все заголовки открытых окон
             folder_title = os.path.basename(folder_path)  # Получаем название папки
+
             try:
                 for title in windows:
                     if folder_title in title:  # Проверяем, содержится ли название папки в заголовке окна
-                        window = gw.getWindowsWithTitle(title)[0]  # Получаем окно по заголовку
-                        window.close()  # Закрываем окно
-                        close_folder = self.audio_paths['close_folder']
-                        thread_react(close_folder)
-                        break
-            except IndexError:
-                error_file = self.audio_paths['error_file']
-                thread_react_detail(error_file)
-                logger.error("Окно с указанным заголовком не найдено.")
-                debug_logger.error("Окно с указанным заголовком не найдено.")
+                        window_list = gw.getWindowsWithTitle(title)
+                        if window_list:  # Убедимся, что список не пуст
+                            window = window_list[0]
+                            window.close()  # Закрываем окно
+                            close_folder = self.audio_paths.get('close_folder')
+                            if close_folder:
+                                thread_react(close_folder)
+                            logger.info(f"Окно '{title}' закрыто.")
+                            return True  # ✅ Успешно закрыто — выходим с True
+                        else:
+                            debug_logger.warning(f"Окно с заголовком '{title}' найдено,"
+                                                 f"но не удалось получить объект.")
+                debug_logger.warning(f"Окно с названием '{folder_title}' не найдено среди открытых.")
+                return False
+
+            except Exception as e:
+                error_file = self.audio_paths.get('error_file')
+                if error_file:
+                    thread_react_detail(error_file)
+                logger.error(f"Ошибка при попытке закрыть окно: {e}")
+                debug_logger.error(f"Ошибка при попытке закрыть окно: {e}")
+                return False
 
     def open_url_link(self, game_id_or_url, filename):
         existing_processes = self.get_process_names_from_file(filename)

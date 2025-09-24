@@ -926,9 +926,7 @@ class ColorSettingsWindow(QDialog):
                         "background-color": self.get_gradient_css('background') if self.gradient_settings['background'][
                             'enabled'] else self.bg_color,
                         "color": self.text_color,
-                        "font-size": "13px",
-                        "border": "none",
-                        "border-radius": "15px"
+                        "font-size": "13px"
                     },
                     "QPushButton": {
                         "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
@@ -950,11 +948,6 @@ class ColorSettingsWindow(QDialog):
                         "padding-left": "3px",
                         "padding-top": "3px",
                     },
-                    "TabWidget::pane": {
-                        "margin": "0px",
-                        "padding": "0px",
-                        "background-color": "transparent"
-                    },
                     "QTabBar::tab": {
                         "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
                             'enabled'] else self.btn_color,
@@ -962,19 +955,59 @@ class ColorSettingsWindow(QDialog):
                         "height": "30px",
                         "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
                             'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "3px",
+                        "border-radius": "2px",
                         "font-size": "13px",
-                        "margin": "3px",
+                        "margin": "0",
                         "padding": "3px"
                     },
                     "QTabBar::tab:selected": {
                         "background-color": self.get_hover_gradient_css('buttons'),
                         "color": self.text_color,
                         "font-size": "13px",
-                        "margin": "3px",
+                        "margin": "0",
                         "padding": "3px",
                         "padding-top": "10px"
                     },
+                    "WSTabsContainer": {
+                        "background": "transparent",
+                        "border-radius": "10px"
+                    },
+                    "WSBottomContainer": {
+                        "background-color": "transparent"
+                    },
+                    "WSMainTabBar": {
+                        "background-color": "transparent"
+                    },
+                    "WMLeftContainer": {
+                        "background-color": "transparent"
+                    },
+                    "WMLeftButtonsPanel": {
+                        "background-color": "transparent"
+                    },
+                    "WMSettingsWidget": {
+                        "background-color": "transparent"
+                    },
+                    "WMSettingsContent": {
+                        "background-color": "transparent"
+                    },
+                    "WM_MutablePanel": {
+                        "background-color": "transparent"
+                    },
+                    # "WSBgTabWidget": {
+                    #     "background": "transparent",
+                    #     "border": f"1px solid {self.get_gradient_css('borders')}" if
+                    #     self.gradient_settings['borders']['enabled'] else f"1px solid {self.border_color}",
+                    #     "border-radius": "15px"
+                    # },
+                    "TabWidget": {
+                        "background": "transparent"
+                    },
+                    "TabWidget::pane": {
+                        "margin": "0px",
+                        "padding": "0px",
+                        "background": "transparent"
+                    },
+
                     "QLineEdit": {
                         "background-color": "transparent",
                         "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
@@ -1012,8 +1045,7 @@ class ColorSettingsWindow(QDialog):
                     "QTextEdit": {
                         "background": "transparent",
                         "color": self.text_edit_color,
-                        "border": "1px solid",
-                        "border-radius": "4px",
+                        "border": "none",
                         "font-size": "15px"
                     },
                     "label_version": {
@@ -1070,12 +1102,27 @@ class ColorSettingsWindow(QDialog):
                     "MessageContainer": {
                         "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
                             'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "25px"
+                        "border-radius": "10px"
                     },
                     "WindowContainer": {
                         "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
                             'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "3px"
+                        "border-radius": "10px"
+                    },
+                    "MainWindowWidget": {
+                        "border": "none",
+                        "border-radius": "15px"
+                    },
+                    "SettingsWidget": {
+                        "border": "none",
+                        "border-radius": "10px"
+                    },
+                    "ContentWidget": {
+                        "background-color": "transparent"
+                    },
+                    "QMainWindow": {
+                        "background-color": "transparent",
+                        "border": "none"
                     },
                     "QMenu": {
                         "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][

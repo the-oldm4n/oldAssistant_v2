@@ -105,12 +105,15 @@ def thread_react_detail(file_path):
     thread = threading.Thread(target=react_detail, args=(file_path,), daemon=True)
     thread.start()
 
-def play_sound(type):
+def play_sound(type_sound):
     ok_path = get_path("bin", "speak_voice", "sounds", "ok.wav")
     error_path = get_path("bin", "speak_voice", "sounds", "error.wav")
+    what_path = get_path("bin", "speak_voice", "sounds", "what.wav")
     try:
-        if type == "ok":
+        if type_sound == "ok":
             file_path = ok_path
+        elif type_sound == "what":
+            file_path = what_path
         else:
             file_path = error_path
 
