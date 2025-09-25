@@ -9,6 +9,8 @@ import csv
 import ctypes
 import re
 import shutil
+from inspect import trace
+
 import jellyfish
 import numpy as np
 import win32clipboard
@@ -61,7 +63,7 @@ from PyQt5.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, pyqtSignal, QPr
 
 MUTEX_NAME = "Assistant_123456789AB"
 build_ini = get_config_value("app", "build")
-version_file = "1.6.0"
+version_file = "1.6.1"
 update_version(version_file)
 
 def activate_existing_window():
@@ -258,9 +260,9 @@ class Assistant(QMainWindow):
 
     def install_settings(self):
         self.settings = self.load_settings()
-        self.assistant_name = self.settings.get('assistant_name', "джонни")
-        self.assist_name2 = self.settings.get('assist_name2', "джонни")
-        self.assist_name3 = self.settings.get('assist_name3', "джонни")
+        self.assistant_name = self.settings.get('assistant_name', "джон")
+        self.assist_name2 = self.settings.get('assist_name2', "джон")
+        self.assist_name3 = self.settings.get('assist_name3', "джон")
         self.speaker = self.settings.get("voice", "johnny")
         self.volume_assist = self.settings.get('volume_assist', 0.2)
         self.steam_path = self.settings.get('steam_path', '')
@@ -807,13 +809,11 @@ class Assistant(QMainWindow):
 
         # Реагируем только если это ручная проверка
         if status_text == "Установлена последняя версия":
-            update_button = self.audio_paths.get('update_button')
-            thread_react_detail(update_button)
+            self.get_reaction(detail=True, name="update_button")
         elif status_text == "Доступно обновление":
             pass
         elif not is_success:
-            error = self.audio_paths.get('error_file')
-            thread_react_detail(error)
+            self.get_reaction(detail=True, name="error_file")
 
         self.is_manual_check = False
 
@@ -1168,9 +1168,9 @@ class Assistant(QMainWindow):
         if default_settings is None:
             default_settings = {
                 "voice": "johnny",
-                "assistant_name": "джонни",
-                "assist_name2": "джонни",
-                "assist_name3": "джонни",
+                "assistant_name": "джон",
+                "assist_name2": "джон",
+                "assist_name3": "джон",
                 "steam_path": "",
                 "is_censored": True,
                 "volume_assist": 0.2,
@@ -1310,11 +1310,10 @@ class Assistant(QMainWindow):
         """Остановка ассистента"""
         self.is_assistant_running = False
         self.start_button.setText("Старт ассистента")
-        self.log_area.append("Ассистент остановлен...")
+        debug_logger.info("[Ассистент остановлен]")
         if reaction:
-            audio_paths = get_audio_paths(self.speaker)
-            close_assist_folder = audio_paths.get('close_assist_folder')
-            react(close_assist_folder)
+            debug_logger.info("Реакция на выключение ассистента...")
+            self.get_reaction(threading=False, name="close_assist_folder")
 
         # Безопасная остановка потока
         if hasattr(self, 'assistant_thread') and self.assistant_thread is not None:
@@ -1330,6 +1329,24 @@ class Assistant(QMainWindow):
 
         # Очистка аудиоресурсов
         self.cleanup_audio_resources()
+
+    def get_reaction(self, threading=True, detail=False, name="", trace=""):
+        try:
+
+            path = self.audio_paths.get(f'{name}')
+            print(path)
+            if not path:
+                logger.error(f"[assistant.get_reaction] Путь не найден")
+                debug_logger.error(f"[assistant.get_reaction] Путь не найден")
+            if detail:
+                thread_react_detail(path, trace)
+            else:
+                thread_react(path, trace)
+
+            if not threading:
+                react(path, trace)
+        except Exception as e:
+            debug_logger.error(f"[assistant.get_reaction] Ошибка: {e}")
 
     def censor_counter(self):
         # Путь к CSV-файлу
@@ -1420,11 +1437,12 @@ class Assistant(QMainWindow):
         all_actions = action_up + action_down
         # Списки для плеера
         keywords_player = ["плеер", "плейлист", "музыка", "проигрыватель", "аудио", "песня"]
-        keywords_playpause = ['пауза', 'пуск', 'запуск', 'включить', 'врубить', 'отрубить', 'выключить', 'стоп']
+        keywords_playpause = ['пауза', 'пуск', 'запуск', 'включить', 'врубить',
+                              'отрубить', 'выключить', 'стоп', 'продолжить', 'плэй']
         keywords_next = ["некст", "следующий", "дальше", "вперед", "переключить"]
         keywords_prev = ["бэк", "назад", "обратно", "предыдущий"]
 
-        last_unrecognized_command = None  # Хранит контекст неудачной команды
+        self.last_unrecognized_command = None  # Хранит контекст неудачной команды
         last_activity_time = time.time()  # Время последней активности
         name_mentioned_time = None  # Время последнего упоминания имени ассистента
         name_mentioned = False  # Флаг, что имя было упомянуто
@@ -1436,7 +1454,7 @@ class Assistant(QMainWindow):
             for text in self.get_audio():
                 if not self.is_assistant_running:
                     break
-                debug_logger.info(f"[last_unrecognized_command]---> {last_unrecognized_command}")
+                debug_logger.info(f"[last_unrecognized_command]---> {self.last_unrecognized_command}")
                 current_time = time.time()
 
                 all_commands = self.get_command_names()
@@ -1461,8 +1479,8 @@ class Assistant(QMainWindow):
                                   f"\n[clean_target------>] {clean_target}")
 
                 # Сбрасываем контекст, если прошло более 10 секунд без активности
-                if last_unrecognized_command and (current_time - last_activity_time) > 10:
-                    last_unrecognized_command = None
+                if self.last_unrecognized_command and (current_time - last_activity_time) > 10:
+                    self.last_unrecognized_command = None
                     logger.info("Сброс контекста из-за неактивности")
                     debug_logger.info("Сброс контекста из-за неактивности")
 
@@ -1482,106 +1500,137 @@ class Assistant(QMainWindow):
                 if any(self.find_closest_command(word, censored_list, threshold=70) for word in words):
                     self.censor_counter()
                     if self.is_censored:
-                        censored_folder = self.audio_paths.get('censored_folder')
-                        thread_react(censored_folder)
+                        self.get_reaction(name="censored_folder")
 
                 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
                 # 🎯 ОБРАБОТКА ПОДТВЕРЖДЕНИЯ КОМАНДЫ ("ДА"/"НЕТ")
                 # Если мы ожидаем подтверждение — игнорируем всё, кроме "да" или "нет"
-                if last_unrecognized_command and last_unrecognized_command.get('mode') == 'confirm':
+                if self.last_unrecognized_command and self.last_unrecognized_command.get('mode') == 'confirm':
+                    if self.last_unrecognized_command.get('is_shutdown'):
+                        text_lower = text.lower().strip()
 
-                    text_lower = text.lower().strip()
-
-                    # Проверка таймаута
-                    if (current_time - last_activity_time) > 10:
-                        logger.info("Таймаут подтверждения — сброс")
-                        debug_logger.info("Таймаут подтверждения — сброс")
-                        last_unrecognized_command = None
-                        message = "Время ожидания истекло."
-                        self.show_supply_notice(message, is_confirm=True)
-                        debug_logger.info(f"Отправлено уведомление ---> {message}")
-                        continue
-
-                    # Подтверждение — "да"
-                    if any(word in text_lower for word in keywords_yes):
-                        debug_logger.info("Пользователь подтвердил команду(ы).")
-
-                        pending_commands = last_unrecognized_command.get('pending_commands')
-
-                        any_executed = False
-
-                        for cmd_info in pending_commands:
-                            action_type = cmd_info['action_type']
-                            suggested_cmd = cmd_info['suggested_command']
-
-                            debug_logger.info(f"Выполняем: {action_type} {suggested_cmd}")
-
-                            # Пробуем стандартные команды
-                            default_list = self.find_closest_command(suggested_cmd, default_commands_keys)
-                            if default_list:
-                                if action_type == 'open' and default_commands[default_list][0]:
-                                    default_commands[default_list][0]()
-                                    any_executed = True
-                                elif action_type == 'close' and default_commands[default_list][1]:
-                                    default_commands[default_list][1]()
-                                    any_executed = True
-                            else:
-                                # Пробуем кастомные команды
-                                restored_command = f"{action_type} {suggested_cmd}"
-                                app_processed = self.handle_app_command(restored_command, action_type)
-                                folder_processed = self.handle_folder_command(restored_command, action_type)
-                                if app_processed or folder_processed:
-                                    any_executed = True
-
-                        if any_executed:
-                            pass
-                            # approve_folder = self.audio_paths.get('approve_folder')
-                            # thread_react(approve_folder)
-                        else:
-                            error_file = self.audio_paths.get('error_file')
-                            thread_react_detail(error_file)
-                            message = "Не удалось выполнить команду(ы)."
+                        # Проверка таймаута
+                        if (current_time - last_activity_time) > 10:
+                            logger.info("Таймаут подтверждения — сброс")
+                            debug_logger.info("Таймаут подтверждения — сброс")
+                            self.last_unrecognized_command = None
+                            message = "Время ожидания истекло."
                             self.show_supply_notice(message, is_confirm=True)
                             debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            continue
 
-                        last_unrecognized_command = None
-                        continue
+                        # Подтверждение — "да"
+                        if any(word in text_lower for word in keywords_yes):
+                            debug_logger.info("Пользователь подтвердил команду(ы).")
 
-                    # Отмена — "нет"
-                    elif any(word in text_lower for word in keywords_no):
-                        debug_logger.info("Пользователь отменил команду(ы).")
-                        approve_folder = self.audio_paths.get('approve_folder')
-                        thread_react(approve_folder)
-                        last_unrecognized_command = None
-                        message = "Хорошо, отменяю."
-                        self.show_supply_notice(message, is_confirm=True)
-                        debug_logger.info(f"Отправлено уведомление ---> {message}")
-                        continue
+                            turnoff_value = self.last_unrecognized_command.get('is_shutdown')
+                            self.set_shutdown(is_shutdown=turnoff_value)
 
+                            self.last_unrecognized_command = None
+                            continue
+
+                        # Отмена — "нет"
+                        elif any(word in text_lower for word in keywords_no):
+                            debug_logger.info("Пользователь отменил команду(ы).")
+                            self.get_reaction(name="confirm_folder")
+                            self.last_unrecognized_command = None
+                            message = "Хорошо, отменяю."
+                            self.show_supply_notice(message, is_confirm=True)
+                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            continue
+
+                        else:
+                            # Не распознан ответ — переспрашиваем
+                            debug_logger.info("Не удалось распознать ответ на подтверждение.")
+                            self.get_reaction(name="what_folder")
+                            message = "Скажите 'да' или 'нет'"
+                            self.show_supply_notice(message, is_confirm=True)
+                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            continue
                     else:
-                        # Не распознан ответ — переспрашиваем
-                        debug_logger.info("Не удалось распознать ответ на подтверждение.")
-                        what_folder = self.audio_paths.get('what_folder')
-                        thread_react(what_folder)
-                        message = "Скажите 'да' или 'нет'"
-                        self.show_supply_notice(message, is_confirm=True)
-                        debug_logger.info(f"Отправлено уведомление ---> {message}")
-                        continue
+                        text_lower = text.lower().strip()
+
+                        # Проверка таймаута
+                        if (current_time - last_activity_time) > 10:
+                            logger.info("Таймаут подтверждения — сброс")
+                            debug_logger.info("Таймаут подтверждения — сброс")
+                            self.last_unrecognized_command = None
+                            message = "Время ожидания истекло."
+                            self.show_supply_notice(message, is_confirm=True)
+                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            continue
+
+                        # Подтверждение — "да"
+                        if any(word in text_lower for word in keywords_yes):
+                            debug_logger.info("Пользователь подтвердил команду(ы).")
+
+                            pending_commands = self.last_unrecognized_command.get('pending_commands')
+
+                            any_executed = False
+
+                            for cmd_info in pending_commands:
+                                action_type = cmd_info['action_type']
+                                suggested_cmd = cmd_info['suggested_command']
+
+                                debug_logger.info(f"Выполняем: {action_type} {suggested_cmd}")
+
+                                # Пробуем стандартные команды
+                                default_list = self.find_closest_command(suggested_cmd, default_commands_keys)
+                                if default_list:
+                                    if action_type == 'open' and default_commands[default_list][0]:
+                                        default_commands[default_list][0]()
+                                        any_executed = True
+                                    elif action_type == 'close' and default_commands[default_list][1]:
+                                        default_commands[default_list][1]()
+                                        any_executed = True
+                                else:
+                                    # Пробуем кастомные команды
+                                    restored_command = f"{action_type} {suggested_cmd}"
+                                    app_processed = self.handle_app_command(restored_command, action_type)
+                                    folder_processed = self.handle_folder_command(restored_command, action_type)
+                                    if app_processed or folder_processed:
+                                        any_executed = True
+
+                            if any_executed:
+                                pass
+                            else:
+                                self.get_reaction(detail=True, name="error_file")
+                                message = "Не удалось выполнить команду(ы)."
+                                self.show_supply_notice(message, is_confirm=True)
+                                debug_logger.info(f"Отправлено уведомление ---> {message}")
+
+                            self.last_unrecognized_command = None
+                            continue
+
+                        # Отмена — "нет"
+                        elif any(word in text_lower for word in keywords_no):
+                            debug_logger.info("Пользователь отменил команду(ы).")
+                            self.get_reaction(name="confirm_folder")
+                            self.last_unrecognized_command = None
+                            message = "Хорошо, отменяю."
+                            self.show_supply_notice(message, is_confirm=True)
+                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            continue
+
+                        else:
+                            # Не распознан ответ — переспрашиваем
+                            debug_logger.info("Не удалось распознать ответ на подтверждение.")
+                            self.get_reaction(name="what_folder")
+                            message = "Скажите 'да' или 'нет'"
+                            self.show_supply_notice(message, is_confirm=True)
+                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            continue
 
                 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-                # Условие 1. Проверка на упоминание имени ассистента
+                # Условие. Проверка на упоминание имени ассистента
 
                 words = text.split()
                 has_name = any(
-                    self.find_closest_command(word, all_names, threshold=60) is not None
+                    self.find_closest_command(word, all_names, threshold=70) is not None
                     for word in words
                 )
 
                 if len(words) <= 4 and has_name:
-                    if not has_action_words:
-                        # Если нет слов-действий — воспроизводим эхо
-                        echo_folder = self.audio_paths.get('echo_folder')
-                        thread_react(echo_folder)
                     name_mentioned = True
                     name_mentioned_time = current_time
 
@@ -1592,32 +1641,32 @@ class Assistant(QMainWindow):
                                       name_mentioned)
 
                 # Режим уточнения команды (если предыдущая попытка не удалась)
-                if last_unrecognized_command and last_unrecognized_command.get('mode') == 'correction':
+                if self.last_unrecognized_command and self.last_unrecognized_command.get('mode') == 'correction':
                     if text:
                         # Обновляем время последней активности при обработке команды
                         last_activity_time = current_time
 
                         _, new_action_type = self.find_action(text, action_up, action_down, all_actions)
 
-                        current_action_type = last_unrecognized_command['pending_commands'][0].get('action_type')
+                        current_action_type = self.last_unrecognized_command['pending_commands'][0].get('action_type')
 
                         # Если действие изменилось — обновляем контекст
                         if new_action_type and new_action_type != current_action_type:
-                            last_unrecognized_command['pending_commands'][0]['action_type'] = new_action_type
+                            self.last_unrecognized_command['pending_commands'][0]['action_type'] = new_action_type
                             debug_logger.info(f"Действие обновлено на: {new_action_type}")
 
                         # Блок А. Для поиска совпадений и запуска методов в соответствии с действием
                         default_list = self.find_closest_command(clean_target, default_commands_keys)
 
                         if default_list:
-                            action_to_use = last_unrecognized_command['pending_commands'][0].get('action_type')
+                            action_to_use = self.last_unrecognized_command['pending_commands'][0].get('action_type')
 
                             if action_to_use == 'open':
                                 default_commands[default_list][0]()
                             elif action_to_use == 'close':
                                 if default_commands[default_list][1]:
                                     default_commands[default_list][1]()
-                            last_unrecognized_command = None
+                            self.last_unrecognized_command = None
                             continue
                         # Конец блока А.
 
@@ -1627,7 +1676,7 @@ class Assistant(QMainWindow):
                         custom_list = self.find_closest_command(clean_target, file_commands)
 
                         if custom_list:
-                            action_type = last_unrecognized_command['pending_commands'][0].get('action_type')
+                            action_type = self.last_unrecognized_command['pending_commands'][0].get('action_type')
 
                             # Восстанавливаем полную команду
                             restored_command = f"{action_type} {custom_list}"
@@ -1640,42 +1689,53 @@ class Assistant(QMainWindow):
                             if not folder_processed and not app_processed:
                                 logger.warning(f"Команда не обработана: {restored_command}")
                                 debug_logger.warning(f"Команда не обработана: {restored_command}")
-                                what_folder = self.audio_paths.get('what_folder')
-                                thread_react(what_folder)
+                                self.get_reaction(name="what_folder",
+                                                  trace="Реакция в блоке, где режим корректировки команды")
 
-                                last_unrecognized_command['pending_commands'][0]['suggested_command'] = clean_target
+                                self.last_unrecognized_command['pending_commands'][0]['suggested_command'] = clean_target
 
                                 debug_logger.info(f"Обновлена цель для уточнения: {clean_target}")
                                 self.show_supply_notice(text)
                                 debug_logger.info(f"Отправлено уведомление ---> {text}")
-                                last_unrecognized_command = None
+                                self.last_unrecognized_command = None
                                 continue
                                 # Конец блока В.
 
-                            last_unrecognized_command = None
+                            self.last_unrecognized_command = None
                         if not default_list and not custom_list:
-                            what_folder = self.audio_paths.get('what_folder')
-                            thread_react(what_folder)
+                            self.get_reaction(name="what_folder",
+                                              trace="Реакция в блоке, где режим корректировки команды")
                             self.show_supply_notice(text)
                             debug_logger.info(f"Отправлено уведомление ---> {text}")
 
                 if has_assistant_name:
                     debug_logger.info("<<< Условие, где есть Имя ассистента >>>")
                     trigger_react = False
+                    _, action_type = self.find_action(text, action_up, action_down, all_actions)
                     if self.find_closest_command(clean_target, keywords_search):
                         search_yandex(text, self.assistant_name,
                                       self.assist_name2,
                                       self.assist_name3)
-                        approve_folder = self.audio_paths.get('approve_folder')
-                        thread_react(approve_folder)
+                        self.get_reaction(name="approve_folder")
+                        continue
                     elif self.find_closest_command(clean_target, fullscreen_list):
                         self.capture_fullscreen()
+                        continue
                     elif self.find_closest_command(clean_target, screen_list):
                         self.capture_area()
+                        continue
                     elif self.find_closest_command(clean_target, keywords_shutdown):
-                        shutdown_windows()
+                        self.get_confirm_shutdown(clean_target, text, action_type)
+                        continue
                     elif self.find_closest_command(clean_target, keywords_restart):
-                        restart_windows()
+                        self.get_confirm_shutdown(clean_target, text, action_type, is_shutdown=False)
+                        continue
+
+                    if len(words) <= 4 and has_name:
+                        if not has_action_words:
+                            # Если нет слов-действий — воспроизводим эхо
+                            self.get_reaction(name="echo_folder")
+
 
                     final_commands = self.handle_text_smart(text, all_actions)
                     debug_logger.info(f"[handle_text_smart]---> {final_commands}")
@@ -1717,11 +1777,11 @@ class Assistant(QMainWindow):
                                         if closest_cmd:
                                             message = f"Вы имели в виду: '{closest_cmd}'?\nСкажите: Да/Нет"
                                             self.show_supply_notice(message, is_confirm=True)
-                                            play_sound("what")
+                                            play_sound(type_sound="what")
                                             debug_logger.info(f"Отправлено уведомление ---> {message}")
 
                                             # Сохраняем контекст с предложенной командой + флаг ожидания подтверждения
-                                            last_unrecognized_command = {
+                                            self.last_unrecognized_command = {
                                                 'mode': 'confirm',
                                                 'original_text': text,
                                                 'pending_commands': [{
@@ -1730,11 +1790,7 @@ class Assistant(QMainWindow):
                                                 }]
                                             }
                                         else:
-                                            # Ничего похожего не найдено
-                                            what_folder = self.audio_paths.get('what_folder')
-                                            thread_react(what_folder)
-
-                                            last_unrecognized_command = {
+                                            self.last_unrecognized_command = {
                                                 'mode': 'correction',
                                                 'original_text': text,
                                                 'pending_commands': [{
@@ -1743,29 +1799,13 @@ class Assistant(QMainWindow):
                                                 }]
                                             }
                                             trigger_react = True
-                        else:
-                            debug_logger.info("<<< Условие, где есть имя, но нет команды или она не распознана >>>")
-                            # Если есть имя ассистента, но нет команды или непонятная команда
-                            if (self.assistant_name in command or
-                                    self.assist_name2 in command or
-                                    self.assist_name3 in command or
-                                    name_mentioned):
-
-                                # Реагируем только если есть слова-действия, но команда не распознана
-                                if has_action_words:
-                                    what_folder = self.audio_paths.get('what_folder')
-                                    if what_folder:
-                                        thread_react(what_folder)
-                                    trigger_react = True
-                                    self.show_supply_notice(text)
-                                    debug_logger.info(f"Отправлено уведомление ---> {text}")
-                                    continue
+                                            break
 
                     if trigger_react:
                         self.show_supply_notice(text)
-                        what_folder = self.audio_paths.get('what_folder')
-                        thread_react(what_folder)
+                        self.get_reaction(name="what_folder", trace="Реакт из триггера")
                         debug_logger.info(f"Сработал триггер реакции. Отправлено уведомление ---> {text}")
+                        continue
 
                 # Флаг для контроля над обработкой команд без имени ассистента (не относится к плееру)
                 if self.is_keep_watch:
@@ -1818,10 +1858,10 @@ class Assistant(QMainWindow):
 
                             message = ";\n".join(parts) + "\n\nСкажите: Да/Нет"
                             self.show_supply_notice(message, is_confirm=True)
-                            play_sound("what")
+                            play_sound(type_sound="what")
                             debug_logger.info(f"Отправлено уведомление ---> {message}")
 
-                            last_unrecognized_command = {
+                            self.last_unrecognized_command = {
                                 'mode': 'confirm',
                                 'original_text': text,
                                 'pending_commands': pending_commands
@@ -1829,26 +1869,22 @@ class Assistant(QMainWindow):
                             continue
 
                 # Обработка плеера
-                words = text.lower().split()
-
-                # Проверяем, упоминается ли плеер
                 if any(self.find_closest_command(word, keywords_player, threshold=70) for word in words):
-                    player_folder = self.audio_paths.get('player_folder')
 
                     # Ищем первое подходящее действие (в порядке приоритета: пауза, след, пред)
                     for word in words:
                         if self.find_closest_command(word, keywords_playpause, threshold=70):
                             controller.play_pause()
-                            thread_react(player_folder)
-                            break
+                            self.get_reaction(name="player_folder")
+                            continue
                         elif self.find_closest_command(word, keywords_next, threshold=70):
                             controller.next_track()
-                            thread_react(player_folder)
-                            break
+                            self.get_reaction(name="player_folder")
+                            continue
                         elif self.find_closest_command(word, keywords_prev, threshold=70):
                             controller.previous_track()
-                            thread_react(player_folder)
-                            break
+                            self.get_reaction(name="player_folder")
+                            continue
 
         except Exception as e:
             logger.error(f"Ошибка в основном цикле ассистента: {e}")
@@ -1891,6 +1927,38 @@ class Assistant(QMainWindow):
     #         self.game_mode.cleanup()
     #         self.game_mode_bool = False
     #         logger.info("Игровой режим деактивирован")
+
+    def get_confirm_shutdown(self, closest_cmd, text, action_type, is_shutdown=True):
+        try:
+            if is_shutdown:
+                action_pc = "Выключить"
+            else:
+                action_pc = "Перезагрузить"
+            message = f"{action_pc} ПК?\n\nСкажите: Да/Нет"
+            self.show_supply_notice(message, is_confirm=True)
+            play_sound(type_sound="what")
+            debug_logger.info(f"Отправлено уведомление ---> {message}")
+
+            # Сохраняем контекст
+            self.last_unrecognized_command = {
+                'mode': 'confirm',
+                'original_text': text,
+                'is_shutdown': action_pc,
+            }
+        except Exception as e:
+            debug_logger.error(f"Ошибка в методе get_confirm_shutdown: {e}")
+
+    def set_shutdown(self, is_shutdown):
+        try:
+            if is_shutdown == "Выключить":
+                shutdown_windows()
+                debug_logger.info("Выполняется обработка запроса: shutdown windows")
+            elif is_shutdown == "Перезагрузить":
+                restart_windows()
+                debug_logger.info("Выполняется обработка запроса: restart windows")
+
+        except Exception as e:
+            debug_logger.error(f"Ошибка в методе set_shutdown: {e}")
 
     def _extract_clean_target(self, text, all_actions):
         """
@@ -2019,7 +2087,6 @@ class Assistant(QMainWindow):
                 actions_in_text.append((i, word, closest_action))
 
         if not actions_in_text:
-            # Если нет действий — возвращаем пустой список (или можно вернуть чистые цели, но ты хочешь привязку к действию)
             return []
 
         # 2. Для каждого действия — определяем "область целей": от следующего слова до следующего действия
@@ -2292,7 +2359,7 @@ class Assistant(QMainWindow):
 
     def on_final_result(self, text):
         """Вызывается при распознавании фразы. Логирует и отправляет дальше."""
-        self.log_area.append(f"[Распознано] {text}")
+        logger.info(f"[Распознано] {text}")
         debug_logger.info(f"[Распознано] {text}")
 
         # Если есть активная очередь (например, get_audio() ждёт), — кладём туда
@@ -2490,7 +2557,6 @@ class Assistant(QMainWindow):
         QTimer.singleShot(100, lambda: self._show_smart_widget(is_auto_start))
 
     def _show_smart_widget(self, is_auto_start=False):
-        approve_file_voice = self.audio_paths.get("approve_folder")
         try:
             # Полная проверка существующего виджета
             widget_exists = (
@@ -2511,21 +2577,19 @@ class Assistant(QMainWindow):
 
             # Воспроизводим звук только если это не автоматический запуск
             if not is_auto_start:
-                thread_react(approve_file_voice)
+                self.get_reaction(name="approve_folder")
 
         except Exception as e:
             debug_logger.error(f"Ошибка при открытии виджета: {str(e)}")
             self.show_notification_message(f"Ошибка при открытии виджета: {str(e)}")
 
     def close_widget(self):
-        error_message = self.audio_paths.get("error_file")
-        approve_file_voice = self.audio_paths.get("approve_folder")
         try:
             if hasattr(self, "widget_window"):
                 self.widget_window.close()
-                thread_react(approve_file_voice)
+                self.get_reaction(name="approve_folder")
         except Exception as e:
-            thread_react_detail(error_message)
+            self.get_reaction(detail=True, name="error_file")
             self.show_notification_message(f"Ошибка при закрытии виджета (close_widget): {e}")
             debug_logger.error(f"Ошибка при закрытии виджета (close_widget): {e}")
 
@@ -3317,9 +3381,9 @@ class Assistant(QMainWindow):
     def capture_fullscreen(self):
         try:
             self.screenshot_tool.capture_fullscreen()
-            play_sound(type="ok")
+            play_sound(type_sound="ok")
         except Exception as e:
-            play_sound(type="error")
+            play_sound(type_sound="error")
             logger.error(f'Ошибка {e}')
             debug_logger.error(f'Ошибка {e}')
 
@@ -3612,11 +3676,11 @@ class SystemScreenshot:
             result = self._wait_and_save_screenshot()
 
             if result:
-                play_sound(type="ok")
+                play_sound(type_sound="ok")
                 logger.info("Скриншот успешно сохранен")
                 debug_logger.info("Скриншот успешно сохранен")
             else:
-                play_sound(type="error")
+                play_sound(type_sound="error")
                 logger.warning("Не удалось сохранить скриншот")
                 debug_logger.warning("Не удалось сохранить скриншот")
 
@@ -3625,11 +3689,7 @@ class SystemScreenshot:
         except Exception as e:
             logger.error(f"Ошибка: {e}")
             debug_logger.error(f"Ошибка: {e}")
-
-            # Звук ошибки при исключении
-            error_folder = self.audio_paths.get('error_folder')
-            if error_folder:
-                thread_react(error_folder)
+            self.get_reaction(detail=True, name="error_file")
 
             return None
 

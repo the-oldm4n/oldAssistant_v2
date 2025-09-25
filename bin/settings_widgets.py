@@ -387,9 +387,9 @@ class SettingsWidget(QWidget):
     def set_default_settings(self):
         default_settings = {
             "voice": "johnny",
-            "assistant_name": "джонни",
-            "assist_name2": "джонни",
-            "assist_name3": "джонни",
+            "assistant_name": "джон",
+            "assist_name2": "джон",
+            "assist_name3": "джон",
             "steam_path": "D:/Steam/steam.exe",
             "is_censored": True,
             "volume_assist": 0.2,

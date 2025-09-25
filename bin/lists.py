@@ -52,20 +52,21 @@ def get_audio_paths(speaker):
         'close_assist_folder': os.path.join(voice_base, 'close_assist'),
         'player_folder': os.path.join(voice_base, 'player'),
         'censored_folder': os.path.join(voice_base, 'censored'),
+        'confirm_folder': os.path.join(voice_base, 'cancel_confirm'),
 
         # Аудиофайлы
-        'morning_greet': os.path.join(voice_base, 'start_greet', 'с добрым утром.ogg'),
-        'evening_greet': os.path.join(voice_base, 'start_greet', 'добрый вечер.ogg'),
-        'error_file': os.path.join(voice_base, 'other', 'произошла ошибка.ogg'),
-        'off_file': os.path.join(voice_base, 'other', 'отключаю питание.ogg'),
-        'del_file': os.path.join(voice_base, 'other', 'файл удален.ogg'),
-        'restart_file': os.path.join(voice_base, 'other', 'я ненадолго.ogg'),
-        'wait_load_file': os.path.join(voice_base, 'other', 'подожди. собираю данные о процессах.ogg'),
-        'done_load_file': os.path.join(voice_base, 'other', 'процессы записаны.ogg'),
-        'start_rust': os.path.join(voice_base, 'other', 'я в раст не пойду.ogg'),
-        'prorok_sanboy': os.path.join(voice_base, 'other', 'пророк санбой.ogg'),
-        'update_button': os.path.join(voice_base, 'other', 'еще не готово.ogg'),
-        'what_command': os.path.join(voice_base, 'other', 'не понял команду.ogg')
+        'morning_greet': os.path.join(voice_base, 'start_greet', 'С добрым утром.ogg'),
+        'evening_greet': os.path.join(voice_base, 'start_greet', 'Добрый вечер.ogg'),
+        'error_file': os.path.join(voice_base, 'other', 'Произошла ошибка.ogg'),
+        'off_file': os.path.join(voice_base, 'other', 'Отключаю питание.ogg'),
+        'del_file': os.path.join(voice_base, 'other', 'Файл удален.ogg'),
+        'restart_file': os.path.join(voice_base, 'other', 'Я ненадолго.ogg'),
+        'wait_load_file': os.path.join(voice_base, 'other', 'Подожди, собираю данные о процессах.ogg'),
+        'done_load_file': os.path.join(voice_base, 'other', 'Процессы записаны.ogg'),
+        'start_rust': os.path.join(voice_base, 'other', 'Я в раст не пойду.ogg'),
+        'prorok_sanboy': os.path.join(voice_base, 'other', 'Пророк санбой.ogg'),
+        'update_button': os.path.join(voice_base, 'other', 'Еще не готово.ogg'),
+        'what_command': os.path.join(voice_base, 'other', 'Не понял команду.ogg')
     }
 
     return paths

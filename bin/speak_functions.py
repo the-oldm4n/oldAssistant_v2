@@ -25,9 +25,10 @@ def load_volume_assist():
         debug_logger.error(f"Файл настроек {settings_file_path} не найден.")
     return 0.2
 
-def react(folder_path):
+def react(folder_path, trace):
     """
     Воспроизводит случайный аудиофайл из указанной папки.
+    :param trace: для контекста, чтобы отследить вызов
     :param folder_path: Путь к папке с аудиофайлами.
     """
     volume_reduction_factor = load_volume_assist()  # Загружаем из файла настроек значение громкости
@@ -44,7 +45,7 @@ def react(folder_path):
         random_audio_file = random.choice(audio_files)
         random_filename = os.path.basename(random_audio_file)[:-4]
         logger.info(f"Ответ ассистента: {random_filename}")
-        debug_logger.info(f"Ответ ассистента: {random_filename}")
+        debug_logger.info(f"Ответ ассистента: {random_filename}. Traceback: {trace}")
 
         pygame.mixer.init()
         # Загрузка и воспроизведение аудиофайла
@@ -61,16 +62,17 @@ def react(folder_path):
         debug_logger.error(f"Ошибка при воспроизведении аудио: {e}")
 
 
-def react_detail(file_path):
+def react_detail(file_path, trace=""):
     """
     Воспроизводит указанный аудиофайл.
+    :param trace: для контекста, чтобы отследить вызов
     :param file_path: Путь к аудиофайлу.
     """
     volume_reduction_factor = load_volume_assist()  # Загружаем из файла настроек значение громкости
     try:
         file_name = os.path.basename(file_path)[:-4]
         logger.info(f"Ответ ассистента: {file_name}")
-        debug_logger.info(f"Ответ ассистента: {file_name}")
+        debug_logger.info(f"Ответ ассистента: {file_name}. Traceback: {trace}")
 
         pygame.mixer.init()
         # Остановить текущее воспроизведение
@@ -89,12 +91,13 @@ def react_detail(file_path):
         logger.error(f"Ошибка при воспроизведении аудио: {e}")
         debug_logger.error(f"Ошибка при воспроизведении аудио: {e}")
 
-def thread_react(folder_path):
+def thread_react(folder_path, trace=""):
     """
     Запускает функцию react в отдельном потоке.
+    :param trace:
     :param folder_path: Путь к папке с аудиофайлами.
     """
-    thread = threading.Thread(target=react, args=(folder_path,), daemon=True)
+    thread = threading.Thread(target=react, args=(folder_path, trace), daemon=True)
     thread.start()
 
 def thread_react_detail(file_path):
