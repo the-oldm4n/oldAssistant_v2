@@ -5,6 +5,10 @@
 /test_files/
 /assistant.log
 /log/
-/readME.txt
 /update/
 /start_assistant.bat
+/icons/
+/user_settings/game_profiles_binds.json
+/todo.txt
+/update.log
+/bin/calculator.py
