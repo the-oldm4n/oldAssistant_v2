@@ -22,3 +22,9 @@ class CommandsChangeSignal(QObject):
     commands_updated = pyqtSignal()
 
 commands_signal = CommandsChangeSignal()
+
+
+class WidgetButtonsSignal(QObject):
+    buttons_updated = pyqtSignal()
+
+widget_btns_signal = WidgetButtonsSignal()

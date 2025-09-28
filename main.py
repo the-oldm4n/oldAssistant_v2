@@ -48,7 +48,7 @@ import threading
 import sounddevice as sd
 import subprocess
 from bin.audio_control import controller
-from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget
+from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel
 from bin.speak_functions import thread_react_detail, thread_react, react, play_sound
 from logging_config import logger, debug_logger
 from bin.lists import get_audio_paths, censored_list
@@ -63,7 +63,7 @@ from PyQt5.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, pyqtSignal, QPr
 
 MUTEX_NAME = "Assistant_123456789AB"
 build_ini = get_config_value("app", "build")
-version_file = "1.6.1"
+version_file = "1.6.2"
 update_version(version_file)
 
 def activate_existing_window():
@@ -290,6 +290,7 @@ class Assistant(QMainWindow):
         self.icon_updates_path = get_path("bin", "icons", "updates.svg")
         self.icon_advance_settings_path = get_path("bin", "icons", "settings+.svg")
         self.icon_styles_path = get_path("bin", "icons", "styles.svg")
+        self.icon_panel_path = get_path("bin", "icons", "panel.svg")
         self.icon_logs_path = get_path("bin", "icons", "logs.svg")
         self.icon_censor_path = get_path("bin", "icons", "censor.svg")
         self.icon_relax_path = get_path("bin", "icons", "relax.svg")
@@ -2663,7 +2664,7 @@ class Assistant(QMainWindow):
 
         except Exception as e:
             debug_logger.error(f"Ошибка при открытии настроек: {e}")
-            self.show_message("Ошибка", "error")
+            self.show_message(f"Ошибка при открытии настроек команд: {str(e)}", "Ошибка", "error")
 
     def show_widget(self):
         """Открывает панель настроек: сначала сжимаем, потом расширяем с изменяемой панелью"""
@@ -2819,10 +2820,12 @@ class Assistant(QMainWindow):
         main_widget = SettingsWidget(self)
         other_widget = OtherSettingsWidget(self)
         interface_widget = InterfaceWidget(self)
+        settings_panel = SettingsWidgetPanel(self)
 
         self.tabs.addTab(main_widget, "")
         self.tabs.addTab(other_widget, "")
         self.tabs.addTab(interface_widget, "")
+        self.tabs.addTab(settings_panel, "")
 
         tab_bar = self.tabs.tabBar()
 
@@ -2844,10 +2847,12 @@ class Assistant(QMainWindow):
         tab_bar.setTabButton(0, QTabBar.LeftSide, create_centered_svg_tab(self.icon_settings_path))
         tab_bar.setTabButton(1, QTabBar.LeftSide, create_centered_svg_tab(self.icon_advance_settings_path))
         tab_bar.setTabButton(2, QTabBar.LeftSide, create_centered_svg_tab(self.icon_styles_path))
+        tab_bar.setTabButton(3, QTabBar.LeftSide, create_centered_svg_tab(self.icon_panel_path))
 
         self.tabs.setTabToolTip(0, "Основные настройки")
         self.tabs.setTabToolTip(1, "Дополнительные настройки")
         self.tabs.setTabToolTip(2, "Настройки интерфейса")
+        self.tabs.setTabToolTip(3, "Настройки виджет-панели")
 
         self.mutable_layout.addWidget(self.tabs)
         self.mutable_layout.addSpacerItem(QSpacerItem(self._get_panel_width(), 1, QSizePolicy.Fixed, QSizePolicy.Fixed))

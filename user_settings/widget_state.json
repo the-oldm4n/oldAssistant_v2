@@ -1,7 +1,7 @@
 {
     "window_position": {
-        "x": 1824,
-        "y": 397
+        "x": 1823,
+        "y": 381
     },
     "window_size": {
         "width": 90,
@@ -9,5 +9,13 @@
     },
     "is_compact": true,
     "is_pinned": true,
-    "is_locked": false
+    "is_locked": false,
+    "buttons": {
+        "turnoff_check": true,
+        "settings_check": true,
+        "screenshot_check": true,
+        "microphone_check": true,
+        "links_check": true,
+        "resize_check": true
+    }
 }

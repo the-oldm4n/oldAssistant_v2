@@ -2,14 +2,13 @@ import json
 import os
 import sounddevice as sd
 import winshell
-from bin.signals import color_signal
+from bin.signals import color_signal, widget_btns_signal
 from bin.speak_functions import thread_react
 from bin.choose_color_window import ColorSettingsWindow
 from path_builder import get_path
 from logging_config import logger, debug_logger
-from PyQt5.QtCore import pyqtSignal, Qt
-from PyQt5.QtWidgets import QFileDialog, QPushButton, QCheckBox, QLineEdit, QLabel, QSlider, QComboBox, \
-    QVBoxLayout, QWidget, QHBoxLayout
+from PyQt5.QtCore import pyqtSignal, QTimer
+from PyQt5.QtWidgets import QFileDialog, QLineEdit, QSlider, QComboBox, QWidget, QHBoxLayout
 
 speakers = dict(Персик="persik", Джарвис="jarvis", Пласид='placide', Бестия='rogue',
                 Джонни='johnny', СанСаныч='sanych', Санбой='sanboy', Woman='tigress', Стейтем='stathem')
@@ -713,3 +712,423 @@ class OtherSettingsWidget(QWidget):
             self.assistant.hide_widget()
         else:
             debug_logger.error("Метод close_settings не найден в assistant")
+
+
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QCheckBox,
+                             QApplication, QFrame, QPushButton)
+from PyQt5.QtCore import Qt
+
+
+class DraggableCheckbox(QCheckBox):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.drag_mode_enabled = False
+        self.is_dragging = False
+        self.setCursor(Qt.ArrowCursor)
+        self.original_pos = None
+
+    def set_drag_mode(self, enabled):
+        self.drag_mode_enabled = enabled
+        if enabled:
+            self.setCursor(Qt.OpenHandCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton and self.drag_mode_enabled:
+            self.is_dragging = False
+            self.drag_start_position = event.pos()
+            self.original_pos = self.pos()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if not self.drag_mode_enabled:
+            return
+
+        if not (event.buttons() & Qt.LeftButton):
+            return
+
+        if not hasattr(self, 'drag_start_position'):
+            return
+
+        if not self.is_dragging:
+            if (event.pos() - self.drag_start_position).manhattanLength() < QApplication.startDragDistance():
+                return
+
+            # Начинаем перетаскивание
+            self.is_dragging = True
+            self.setCursor(Qt.ClosedHandCursor)
+
+            # Сообщаем родителю о начале перетаскивания
+            if hasattr(self.parent(), 'start_dragging'):
+                self.parent().start_dragging(self)
+
+        # Обновляем позицию перетаскиваемого элемента
+        if self.is_dragging:
+            if hasattr(self.parent(), 'update_drag_position'):
+                global_pos = self.mapToGlobal(event.pos())
+                local_pos = self.parent().mapFromGlobal(global_pos)
+                self.parent().update_drag_position(local_pos, self)
+
+    def mouseReleaseEvent(self, event):
+        if hasattr(self, 'drag_start_position') and self.is_dragging:
+            self.is_dragging = False
+            self.setCursor(Qt.OpenHandCursor)
+
+            # Сообщаем родителю о завершении перетаскивания
+            if hasattr(self.parent(), 'stop_dragging'):
+                self.parent().stop_dragging(self)
+
+        if hasattr(self, 'drag_start_position'):
+            delattr(self, 'drag_start_position')
+        super().mouseReleaseEvent(event)
+
+
+class DragContainer(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.current_target_index = -1
+        self.setAcceptDrops(True)
+        self.layout = QVBoxLayout(self)
+        self.layout.setSpacing(5)
+        self.layout.setContentsMargins(5, 5, 5, 5)
+
+        self.dragged_widget = None
+
+        self.drop_indicator = QFrame()
+        self.drop_indicator.setFixedHeight(3)
+        # self.drop_indicator.setStyleSheet("background-color: #0078d4;")
+        self.drop_indicator.hide()
+
+        self.placeholder = QFrame()
+        self.placeholder.setFixedHeight(40)
+        self.placeholder.setStyleSheet("background-color: transparent")
+        self.placeholder.hide()
+
+    def addCheckbox(self, checkbox):
+        self.layout.addWidget(checkbox)
+
+    def set_drag_mode(self, enabled):
+        for i in range(self.layout.count()):
+            widget = self.layout.itemAt(i).widget()
+            if isinstance(widget, DraggableCheckbox):
+                widget.set_drag_mode(enabled)
+
+    def start_dragging(self, widget):
+        self.dragged_widget = widget
+
+        self.original_object_name = widget.objectName()
+        widget.setObjectName("DraggedCheckbox")
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+
+        # УДАЛЯЕМ виджет из layout перед началом перетаскивания
+        self.layout.removeWidget(widget)
+        widget.setParent(self)
+        widget.show()
+
+        # Запоминаем оригинальную позицию для плейсхолдера
+        self.placeholder_index = self.layout.indexOf(widget)
+
+        # Поднимаем перетаскиваемый виджет над остальными
+        widget.raise_()
+
+    def update_drag_position(self, pos, widget):
+        if not self.dragged_widget:
+            return
+
+        # Перемещаем виджет за курсором
+        widget.move(pos.x() - widget.drag_start_position.x(),
+                    pos.y() - widget.drag_start_position.y())
+
+        # Находим новую позицию для вставки
+        new_index = self.find_drop_index(pos)
+
+        # Обновляем плейсхолдер только если позиция изменилась
+        if hasattr(self, 'current_target_index') and new_index != self.current_target_index:
+            self.current_target_index = new_index
+            self.update_placeholder_position(new_index)
+
+        # Обновляем индикатор
+        self.update_drop_indicator(new_index)
+
+    def update_placeholder_position(self, new_index):
+        # Удаляем плейсхолдер если он уже есть
+        if self.placeholder.parent() == self:
+            self.layout.removeWidget(self.placeholder)
+
+        # Вставляем плейсхолдер на новую позицию
+        self.layout.insertWidget(new_index, self.placeholder)
+        self.placeholder.show()
+
+    def stop_dragging(self, widget):
+        if not self.dragged_widget:
+            return
+
+        # Восстанавливаем оригинальное имя
+        if hasattr(self, 'original_object_name'):
+            widget.setObjectName(self.original_object_name)
+
+        # Определяем финальную позицию
+        final_index = self.drop_indicator_index if hasattr(self, 'drop_indicator_index') else self.placeholder_index
+
+        # Удаляем плейсхолдер
+        if self.placeholder.parent() == self:
+            self.layout.removeWidget(self.placeholder)
+        self.placeholder.hide()
+
+        # ВОЗВРАЩАЕМ виджет в layout на новую позицию
+        self.layout.insertWidget(final_index, widget)
+
+        # Сбрасываем стиль и курсор
+        widget.setStyleSheet("")
+        widget.setCursor(Qt.OpenHandCursor)
+
+        # Скрываем индикатор
+        self.drop_indicator.hide()
+        self.dragged_widget = None
+        self.current_target_index = -1
+
+    def find_drop_index(self, pos):
+        closest_index = -1
+        min_distance = float('inf')
+
+        # Буферная зона вверху (первые 20 пикселей) - всегда вставляем в начало
+        if pos.y() < 20:
+            return 0
+
+        for i in range(self.layout.count()):
+            widget = self.layout.itemAt(i).widget()
+            if widget and widget != self.placeholder and widget != self.dragged_widget:
+                widget_rect = widget.geometry()
+
+                # Буферные зоны вокруг каждого элемента
+                top_zone = widget_rect.top() - 10
+                bottom_zone = widget_rect.bottom() + 10
+
+                # Проверяем попадание в буферные зоны
+                if top_zone <= pos.y() <= bottom_zone:
+                    # Решаем, вставлять до или после элемента
+                    if pos.y() < widget_rect.center().y():
+                        closest_index = i  # Вставляем перед этим элементом
+                    else:
+                        closest_index = i + 1  # Вставляем после этого элемента
+                    break
+
+                # Если не попали в буферные зоны, ищем ближайший элемент
+                distance_to_top = abs(widget_rect.top() - pos.y())
+                distance_to_bottom = abs(widget_rect.bottom() - pos.y())
+                distance = min(distance_to_top, distance_to_bottom)
+
+                if distance < min_distance:
+                    min_distance = distance
+                    if pos.y() < widget_rect.center().y():
+                        closest_index = i
+                    else:
+                        closest_index = i + 1
+
+        return closest_index if closest_index != -1 else self.layout.count()
+
+    def update_drop_indicator(self, index):
+        if index == -1:
+            self.drop_indicator.hide()
+            return
+
+        self.drop_indicator_index = index
+
+        if index < self.layout.count():
+            target_widget = self.layout.itemAt(index).widget()
+            if target_widget and target_widget != self.placeholder:
+                indicator_y = target_widget.geometry().top() - 2
+                self.drop_indicator.setParent(self)
+                self.drop_indicator.move(10, indicator_y)
+                self.drop_indicator.setFixedWidth(self.width() - 20)
+                self.drop_indicator.show()
+                return
+
+        # Если вставляем в конец
+        if self.layout.count() > 0:
+            last_widget = self.layout.itemAt(self.layout.count() - 1).widget()
+            if last_widget and last_widget != self.placeholder:
+                indicator_y = last_widget.geometry().bottom() + 2
+                self.drop_indicator.setParent(self)
+                self.drop_indicator.move(10, indicator_y)
+                self.drop_indicator.setFixedWidth(self.width() - 20)
+                self.drop_indicator.show()
+            else:
+                self.drop_indicator.hide()
+        else:
+            self.drop_indicator.hide()
+
+
+class SettingsWidgetPanel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.checkboxes = {}
+        self.widget_state = get_path("user_settings", "widget_state.json")
+        self.drag_mode = False
+        self.init_ui()
+        self.load_buttons_settings()
+
+    def init_ui(self):
+        content_widget = QWidget()
+        self.setLayout(QVBoxLayout())
+        self.layout().addWidget(content_widget)
+
+        layout = QVBoxLayout(content_widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        self.title = QLabel("Настройка кнопок на виджет-панели")
+        self.title.setStyleSheet("font-size: 16px; background: transparent")
+        layout.addWidget(self.title)
+
+        # Кнопка для включения/выключения режима перетаскивания
+        self.drag_toggle_btn = QPushButton("Настроить порядок расположения")
+        self.drag_toggle_btn.clicked.connect(self.toggle_drag_mode)
+        layout.addWidget(self.drag_toggle_btn)
+
+        # Создаем контейнер для перетаскивания
+        self.drag_container = DragContainer()
+        self.drag_container.setMinimumHeight(300)
+        self.drag_container.setStyleSheet("background: transparent")
+        layout.addWidget(self.drag_container)
+
+        # Создаем чекбоксы
+        self.create_checkboxes()
+
+        layout.addStretch()
+
+        self.default_btn = QPushButton("По умолчанию")
+        self.default_btn.setStyleSheet("padding-left: 10px; padding-right: 10px")
+        self.default_btn.clicked.connect(self.set_default_buttons_settings)
+        layout.addWidget(self.default_btn, alignment=Qt.AlignRight)
+
+        self.save_btn = QPushButton("Применить")
+        self.save_btn.clicked.connect(self.save_order)
+        layout.addWidget(self.save_btn)
+
+    def toggle_drag_mode(self):
+        self.drag_mode = not self.drag_mode
+        self.drag_container.set_drag_mode(self.drag_mode)
+
+        if self.drag_mode:
+            self.drag_toggle_btn.setText("Режим перетаскивания: ВКЛ")
+        else:
+            self.drag_toggle_btn.setText("Настроить порядок расположения")
+
+    def create_checkboxes(self):
+        checkboxes_data = [
+            ("turnoff_check", "Выключение компьютера"),
+            ("settings_check", "Открыть настройки"),
+            ("screenshot_check", "Сделать скриншот"),
+            ("microphone_check", "Управление микрофоном в Discord"),
+            ("links_check", "Открыть папку с ярлыками"),
+            ("resize_check", "Развернуть окно ассистента")
+        ]
+
+        for key, text in checkboxes_data:
+            checkbox = DraggableCheckbox(text)
+            self.checkboxes[key] = checkbox
+            self.drag_container.addCheckbox(checkbox)
+
+    def get_checkbox_order(self):
+        order = []
+        for i in range(self.drag_container.layout.count()):
+            widget = self.drag_container.layout.itemAt(i).widget()
+            if isinstance(widget, DraggableCheckbox):
+                for key, cb in self.checkboxes.items():
+                    if cb == widget:
+                        order.append(key)
+                        break
+        return order
+
+    def get_buttons_data(self):
+        """Получить данные о кнопках в порядке их расположения"""
+        buttons_data = {}
+
+        # Проходим по layout в текущем порядке
+        for i in range(self.drag_container.layout.count()):
+            widget = self.drag_container.layout.itemAt(i).widget()
+            if widget and hasattr(widget, 'text'):
+                # Находим ключ этого чекбокса
+                for key, checkbox in self.checkboxes.items():
+                    if checkbox == widget:
+                        buttons_data[key] = checkbox.isChecked()
+                        break
+
+        return buttons_data
+
+    def load_buttons_settings(self):
+        """Загрузить настройки кнопок из файла (порядок и состояния)"""
+        try:
+            with open(self.widget_state, 'r', encoding='utf-8') as f:
+                settings_data = json.load(f)
+
+            if "buttons" not in settings_data:
+                return False
+
+            buttons_data = settings_data["buttons"]
+
+            # Удаляем все чекбоксы из layout
+            for i in reversed(range(self.drag_container.layout.count())):
+                widget = self.drag_container.layout.itemAt(i).widget()
+                if widget and hasattr(widget, 'text'):
+                    self.drag_container.layout.removeWidget(widget)
+
+            # Добавляем чекбоксы в порядке из файла и устанавливаем состояния
+            for key, state in buttons_data.items():
+                if key in self.checkboxes:
+                    checkbox = self.checkboxes[key]
+                    checkbox.setChecked(state)
+                    self.drag_container.layout.addWidget(checkbox)
+
+            return True
+
+        except FileNotFoundError:
+            debug_logger.error(f"Файл {self.widget_state} не найден")
+            return False
+        except json.JSONDecodeError:
+            debug_logger.error(f"Ошибка чтения JSON из {self.widget_state}")
+            return False
+
+    def set_default_buttons_settings(self):
+        """Установить стандартные настройки кнопок (все активны, стандартный порядок)"""
+        # Удаляем все чекбоксы из layout
+        for i in reversed(range(self.drag_container.layout.count())):
+            widget = self.drag_container.layout.itemAt(i).widget()
+            if widget and hasattr(widget, 'text'):
+                self.drag_container.layout.removeWidget(widget)
+
+        # Стандартный порядок чекбоксов
+        default_order = [
+            "turnoff_check",
+            "settings_check",
+            "screenshot_check",
+            "microphone_check",
+            "links_check",
+            "resize_check"
+        ]
+
+        # Добавляем в стандартном порядке и включаем все чекбоксы
+        for key in default_order:
+            if key in self.checkboxes:
+                checkbox = self.checkboxes[key]
+                checkbox.setChecked(True)  # Все активны
+                self.drag_container.layout.addWidget(checkbox)
+
+        self.save_order()
+
+    def save_order(self):
+        order = self.get_checkbox_order()
+        with open(self.widget_state, 'r', encoding='utf-8') as f:
+            existing_data = json.load(f)
+
+        # Добавляем данные о кнопках (порядок сохранится в словаре)
+        existing_data["buttons"] = self.get_buttons_data()
+
+        # Сохраняем обратно
+        with open(self.widget_state, 'w', encoding='utf-8') as f:
+            json.dump(existing_data, f, indent=4, ensure_ascii=False)
+
+        QTimer.singleShot(100, widget_btns_signal.buttons_updated.emit)

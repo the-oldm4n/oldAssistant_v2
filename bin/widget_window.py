@@ -11,7 +11,7 @@ from PyQt5.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, Q
 from bin.apply_color_methods import ApplyColor
 from bin.audio_control import controller
 from bin.function_list_main import shutdown_windows
-from bin.signals import color_signal
+from bin.signals import color_signal, widget_btns_signal
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from logging_config import debug_logger
 from path_builder import get_path
@@ -54,8 +54,34 @@ class WindowStateManager:
         except IOError as e:
             debug_logger.error(f"Ошибка сохранения состояния: {e}")
 
+    # def save_window_state(self, window):
+    #     """Специальный метод для сохранения состояния QWidget"""
+    #     state = {
+    #         "window_position": {
+    #             "x": window.pos().x(),
+    #             "y": window.pos().y()
+    #         },
+    #         "window_size": {
+    #             "width": window.width(),
+    #             "height": window.height()
+    #         },
+    #         "is_compact": getattr(window, 'is_compact', False),
+    #         "is_pinned": getattr(window, 'is_pinned', False),
+    #         "is_locked": getattr(window, 'is_locked', False)
+    #     }
+    #     self.save_state(state)
+
     def save_window_state(self, window):
         """Специальный метод для сохранения состояния QWidget"""
+        # Сначала загружаем существующие данные, чтобы не потерять кнопки
+        existing_data = {}
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                existing_data = json.load(f)
+        except:
+            pass  # Если файла нет или ошибка, создаем новый
+
+        # Обновляем только данные окна, сохраняя кнопки
         state = {
             "window_position": {
                 "x": window.pos().x(),
@@ -69,7 +95,11 @@ class WindowStateManager:
             "is_pinned": getattr(window, 'is_pinned', False),
             "is_locked": getattr(window, 'is_locked', False)
         }
-        self.save_state(state)
+
+        # Объединяем с существующими данными (кнопки и др.)
+        existing_data.update(state)
+
+        self.save_state(existing_data)
 
     def apply_state(self, window):
         """Применяет сохраненное состояние к окну"""
@@ -92,12 +122,14 @@ class SmartWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.assistant = parent
+        widget_btns_signal.buttons_updated.connect(self.repaint_main_buttons)
         self.buttons_data = {}
         self.player_buttons = {}
         self.is_paused = False
         self.is_muted = False
         color_signal.color_changed.connect(self.update_colors)
         self.notes_file = get_path("user_settings", "notes.txt")
+        self.widget_state = get_path("user_settings", "widget_state.json")
 
         # Пути к иконкам
         self.camera_path = get_path("bin", "icons", "camera.svg")
@@ -357,80 +389,6 @@ class SmartWidget(QWidget):
 
         return title_bar
 
-    def create_main_buttons(self, vertical=False):
-        widget = QWidget()
-        widget.setStyleSheet("background: transparent;")
-        layout_class = QVBoxLayout if vertical else QHBoxLayout
-        buttons_layout = layout_class(widget)
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
-        buttons_layout.setSpacing(0)
-
-        # Сохраняем ссылку на layout для управления видимостью
-        self.buttons_layout = buttons_layout
-        self.buttons_widget = widget
-        self.buttons_visible = True  # Флаг видимости кнопок
-
-        buttons_config = {
-            'power_btn': {
-                'icon': self.power_path,
-                'tooltip': 'Выключить Компьютер',
-                'action': self.shutdown_system
-            },
-            'settings_btn': {
-                'icon': self.settings_path,
-                'tooltip': 'Открыть настройки',
-                'action': self.open_settings
-            },
-            'screen_btn': {
-                'icon': self.camera_path,
-                'tooltip': 'Скриншот области',
-                'action': self.assistant.capture_area
-            },
-            'mic_toggle_btn': {
-                'icon': self.mic_on_path,
-                'tooltip': 'Переключить мут в Discord',
-                'action': self.toggle_mute
-            },
-            'link_btn': {
-                'icon': self.shortcut_path,
-                'tooltip': 'Открыть папку с ярлыками',
-                'action': self.assistant.open_folder_shortcuts
-            },
-            'open_main_btn': {
-                'icon': self.open_main_path,
-                'tooltip': 'Развернуть основное окно',
-                'action': self.open_main_window
-            }
-        }
-
-        for btn_name, config in buttons_config.items():
-            btn = QPushButton()
-            btn.setFixedSize(40, 40)
-            btn.setToolTip(config['tooltip'])
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: transparent;
-                    border: none;
-                }
-                QPushButton:hover {
-                    background: rgba(90, 90, 90, 0.7);
-                    border-radius: 5px;
-                }
-            """)
-            svg = QSvgWidget(config['icon'], btn)
-            svg.setFixedSize(30, 30)
-            svg.move(5, 5)
-            self.buttons_data[btn_name] = {'button': btn, 'svg': svg}
-            self.style_manager.apply_color_svg(svg, strength=0.90)
-            btn.clicked.connect(config['action'])
-            setattr(self, btn_name, btn)
-            buttons_layout.addWidget(btn)
-
-        if vertical:
-            buttons_layout.addStretch()
-
-        return widget
-
     # def create_main_buttons(self, vertical=False):
     #     widget = QWidget()
     #     widget.setStyleSheet("background: transparent;")
@@ -438,6 +396,11 @@ class SmartWidget(QWidget):
     #     buttons_layout = layout_class(widget)
     #     buttons_layout.setContentsMargins(0, 0, 0, 0)
     #     buttons_layout.setSpacing(0)
+    #
+    #     # Сохраняем ссылку на layout для управления видимостью
+    #     self.buttons_layout = buttons_layout
+    #     self.buttons_widget = widget
+    #     self.buttons_visible = True  # Флаг видимости кнопок
     #
     #     buttons_config = {
     #         'power_btn': {
@@ -499,6 +462,112 @@ class SmartWidget(QWidget):
     #         buttons_layout.addStretch()
     #
     #     return widget
+
+    def create_main_buttons(self, vertical=False):
+        widget = QWidget()
+        widget.setStyleSheet("background: transparent;")
+        layout_class = QVBoxLayout if vertical else QHBoxLayout
+        buttons_layout = layout_class(widget)
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.setSpacing(0)
+
+        # Сохраняем ссылку на layout для управления видимостью
+        self.buttons_layout = buttons_layout
+        self.buttons_widget = widget
+        self.buttons_visible = True  # Флаг видимости кнопок
+
+        # Соответствие ключей чекбоксов и кнопок
+        checkbox_to_button_map = {
+            'turnoff_check': 'power_btn',
+            'settings_check': 'settings_btn',
+            'screenshot_check': 'screen_btn',
+            'microphone_check': 'mic_toggle_btn',
+            'links_check': 'link_btn',
+            'resize_check': 'open_main_btn'
+        }
+
+        buttons_config = {
+            'power_btn': {
+                'icon': self.power_path,
+                'tooltip': 'Выключить Компьютер',
+                'action': self.shutdown_system
+            },
+            'settings_btn': {
+                'icon': self.settings_path,
+                'tooltip': 'Открыть настройки',
+                'action': self.open_settings
+            },
+            'screen_btn': {
+                'icon': self.camera_path,
+                'tooltip': 'Скриншот области',
+                'action': self.assistant.capture_area
+            },
+            'mic_toggle_btn': {
+                'icon': self.mic_on_path,
+                'tooltip': 'Переключить мут в Discord',
+                'action': self.toggle_mute
+            },
+            'link_btn': {
+                'icon': self.shortcut_path,
+                'tooltip': 'Открыть папку с ярлыками',
+                'action': self.assistant.open_folder_shortcuts
+            },
+            'open_main_btn': {
+                'icon': self.open_main_path,
+                'tooltip': 'Развернуть основное окно',
+                'action': self.open_main_window
+            }
+        }
+
+        # Загружаем порядок и состояния из файла
+        try:
+            with open(self.widget_state, 'r', encoding='utf-8') as f:
+                settings_data = json.load(f)
+
+            if "buttons" in settings_data:
+                # Создаем список ВИДИМЫХ кнопок в порядке из файла
+                ordered_buttons = []
+                for checkbox_key, is_visible in settings_data["buttons"].items():
+                    if checkbox_key in checkbox_to_button_map and is_visible:
+                        button_key = checkbox_to_button_map[checkbox_key]
+                        if button_key in buttons_config:
+                            ordered_buttons.append(button_key)
+            else:
+                # Если нет настроек, все кнопки видимы в стандартном порядке
+                ordered_buttons = list(buttons_config.keys())
+        except:
+            # Если ошибка чтения файла, все кнопки видимы в стандартном порядке
+            ordered_buttons = list(buttons_config.keys())
+
+        # Создаем только ВИДИМЫЕ кнопки в нужном порядке
+        for btn_name in ordered_buttons:
+            config = buttons_config[btn_name]
+            btn = QPushButton()
+            btn.setFixedSize(40, 40)
+            btn.setToolTip(config['tooltip'])
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: transparent;
+                    border: none;
+                }
+                QPushButton:hover {
+                    background: rgba(90, 90, 90, 0.7);
+                    border-radius: 5px;
+                }
+            """)
+            svg = QSvgWidget(config['icon'], btn)
+            svg.setFixedSize(30, 30)
+            svg.move(5, 5)
+            self.buttons_data[btn_name] = {'button': btn, 'svg': svg}
+            self.style_manager.apply_color_svg(svg, strength=0.90)
+            btn.clicked.connect(config['action'])
+            setattr(self, btn_name, btn)
+            buttons_layout.addWidget(btn)
+
+        if vertical:
+            buttons_layout.addStretch()
+
+        return widget
 
     def create_audio_controls(self):
         widget = QWidget()
@@ -793,6 +862,46 @@ class SmartWidget(QWidget):
             self.clock_mini.hide()
             self.clock_widget.show()
 
+    def repaint_main_buttons(self):
+        self.hide_main_btns()
+        self.recreate_buttons()
+        self.hide_main_btns()
+
+    def recreate_buttons(self):
+        """Пересоздает блок с кнопками"""
+        if not hasattr(self, 'buttons_widget') or not self.buttons_widget:
+            return
+
+        # Находим позицию кнопок в layout
+        button_index = -1
+        for i in range(self.content_layout.count()):
+            item = self.content_layout.itemAt(i)
+            if item.widget() == self.buttons_widget:
+                button_index = i
+                break
+
+        if button_index == -1:
+            return
+
+        # Сохраняем старый виджет
+        old_buttons_widget = self.buttons_widget
+
+        # Создаем новые кнопки
+        if self.is_compact:
+            self.buttons_widget = self.create_main_buttons(vertical=True)
+        else:
+            self.buttons_widget = self.create_main_buttons(vertical=False)
+
+        # Вставляем новые кнопки на ту же позицию
+        self.content_layout.insertWidget(button_index, self.buttons_widget, alignment=Qt.AlignCenter)
+
+        # Удаляем старые кнопки
+        self.content_layout.removeWidget(old_buttons_widget)
+        old_buttons_widget.deleteLater()
+
+        if self.is_locked:
+            self.buttons_widget.setEnabled(False)
+
     def hide_main_btns(self):
         """Переключает компактный режим по высоте (только для скрытия кнопок)"""
         try:
@@ -805,12 +914,8 @@ class SmartWidget(QWidget):
                 self.is_height_compact = False
 
             if self.is_height_compact:
-                # Возвращаем нормальную высоту (показываем кнопки)
-                new_height = 300
                 self.buttons_widget.show()
             else:
-                # Компактная высота (скрываем кнопки)
-                new_height = 70  # Только заголовок или минимальная высота
                 self.buttons_widget.hide()
 
             # Переключаем состояние
@@ -824,7 +929,7 @@ class SmartWidget(QWidget):
             self.animation = QPropertyAnimation(self, b"geometry")
             self.animation.setDuration(300)
             self.animation.setStartValue(old_geometry)
-            self.animation.setEndValue(QRect(new_x, old_geometry.y(), new_width, new_height))
+            self.animation.setEndValue(QRect(new_x, old_geometry.y(), new_width, 70))
             self.animation.setEasingCurve(QEasingCurve.InBack)
 
             def on_animation_finished():
@@ -847,7 +952,7 @@ class SmartWidget(QWidget):
 
             old_geometry = self.geometry()
             new_width = 90 if not self.is_compact else 280
-            new_height = 300
+            new_height = 70 if not self.is_compact else 300
 
             # Сохраняем правый край
             right_edge = old_geometry.x() + old_geometry.width()
