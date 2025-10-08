@@ -1,12 +1,12 @@
-from PyQt5.QtCore import QThread, pyqtSignal, QPropertyAnimation
-from PyQt5.QtWidgets import QProgressBar
+from PySide6.QtCore import QThread, Signal, QPropertyAnimation
+from PySide6.QtWidgets import QProgressBar
 
 from bin.check_update import download_update
 
 
 class DownloadThread(QThread):
-    download_complete = pyqtSignal(str, bool, bool, str)  # file_path, success, skipped, error
-    progress_signal = pyqtSignal(str)
+    download_complete = Signal(str, bool, bool, str)  # file_path, success, skipped, error
+    progress_signal = Signal(str)
 
     def __init__(self, type_version, version=None, parent=None):
         super().__init__(parent)

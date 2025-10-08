@@ -1,14 +1,13 @@
+import shiboken6
 import winsound
-from PyQt5 import sip
-from PyQt5.QtCore import QParallelAnimationGroup, QEasingCurve, QPropertyAnimation, QPoint, QEvent, QTimer, \
-    QAbstractAnimation, Qt
-from PyQt5.QtSvg import QSvgWidget
-from PyQt5.QtWidgets import QApplication, QLabel, QGraphicsColorizeEffect, QHBoxLayout, QWidget, QVBoxLayout, QDialog, \
-    QMessageBox, QPushButton
-
 from bin.apply_color_methods import ApplyColor
+from bin.custom_svg_widget import CustomSvgWidget
 from logging_config import debug_logger
 from path_builder import get_path
+from PySide6.QtCore import QParallelAnimationGroup, QEasingCurve, QPropertyAnimation, QPoint, QEvent, QTimer, \
+    QAbstractAnimation, Qt
+from PySide6.QtWidgets import (QApplication, QLabel, QGraphicsColorizeEffect, QHBoxLayout, QWidget, QVBoxLayout,
+                               QDialog, QMessageBox, QPushButton)
 
 
 class ToastNotification(QDialog):
@@ -44,13 +43,13 @@ class ToastNotification(QDialog):
 
         # Модифицируем анимацию позиции для движения сверху вниз
         self.animation = QPropertyAnimation(self, b"pos")
-        self.animation.setEasingCurve(QEasingCurve.OutQuad)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutQuad)
         self.animation.setDuration(700)
 
     def init_ui(self):
         # Настройки окна
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFixedSize(300, 100)
 
         # Основной layout
@@ -72,18 +71,17 @@ class ToastNotification(QDialog):
         content_layout.setSpacing(10)
 
         # Иконка
-        self.svg_image = QSvgWidget()
-        self.svg_image.load(self.svg_path)
+        self.svg_image = CustomSvgWidget(self.svg_path)
         self.svg_image.setFixedSize(50, 50)
         self.svg_image.setStyleSheet("background: transparent; border: none;")
         self.color_svg = QGraphicsColorizeEffect()
         self.svg_image.setGraphicsEffect(self.color_svg)
-        content_layout.addWidget(self.svg_image, alignment=Qt.AlignCenter | Qt.AlignRight)
+        content_layout.addWidget(self.svg_image, alignment=Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignRight)
 
         # Текст
         self.label = QLabel(self.message)
         self.label.setWordWrap(True)
-        self.label.setAlignment(Qt.AlignVCenter)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         content_layout.addWidget(self.label, stretch=1)
 
         main_layout.addWidget(content_widget)
@@ -92,7 +90,7 @@ class ToastNotification(QDialog):
 
         # --- Анимация и таймер ---
         self.animation = QPropertyAnimation(self, b"pos")
-        self.animation.setEasingCurve(QEasingCurve.OutQuad)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutQuad)
         self.animation.setDuration(500)
 
         self.timer = QTimer()
@@ -103,17 +101,17 @@ class ToastNotification(QDialog):
         """Обработка событий родительского окна"""
         if ToastNotification._active_toast:
             if obj == self.parent:
-                if event.type() == QEvent.WindowStateChange:
+                if event.type() == QEvent.Type.WindowStateChange:
                     if self.parent.isActiveWindow():
                         self.handle_parent_restored()
-                elif event.type() == QEvent.Hide:
+                elif event.type() == QEvent.Type.Hide:
                     if self.parent.isHidden():
                         self.handle_parent_hidden()
         return super().eventFilter(obj, event)
 
     def handle_parent_minimized(self):
         """Родитель свернут в трей"""
-        if hasattr(self, 'animation_group') and self.animation_group.state() == QAbstractAnimation.Running:
+        if hasattr(self, 'animation_group') and self.animation_group.state() == QAbstractAnimation.State.Running:
             self.animation_group.stop()
 
         self.close_immediately()
@@ -147,22 +145,24 @@ class ToastNotification(QDialog):
             if hasattr(self, 'timer') and self.timer.isActive():
                 self.timer.stop()
 
-            if hasattr(self, 'animation') and self.animation.state() == QPropertyAnimation.Running:
+            if hasattr(self, 'animation') and self.animation.state() == QPropertyAnimation.State.Running:
                 self.animation.stop()
 
-            if hasattr(self, 'animation_group') and self.animation_group.state() == QParallelAnimationGroup.Running:
+            if (hasattr(self, 'animation_group')
+                    and self.animation_group.state() == QParallelAnimationGroup.State.Running):
                 self.animation_group.stop()
 
-            if hasattr(self, 'opacity_animation') and self.opacity_animation.state() == QPropertyAnimation.Running:
+            if (hasattr(self, 'opacity_animation')
+                    and self.opacity_animation.state() == QPropertyAnimation.State.Running):
                 self.opacity_animation.stop()
 
             # 2. Проверяем, существует ли еще виджет
-            if not sip.isdeleted(self):
+            if shiboken6.isValid(self):
                 # 3. Скрываем вместо закрытия (более безопасно)
                 self.hide()
 
                 # 4. Отсоединяем от родителя, если он существует
-                if self.parent and not sip.isdeleted(self.parent):
+                if self.parent and shiboken6.isValid(self.parent):
                     self.setParent(None)
 
                 # 5. Планируем реальное удаление
@@ -227,7 +227,7 @@ class ToastNotification(QDialog):
         move_animation.setDuration(500)
         move_animation.setStartValue(current_pos)
         move_animation.setEndValue(end_pos)
-        move_animation.setEasingCurve(QEasingCurve.InQuad)
+        move_animation.setEasingCurve(QEasingCurve.Type.InQuad)
 
         # Группируем анимации
         self.animation_group = QParallelAnimationGroup()
@@ -263,17 +263,13 @@ class ToastNotification(QDialog):
 
 
 class SimpleNotice():
-    def __init__(self, parent=None, message="", title="Уведомление", message_type="info", buttons=QMessageBox.Ok):
+    def __init__(self, parent=None, message="", title="Уведомление", message_type="info",
+                 buttons=QMessageBox.StandardButton.Ok):
         self.parent = parent
         self.type = message_type
         self.message = message
         self.title = title
-        if isinstance(buttons, QMessageBox.StandardButton):  # Для одиночного флага
-            self.buttons = buttons
-        elif isinstance(buttons, QMessageBox.StandardButtons):  # Для комбинации флагов
-            self.buttons = int(buttons)  # <-- Вот ключевое изменение
-        else:
-            self.buttons = int(buttons)  # На всякий случай, если это уже int или что-то ещё
+        self.buttons = buttons
         self.style_path = get_path('user_settings', 'color_settings.json')
         self.style_manager = ApplyColor(self)
         self.styles = self.style_manager.load_styles()
@@ -293,8 +289,8 @@ class SimpleNotice():
         winsound.MessageBeep(sound)
 
         self.main = QDialog(self.parent) if self.parent else QDialog()
-        self.main.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
-        self.main.setAttribute(Qt.WA_TranslucentBackground)
+        self.main.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.main.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.main.setMinimumWidth(250)
         self.main.setMaximumWidth(500)
         self.main.setMinimumHeight(170)
@@ -308,7 +304,6 @@ class SimpleNotice():
 
         self.container = QWidget(self.main)
         self.container.setObjectName("MessageContainer")
-        # Отступы по 1 пикселю для создания бордера
         self.container.setGeometry(0, 0, self.main.width(), self.main.height())
 
         # Основной layout для всего контента
@@ -357,7 +352,7 @@ class SimpleNotice():
         message_label = QLabel(self.message)
         message_label.setObjectName("MessageLabel")
         message_label.setWordWrap(True)
-        message_label.setAlignment(Qt.AlignCenter)
+        message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         message_label.setStyleSheet("background: transparent;")
         content_layout.addWidget(message_label)
 
@@ -381,22 +376,22 @@ class SimpleNotice():
                 item.widget().deleteLater()
 
         button_map = {
-            QMessageBox.Ok: "OK",
-            QMessageBox.Cancel: "Отмена",
-            QMessageBox.Yes: "Да",
-            QMessageBox.No: "Нет",
-            QMessageBox.Abort: "Прервать",
-            QMessageBox.Retry: "Повторить",
-            QMessageBox.Ignore: "Игнорировать"
+            QMessageBox.StandardButton.Ok: "OK",
+            QMessageBox.StandardButton.Cancel: "Отмена",
+            QMessageBox.StandardButton.Yes: "Да",
+            QMessageBox.StandardButton.No: "Нет",
+            QMessageBox.StandardButton.Abort: "Прервать",
+            QMessageBox.StandardButton.Retry: "Повторить",
+            QMessageBox.StandardButton.Ignore: "Игнорировать"
         }
 
         button_added = False
         # Обработка комбинаций кнопок
         if isinstance(self.buttons, int):
             button_flags = [
-                QMessageBox.Ok, QMessageBox.Cancel, QMessageBox.Yes,
-                QMessageBox.No, QMessageBox.Abort, QMessageBox.Retry,
-                QMessageBox.Ignore
+                QMessageBox.StandardButton.Ok, QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Yes,
+                QMessageBox.StandardButton.No, QMessageBox.StandardButton.Abort, QMessageBox.StandardButton.Retry,
+                QMessageBox.StandardButton.Ignore
             ]
 
             for flag in button_flags:
@@ -418,7 +413,7 @@ class SimpleNotice():
             btn.setObjectName("DialogButton")
             btn.setFixedSize(80, 30)  # Фиксированный размер
 
-            btn.clicked.connect(lambda checked: self.button_clicked(QMessageBox.Ok))
+            btn.clicked.connect(lambda checked: self.button_clicked(QMessageBox.StandardButton.Ok))
             self.button_layout.addWidget(btn)
 
     def button_clicked(self, button_role):
@@ -490,13 +485,13 @@ class SupplyNotice(QDialog):
 
         # Модифицируем анимацию позиции для движения сверху вниз
         self.animation = QPropertyAnimation(self, b"pos")
-        self.animation.setEasingCurve(QEasingCurve.OutQuad)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutQuad)
         self.animation.setDuration(700)
 
     def init_ui(self):
         # Настройки окна
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setFixedSize(300, 100)
 
         # Основной layout
@@ -518,18 +513,17 @@ class SupplyNotice(QDialog):
         content_layout.setSpacing(10)
 
         # Иконка
-        self.svg_image = QSvgWidget()
-        self.svg_image.load(self.svg_path)
+        self.svg_image = CustomSvgWidget(self.svg_path)
         self.svg_image.setFixedSize(50, 50)
         self.svg_image.setStyleSheet("background: transparent; border: none;")
         self.color_svg = QGraphicsColorizeEffect()
         self.svg_image.setGraphicsEffect(self.color_svg)
-        content_layout.addWidget(self.svg_image, alignment=Qt.AlignCenter | Qt.AlignRight)
+        content_layout.addWidget(self.svg_image, alignment=Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignRight)
 
         # Текст
         self.label = QLabel(self.message)
         self.label.setWordWrap(True)
-        self.label.setAlignment(Qt.AlignVCenter)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         content_layout.addWidget(self.label, stretch=1)
 
         main_layout.addWidget(content_widget)
@@ -538,7 +532,7 @@ class SupplyNotice(QDialog):
 
         # --- Анимация и таймер ---
         self.animation = QPropertyAnimation(self, b"pos")
-        self.animation.setEasingCurve(QEasingCurve.OutQuad)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutQuad)
         self.animation.setDuration(500)
 
         self.timer = QTimer()
@@ -549,17 +543,17 @@ class SupplyNotice(QDialog):
         """Обработка событий родительского окна"""
         if SupplyNotice._active_toast:
             if obj == self.parent:
-                if event.type() == QEvent.WindowStateChange:
+                if event.type() == QEvent.Type.WindowStateChange:
                     if self.parent.isActiveWindow():
                         self.handle_parent_restored()
-                elif event.type() == QEvent.Hide:
+                elif event.type() == QEvent.Type.Hide:
                     if self.parent.isHidden():
                         self.handle_parent_hidden()
         return super().eventFilter(obj, event)
 
     def handle_parent_minimized(self):
         """Родитель свернут в трей"""
-        if hasattr(self, 'animation_group') and self.animation_group.state() == QAbstractAnimation.Running:
+        if hasattr(self, 'animation_group') and self.animation_group.state() == QAbstractAnimation.State.Running:
             self.animation_group.stop()
 
         self.close_immediately()
@@ -593,22 +587,24 @@ class SupplyNotice(QDialog):
             if hasattr(self, 'timer') and self.timer.isActive():
                 self.timer.stop()
 
-            if hasattr(self, 'animation') and self.animation.state() == QPropertyAnimation.Running:
+            if hasattr(self, 'animation') and self.animation.state() == QPropertyAnimation.State.Running:
                 self.animation.stop()
 
-            if hasattr(self, 'animation_group') and self.animation_group.state() == QParallelAnimationGroup.Running:
+            if (hasattr(self, 'animation_group')
+                    and self.animation_group.state() == QParallelAnimationGroup.State.Running):
                 self.animation_group.stop()
 
-            if hasattr(self, 'opacity_animation') and self.opacity_animation.state() == QPropertyAnimation.Running:
+            if (hasattr(self, 'opacity_animation')
+                    and self.opacity_animation.state() == QPropertyAnimation.State.Running):
                 self.opacity_animation.stop()
 
             # 2. Проверяем, существует ли еще виджет
-            if not sip.isdeleted(self):
+            if shiboken6.isValid(self):
                 # 3. Скрываем вместо закрытия (более безопасно)
                 self.hide()
 
                 # 4. Отсоединяем от родителя, если он существует
-                if self.parent and not sip.isdeleted(self.parent):
+                if self.parent and shiboken6.isValid(self.parent):
                     self.setParent(None)
 
                 # 5. Планируем реальное удаление
@@ -673,7 +669,7 @@ class SupplyNotice(QDialog):
         move_animation.setDuration(500)
         move_animation.setStartValue(current_pos)
         move_animation.setEndValue(end_pos)
-        move_animation.setEasingCurve(QEasingCurve.InQuad)
+        move_animation.setEasingCurve(QEasingCurve.Type.InQuad)
 
         # Группируем анимации
         self.animation_group = QParallelAnimationGroup()

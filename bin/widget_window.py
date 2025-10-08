@@ -2,15 +2,16 @@ import json
 import os
 import subprocess
 import wmi
-from PyQt5.QtGui import QFont, QFontDatabase
-from PyQt5.QtSvg import QSvgWidget
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, \
-    QDialog, QLabel, QGridLayout, QStackedWidget, QSizePolicy, QTextEdit, QApplication
-from PyQt5.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve
+from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, \
+    QDialog, QLabel, QGridLayout, QStackedWidget, QSizePolicy, QTextEdit, QApplication, QGraphicsBlurEffect
+from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve
 
 from bin.apply_color_methods import ApplyColor
 from bin.audio_control import controller
+from bin.custom_svg_widget import CustomSvgWidget
 from bin.function_list_main import shutdown_windows
+from bin.lists import fonts_list
 from bin.signals import color_signal, widget_btns_signal
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from logging_config import debug_logger
@@ -22,7 +23,7 @@ class WindowStateManager:
         self.config_path = config_path
         self.default_state = {
             "window_position": {"x": 100, "y": 100},
-            "window_size": {"width": 240, "height": 300},
+            "window_size": {"width": 300, "height": 350},
             "is_compact": False,
             "is_pinned": False,
             "is_locked": False
@@ -53,23 +54,6 @@ class WindowStateManager:
                 json.dump(state, f, indent=4)
         except IOError as e:
             debug_logger.error(f"Ошибка сохранения состояния: {e}")
-
-    # def save_window_state(self, window):
-    #     """Специальный метод для сохранения состояния QWidget"""
-    #     state = {
-    #         "window_position": {
-    #             "x": window.pos().x(),
-    #             "y": window.pos().y()
-    #         },
-    #         "window_size": {
-    #             "width": window.width(),
-    #             "height": window.height()
-    #         },
-    #         "is_compact": getattr(window, 'is_compact', False),
-    #         "is_pinned": getattr(window, 'is_pinned', False),
-    #         "is_locked": getattr(window, 'is_locked', False)
-    #     }
-    #     self.save_state(state)
 
     def save_window_state(self, window):
         """Специальный метод для сохранения состояния QWidget"""
@@ -149,13 +133,9 @@ class SmartWidget(QWidget):
         self.resize_path = get_path("bin", "icons", "resize.svg")
         self.mic_on_path = get_path("bin", "icons", "mic_on.svg")
         self.mic_off_path = get_path("bin", "icons", "mic_off.svg")
+        self.youtube_path = get_path("bin", "icons", "logo-youtube.svg")
         self.ohm_path = self.assistant.ohm_path
         self.ohm_namespace = "root\\OpenHardwareMonitor"
-
-        # Шрифт
-        self.font_id = QFontDatabase.addApplicationFont(
-            get_path("bin", "fonts", "Digital Numbers", "DigitalNumbers-Regular.ttf"))
-        self.font_family = QFontDatabase.applicationFontFamilies(self.font_id)[0]
 
         # Стили
         self.style_manager = ApplyColor(self)
@@ -174,12 +154,17 @@ class SmartWidget(QWidget):
         self.is_pinned = saved_state["is_pinned"]
         self.is_locked = False
 
+        # Шрифт
+        self.fonts_list = fonts_list
+
         self.init_ui()
 
+        self.load_font_clock()
+
         # Флаги окна
-        base_flags = Qt.FramelessWindowHint | Qt.Tool
+        base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
         if self.is_pinned:
-            base_flags |= Qt.WindowStaysOnTopHint
+            base_flags |= Qt.WindowType.WindowStaysOnTopHint
             self.pin_svg.load(self.active_pin_path)
             self.style_manager.apply_color_svg(self.pin_svg, strength=0.95)
         self.setWindowFlags(base_flags)
@@ -193,10 +178,7 @@ class SmartWidget(QWidget):
         self.sensor_timer = QTimer()
         self.sensor_timer.timeout.connect(self.update_sensors)
 
-        # Загрузка заметок
         self.load_notes()
-
-        # Анимация
         self.animation = None
 
         # Обновляем время
@@ -204,7 +186,7 @@ class SmartWidget(QWidget):
         self.update_ui_for_mode()
 
     def init_ui(self):
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setStyleSheet("background-color: transparent")
 
         self.setLayout(QVBoxLayout())
@@ -229,31 +211,23 @@ class SmartWidget(QWidget):
 
         # Часы
         self.clock_mini = QLabel()
-        self.clock_mini.setAlignment(Qt.AlignCenter)
-        self.clock_font = QFont(self.font_family, 30)
-        self.clock_mini.setFont(self.clock_font)
-        self.clock_mini.setStyleSheet("""
-                QLabel {
-                    color: white;
-                    background: transparent;
-                    font-size: 15px;
-                }
-            """)
+        self.clock_mini.setObjectName("clock_mini")
+        self.clock_mini.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.content_layout.addWidget(self.clock_mini)
 
         # Аудио
         self.audio_widget = self.create_audio_controls()
-        self.content_layout.addWidget(self.audio_widget, alignment=Qt.AlignCenter)
+        self.content_layout.addWidget(self.audio_widget, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Кнопка-тогл для переключения показа основных кнопок
         self.hide_btns = QPushButton()
-        self.hide_btns.setStyleSheet("height: 4px; border-radius: 2px; background: transparent")
+        self.hide_btns.setStyleSheet("height: 5px; border-radius: 2px; background: transparent")
         self.hide_btns.clicked.connect(self.hide_main_btns)
         self.content_layout.addWidget(self.hide_btns)
 
         # Кнопки
         self.buttons_widget = self.create_main_buttons()
-        self.content_layout.addWidget(self.buttons_widget, alignment=Qt.AlignCenter)
+        self.content_layout.addWidget(self.buttons_widget, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Вкладки (по умолчанию скрыты в компактном режиме)
         self.tab_widget = self.create_tabs_widget()
@@ -286,19 +260,8 @@ class SmartWidget(QWidget):
         clock_layout.setContentsMargins(0, 0, 0, 0)
 
         self.clock_title = QLabel()
-        self.clock_title.setAlignment(Qt.AlignCenter)
-        self.clock_title.setStyleSheet("""
-                QLabel {
-                    color: white;
-                    background: transparent;
-                    font-size: 13px;
-                    padding: 0 5px;
-                }
-            """)
-
-        # Устанавливаем шрифт
-        self.clock_font = QFont(self.font_family, 12)
-        self.clock_title.setFont(self.clock_font)
+        self.clock_title.setObjectName("clock_title")
+        self.clock_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         clock_layout.addWidget(self.clock_title)
         layout.addWidget(self.clock_widget)
@@ -316,12 +279,12 @@ class SmartWidget(QWidget):
                 background: rgba(40, 110, 230, 80%);
             }
         """)
-        self.pin_svg = QSvgWidget(self.pin_path, self.pin_btn)
+        self.pin_svg = CustomSvgWidget(self.pin_path, self.pin_btn)
         self.pin_svg.setFixedSize(13, 13)
         self.pin_svg.move(3, 3)
         self.pin_svg.setStyleSheet("background: transparent; border: none;")
         self.pin_btn.clicked.connect(self.pin_widget)
-        self.pin_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.pin_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         self.lock_btn = QPushButton()
         self.lock_btn.setFixedSize(20, 20)
@@ -335,12 +298,12 @@ class SmartWidget(QWidget):
                 background: rgba(40, 110, 230, 80%);
             }
         """)
-        self.lock_svg = QSvgWidget(self.lock_path, self.lock_btn)
+        self.lock_svg = CustomSvgWidget(self.lock_path, self.lock_btn)
         self.lock_svg.setFixedSize(13, 13)
         self.lock_svg.move(3, 3)
         self.lock_svg.setStyleSheet("background: transparent; border: none;")
         self.lock_btn.clicked.connect(self.lock_state)
-        self.lock_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.lock_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         self.resize_btn = QPushButton()
         self.resize_btn.setFixedSize(20, 20)
@@ -354,7 +317,7 @@ class SmartWidget(QWidget):
                 background: rgba(40, 110, 230, 80%);
             }
         """)
-        self.resize_svg = QSvgWidget(self.resize_path, self.resize_btn)
+        self.resize_svg = CustomSvgWidget(self.resize_path, self.resize_btn)
         self.resize_svg.setFixedSize(13, 13)
         self.resize_svg.move(3, 3)
         self.resize_svg.setStyleSheet("background: transparent; border: none;")
@@ -372,7 +335,7 @@ class SmartWidget(QWidget):
                 background: rgba(230, 37, 37, 80%);
             }
         """)
-        self.close_svg = QSvgWidget(self.close_path, self.close_btn)
+        self.close_svg = CustomSvgWidget(self.close_path, self.close_btn)
         self.close_svg.setFixedSize(13, 13)
         self.close_svg.move(3, 3)
         self.close_svg.setStyleSheet("background: transparent; border: none;")
@@ -388,80 +351,6 @@ class SmartWidget(QWidget):
             layout.addWidget(btn)
 
         return title_bar
-
-    # def create_main_buttons(self, vertical=False):
-    #     widget = QWidget()
-    #     widget.setStyleSheet("background: transparent;")
-    #     layout_class = QVBoxLayout if vertical else QHBoxLayout
-    #     buttons_layout = layout_class(widget)
-    #     buttons_layout.setContentsMargins(0, 0, 0, 0)
-    #     buttons_layout.setSpacing(0)
-    #
-    #     # Сохраняем ссылку на layout для управления видимостью
-    #     self.buttons_layout = buttons_layout
-    #     self.buttons_widget = widget
-    #     self.buttons_visible = True  # Флаг видимости кнопок
-    #
-    #     buttons_config = {
-    #         'power_btn': {
-    #             'icon': self.power_path,
-    #             'tooltip': 'Выключить Компьютер',
-    #             'action': self.shutdown_system
-    #         },
-    #         'settings_btn': {
-    #             'icon': self.settings_path,
-    #             'tooltip': 'Открыть настройки',
-    #             'action': self.open_settings
-    #         },
-    #         'screen_btn': {
-    #             'icon': self.camera_path,
-    #             'tooltip': 'Скриншот области',
-    #             'action': self.assistant.capture_area
-    #         },
-    #         'mic_toggle_btn': {
-    #             'icon': self.mic_on_path,
-    #             'tooltip': 'Переключить мут в Discord',
-    #             'action': self.toggle_mute
-    #         },
-    #         'link_btn': {
-    #             'icon': self.shortcut_path,
-    #             'tooltip': 'Открыть папку с ярлыками',
-    #             'action': self.assistant.open_folder_shortcuts
-    #         },
-    #         'open_main_btn': {
-    #             'icon': self.open_main_path,
-    #             'tooltip': 'Развернуть основное окно',
-    #             'action': self.open_main_window
-    #         }
-    #     }
-    #
-    #     for btn_name, config in buttons_config.items():
-    #         btn = QPushButton()
-    #         btn.setFixedSize(40, 40)
-    #         btn.setToolTip(config['tooltip'])
-    #         btn.setStyleSheet("""
-    #             QPushButton {
-    #                 background: transparent;
-    #                 border: none;
-    #             }
-    #             QPushButton:hover {
-    #                 background: rgba(90, 90, 90, 0.7);
-    #                 border-radius: 5px;
-    #             }
-    #         """)
-    #         svg = QSvgWidget(config['icon'], btn)
-    #         svg.setFixedSize(30, 30)
-    #         svg.move(5, 5)
-    #         self.buttons_data[btn_name] = {'button': btn, 'svg': svg}
-    #         self.style_manager.apply_color_svg(svg, strength=0.90)
-    #         btn.clicked.connect(config['action'])
-    #         setattr(self, btn_name, btn)
-    #         buttons_layout.addWidget(btn)
-    #
-    #     if vertical:
-    #         buttons_layout.addStretch()
-    #
-    #     return widget
 
     def create_main_buttons(self, vertical=False):
         widget = QWidget()
@@ -483,7 +372,8 @@ class SmartWidget(QWidget):
             'screenshot_check': 'screen_btn',
             'microphone_check': 'mic_toggle_btn',
             'links_check': 'link_btn',
-            'resize_check': 'open_main_btn'
+            'resize_check': 'open_main_btn',
+            'open_youtube': 'open_youtube'
         }
 
         buttons_config = {
@@ -516,6 +406,11 @@ class SmartWidget(QWidget):
                 'icon': self.open_main_path,
                 'tooltip': 'Развернуть основное окно',
                 'action': self.open_main_window
+            },
+            'open_youtube': {
+                'icon': self.youtube_path,
+                'tooltip': 'Запустить YouTube',
+                'action': lambda: self.assistant.start_default_command("ютуб", "open")
             }
         }
 
@@ -555,7 +450,7 @@ class SmartWidget(QWidget):
                     border-radius: 5px;
                 }
             """)
-            svg = QSvgWidget(config['icon'], btn)
+            svg = CustomSvgWidget(config['icon'], btn)
             svg.setFixedSize(30, 30)
             svg.move(5, 5)
             self.buttons_data[btn_name] = {'button': btn, 'svg': svg}
@@ -596,14 +491,14 @@ class SmartWidget(QWidget):
                     background: rgba(90, 90, 90, 0.7);
                 }
             """)
-            svg = QSvgWidget(config['icon'], btn)
+            svg = CustomSvgWidget(config['icon'], btn)
             svg.setFixedSize(20, 20)
             svg.move(3, 0)
             self.player_buttons[btn_name] = {'button': btn, 'svg': svg}
             self.style_manager.apply_color_svg(svg, strength=0.90)
             btn.clicked.connect(config['action'])
             setattr(self, btn_name, btn)
-            layout.addWidget(btn, alignment=Qt.AlignCenter)
+            layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
         return widget
 
@@ -624,11 +519,11 @@ class SmartWidget(QWidget):
 
         for label in [cpu_label, gpu_label, ram_label]:
             label.setStyleSheet("font-weight: bold; color: #ddd;")
-            label.setAlignment(Qt.AlignCenter)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        layout.addWidget(cpu_label, 0, 0, Qt.AlignCenter)
-        layout.addWidget(gpu_label, 0, 1, Qt.AlignCenter)
-        layout.addWidget(ram_label, 0, 2, Qt.AlignCenter)
+        layout.addWidget(cpu_label, 0, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(gpu_label, 0, 1, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(ram_label, 0, 2, Qt.AlignmentFlag.AlignCenter)
 
         # CPU датчики
         self.cpu_temp_label = QLabel("🌡--°C")
@@ -636,10 +531,10 @@ class SmartWidget(QWidget):
         self.cpu_watt_label = QLabel("⚡--W")
         self.cpu_clock_label = QLabel("⚙--МГц")
 
-        layout.addWidget(self.cpu_temp_label, 1, 0, Qt.AlignCenter)
-        layout.addWidget(self.cpu_core_label, 2, 0, Qt.AlignCenter)
-        layout.addWidget(self.cpu_watt_label, 3, 0, Qt.AlignCenter)
-        layout.addWidget(self.cpu_clock_label, 4, 0, Qt.AlignCenter)
+        layout.addWidget(self.cpu_temp_label, 1, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.cpu_core_label, 2, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.cpu_watt_label, 3, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.cpu_clock_label, 4, 0, Qt.AlignmentFlag.AlignCenter)
 
         # GPU датчики
         self.gpu_temp_label = QLabel("🌡--°C")
@@ -647,17 +542,17 @@ class SmartWidget(QWidget):
         self.gpu_watt_label = QLabel("⚡--W")
         self.gpu_clock_label = QLabel("⚙--МГц")
 
-        layout.addWidget(self.gpu_temp_label, 1, 1, Qt.AlignCenter)
-        layout.addWidget(self.gpu_core_label, 2, 1, Qt.AlignCenter)
-        layout.addWidget(self.gpu_watt_label, 3, 1, Qt.AlignCenter)
-        layout.addWidget(self.gpu_clock_label, 4, 1, Qt.AlignCenter)
+        layout.addWidget(self.gpu_temp_label, 1, 1, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.gpu_core_label, 2, 1, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.gpu_watt_label, 3, 1, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.gpu_clock_label, 4, 1, Qt.AlignmentFlag.AlignCenter)
 
         # RAM датчики
         self.ram_usage_label = QLabel("💾--Гб")
         self.ram_over_label = QLabel("💾--Гб")
 
-        layout.addWidget(self.ram_usage_label, 1, 2, Qt.AlignCenter)
-        layout.addWidget(self.ram_over_label, 2, 2, Qt.AlignCenter)
+        layout.addWidget(self.ram_usage_label, 1, 2, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.ram_over_label, 2, 2, Qt.AlignmentFlag.AlignCenter)
 
         # Пустые ячейки для выравнивания
         empty = QLabel("")
@@ -689,7 +584,7 @@ class SmartWidget(QWidget):
                 border: none;
                 border-radius: 5px;
                 padding: 5px;
-                font-size: 12px;
+                font-size: 15px;
             }
             QPushButton:hover {
                 background: rgba(70, 70, 70, 200);
@@ -702,14 +597,14 @@ class SmartWidget(QWidget):
             btn.setStyleSheet(tab_style)
             btn.setCheckable(True)
             btn.setFixedHeight(25)
-            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         tab_buttons_layout.addWidget(self.btn_sensors)
         tab_buttons_layout.addWidget(self.btn_notes)
 
         # Контент вкладок
         self.tab_content = QStackedWidget()
-        self.tab_content.setStyleSheet("background: transparent;")
+        self.tab_content.setStyleSheet("background: transparent; padding: 0 0 20px 0;")
 
         # Вкладка датчиков
         self.sensors_tab = self.create_sensors_tab()
@@ -717,11 +612,11 @@ class SmartWidget(QWidget):
 
         # Вкладка заметок
         self.notes_tab = QTextEdit("Тут можно писать заметки")
-        self.notes_tab.setAlignment(Qt.AlignLeft)
+        self.notes_tab.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.notes_tab.setStyleSheet("""
             QTextEdit {
                 border: none;
-                font-size: 12px;
+                font-size: 15px;
                 color: white;
             }
         """)
@@ -760,15 +655,16 @@ class SmartWidget(QWidget):
             audio_index = content_layout.indexOf(self.audio_widget)
             if audio_index != -1:
                 # Вставляем после audio_widget
-                content_layout.insertWidget(audio_index + 1, self.buttons_widget, alignment=Qt.AlignCenter)
+                content_layout.insertWidget(audio_index + 1, self.buttons_widget,
+                                            alignment=Qt.AlignmentFlag.AlignCenter)
             else:
-                content_layout.addWidget(self.buttons_widget, alignment=Qt.AlignCenter)
+                content_layout.addWidget(self.buttons_widget, alignment=Qt.AlignmentFlag.AlignCenter)
         except Exception as e:
             debug_logger.error(f"Ошибка в relayout_buttons: {e}")
 
     # Методы для перемещения окна
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and not getattr(self, 'is_locked', False):
+        if event.button() == Qt.MouseButton.LeftButton and not getattr(self, 'is_locked', False):
             self.old_pos = event.globalPos()
             self.is_dragging = False  # Флаг для отслеживания начала перемещения
 
@@ -784,7 +680,7 @@ class SmartWidget(QWidget):
             self.is_dragging = True
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.LeftButton and self.is_dragging:
+        if event.button() == Qt.MouseButton.LeftButton and self.is_dragging:
             # Сохраняем окончательные координаты в файл
             state = self.state_manager.load_state()
             state["window_position"] = self.current_position
@@ -798,6 +694,131 @@ class SmartWidget(QWidget):
         size = state["window_size"]
         self.move(QPoint(pos["x"], pos["y"]))
         self.resize(QSize(size["width"], size["height"]))
+
+    def get_font_size_for_family(self, font_family):
+        """Возвращает размер шрифта в зависимости от семейства"""
+        font_sizes = {
+            'digital': '16px',
+            'grape_nuts': '26px',
+            'cinzel_decorative': '26px',
+            'michroma': '20px',
+            'bruno_ace': '20px',
+            'jacquard': '40px',
+            'nova_round': '23px',
+            'orbitron': '20px',
+            'special_elite': '26px',
+            'metamorphous': '24px',
+        }
+
+        # Ищем подходящий размер
+        font_lower = font_family.lower()
+        for font_name, size in font_sizes.items():
+            if font_name in font_lower:
+                return size
+
+        return '18px'
+
+    def apply_font_styles(self, font_family, font_name):
+        """Применить шрифт с индивидуальным размером для каждого семейства"""
+        font_size = self.get_font_size_for_family(font_name)
+
+        debug_logger.info(f"Применение шрифта: {font_family} с размером: {font_size}")
+
+        styles = f"""
+            /* Основные часы */
+            #clock_mini {{
+                font-family: "{font_family}";
+                font-size: {font_size};
+                font-weight: normal;
+                padding: 0px;
+                background: transparent;
+            }}
+
+            /* Заголовок часов */
+            #clock_title {{
+                font-family: "{font_family}";
+                font-size: {font_size};
+                font-weight: normal;
+                padding: 0px 5px, 0px 5px;
+                background: transparent;
+            }}
+        """
+
+        # ✅ ОБЯЗАТЕЛЬНО УСТАНАВЛИВАЕМ objectName ПЕРЕД применением стилей
+        if hasattr(self, 'clock_mini') and not self.clock_mini.objectName():
+            self.clock_mini.setObjectName("clock_mini")
+
+        if hasattr(self, 'clock_title') and not self.clock_title.objectName():
+            self.clock_title.setObjectName("clock_title")
+
+        if hasattr(self, 'clock_widget') and not self.clock_widget.objectName():
+            self.clock_widget.setObjectName("clock_widget")
+
+        # ✅ ПРИМЕНЯЕМ СТИЛИ К КОНКРЕТНЫМ ВИДЖЕТАМ
+        if hasattr(self, 'clock_mini'):
+            self.clock_mini.setStyleSheet(styles)
+
+        if hasattr(self, 'clock_title'):
+            self.clock_title.setStyleSheet(styles)
+
+    def load_font_clock(self):
+        try:
+            # Загружаем состояние
+            state = self.state_manager.load_state()
+
+            # Получаем название шрифта из файла
+            font_name = state.get("font_family", "digital")
+
+            # ✅ Ищем путь к шрифту в fonts_list
+            if font_name in self.fonts_list:
+                font_path = self.fonts_list[font_name]
+
+                # Загружаем шрифт
+                font_id = QFontDatabase.addApplicationFont(font_path)
+                if font_id != -1:
+                    font_families = QFontDatabase.applicationFontFamilies(font_id)
+                    if font_families:
+                        font_family_name = font_families[0]  # переименовали переменную
+
+                        self.apply_font_styles(font_family_name, font_name)
+
+                        debug_logger.info(f"Шрифт '{font_name}' успешно загружен и применен")
+                        return True
+
+        except Exception as e:
+            debug_logger.error(f"Ошибка в load_font_clock: {e}")
+            # Fallback через стили
+            self.apply_fallback_styles()
+
+        return False
+
+    def apply_fallback_styles(self):
+        """Fallback стили"""
+        fallback_styles = """
+            #clock_mini {
+                font-family: "Arial", "Helvetica", sans-serif;
+                font-size: 20px;
+                font-weight: normal;
+                background: transparent;
+            }
+            #clock_title {
+                font-family: "Arial", "Helvetica", sans-serif;
+                font-size: 20px;
+                font-weight: normal;
+                padding: 0 5px 0 5px;
+                background: transparent;
+            }
+        """
+
+        if hasattr(self, 'clock_mini'):
+            if not self.clock_mini.objectName():
+                self.clock_mini.setObjectName("clock_mini")
+            self.clock_mini.setStyleSheet(fallback_styles)
+
+        if hasattr(self, 'clock_title'):
+            if not self.clock_title.objectName():
+                self.clock_title.setObjectName("clock_title")
+            self.clock_title.setStyleSheet(fallback_styles)
 
     def toggle_mute(self):
         try:
@@ -830,11 +851,11 @@ class SmartWidget(QWidget):
 
             # Обновляем флаг поверх окон
             if self.is_pinned:
-                flags |= Qt.WindowStaysOnTopHint
+                flags |= Qt.WindowType.WindowStaysOnTopHint
                 self.pin_svg.load(self.active_pin_path)
                 self.style_manager.apply_color_svg(self.pin_svg, strength=0.95)
             else:
-                flags &= ~Qt.WindowStaysOnTopHint
+                flags &= ~Qt.WindowType.WindowStaysOnTopHint
                 self.pin_svg.load(self.pin_path)
 
             # Применяем флаги и обновляем окно
@@ -865,6 +886,7 @@ class SmartWidget(QWidget):
     def repaint_main_buttons(self):
         self.hide_main_btns()
         self.recreate_buttons()
+        self.load_font_clock()
         self.hide_main_btns()
 
     def recreate_buttons(self):
@@ -893,7 +915,7 @@ class SmartWidget(QWidget):
             self.buttons_widget = self.create_main_buttons(vertical=False)
 
         # Вставляем новые кнопки на ту же позицию
-        self.content_layout.insertWidget(button_index, self.buttons_widget, alignment=Qt.AlignCenter)
+        self.content_layout.insertWidget(button_index, self.buttons_widget, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Удаляем старые кнопки
         self.content_layout.removeWidget(old_buttons_widget)
@@ -905,7 +927,7 @@ class SmartWidget(QWidget):
     def hide_main_btns(self):
         """Переключает компактный режим по высоте (только для скрытия кнопок)"""
         try:
-            if self.animation and self.animation.state() == QPropertyAnimation.Running:
+            if self.animation and self.animation.state() == QPropertyAnimation.State.Running:
                 self.animation.stop()
 
             old_geometry = self.geometry()
@@ -930,7 +952,7 @@ class SmartWidget(QWidget):
             self.animation.setDuration(300)
             self.animation.setStartValue(old_geometry)
             self.animation.setEndValue(QRect(new_x, old_geometry.y(), new_width, 70))
-            self.animation.setEasingCurve(QEasingCurve.InBack)
+            self.animation.setEasingCurve(QEasingCurve.Type.InBack)
 
             def on_animation_finished():
                 self.save_state()
@@ -947,12 +969,12 @@ class SmartWidget(QWidget):
             self.save_notes()
             if hasattr(self, 'current_tab') and self.current_tab == 0:
                 self.close_sensors()
-            if self.animation and self.animation.state() == QPropertyAnimation.Running:
+            if self.animation and self.animation.state() == QPropertyAnimation.State.Running:
                 self.animation.stop()
 
             old_geometry = self.geometry()
-            new_width = 90 if not self.is_compact else 280
-            new_height = 70 if not self.is_compact else 300
+            new_width = 90 if not self.is_compact else 300
+            new_height = 300 if not self.is_compact else 350
 
             # Сохраняем правый край
             right_edge = old_geometry.x() + old_geometry.width()
@@ -968,7 +990,7 @@ class SmartWidget(QWidget):
             self.animation.setDuration(200)
             self.animation.setStartValue(old_geometry)
             self.animation.setEndValue(QRect(new_x, old_geometry.y(), new_width, new_height))
-            self.animation.setEasingCurve(QEasingCurve.OutBack)
+            self.animation.setEasingCurve(QEasingCurve.Type.OutBack)
 
             def on_animation_finished():
                 self.save_state()
@@ -986,8 +1008,8 @@ class SmartWidget(QWidget):
         try:
             # Создаем кастомное окно вместо QMessageBox
             confirm_dialog = QDialog(self)
-            confirm_dialog.setWindowFlags(Qt.Dialog | Qt.FramelessWindowHint)
-            confirm_dialog.setAttribute(Qt.WA_TranslucentBackground)
+            confirm_dialog.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+            confirm_dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
             confirm_dialog.setFixedSize(120, 70)
 
             container = QWidget(confirm_dialog)
@@ -1002,7 +1024,7 @@ class SmartWidget(QWidget):
             container_layout.setSpacing(5)
 
             label = QLabel("Выключить комп?")
-            label.setAlignment(Qt.AlignCenter)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setStyleSheet("""
                 QLabel {
                     color: white;
@@ -1052,7 +1074,7 @@ class SmartWidget(QWidget):
             no_btn.clicked.connect(lambda: confirm_dialog.reject())
 
             # Показываем и ждем результат
-            if confirm_dialog.exec_() == QDialog.Accepted:
+            if confirm_dialog.exec_() == QDialog.DialogCode.Accepted:
                 try:
                     shutdown_windows()
                 except Exception as e:
@@ -1272,7 +1294,7 @@ class SmartWidget(QWidget):
                     border: none;
                     border-radius: 5px;
                     padding: 5px;
-                    font-size: 12px;
+                    font-size: 14px;
                 }
                 QPushButton:hover {
                     background: rgba(70, 70, 70, 200);
@@ -1288,7 +1310,7 @@ class SmartWidget(QWidget):
                 border: none;
                 border-radius: 5px;
                 padding: 5px;
-                font-size: 12px;
+                font-size: 14px;
             }
         """)
 

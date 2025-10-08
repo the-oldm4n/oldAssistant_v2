@@ -2,9 +2,9 @@ import json
 import os
 import re
 
-from PyQt5.QtCore import Qt, QStringListModel
-from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QFileDialog, QPushButton, QLineEdit, QLabel, QComboBox, \
+from PySide6.QtCore import Qt, QStringListModel
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import QFileDialog, QPushButton, QLineEdit, QLabel, QComboBox, \
     QVBoxLayout, QWidget, QDialog, QFrame, QStackedWidget, QHBoxLayout, QListWidget, QListWidgetItem, \
     QCompleter, QDialogButtonBox, QMessageBox, QMenu, QApplication
 from bin.signals import commands_signal
@@ -30,7 +30,7 @@ class CreateCommandsWidget(QWidget):
 
         # Заголовок
         title = QLabel("Для чего создаем команду?")
-        title.setAlignment(Qt.AlignCenter)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("background: transparent; font-size: 16px; font-weight: bold;")
         layout.addWidget(title)
 
@@ -439,18 +439,18 @@ class CommandsWidget(QWidget):
 
         self.title = QLabel("Добавленные команды")
 
-        self.title.setAlignment(Qt.AlignCenter)
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.title.setStyleSheet("background: transparent; font-size: 16px; font-weight: bold;")
         layout.addWidget(self.title)
 
         self.commands_list = QListWidget(self)
         self.commands_list.setFont(QFont("Tahoma"))
         self.commands_list.setStyleSheet("border: none; font-size: 15px;")
-        self.commands_list.setSelectionMode(QListWidget.SingleSelection)
+        self.commands_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
         layout.addWidget(self.commands_list)
 
         # Включаем контекстное меню для списка
-        self.commands_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.commands_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.commands_list.customContextMenuRequested.connect(self.show_context_menu)
 
         # Создаем контекстное меню
@@ -501,7 +501,7 @@ class CommandsWidget(QWidget):
                 parent=self
             )
 
-            if dialog.exec_() == QDialog.Accepted:
+            if dialog.exec_() == QDialog.DialogCode.Accepted:
                 new_key = dialog.new_key
 
                 # Обновляем команду в словаре
@@ -593,7 +593,7 @@ class ProcessLinksWidget(QWidget):
         # Заголовок
         self.title = QLabel("Процессы ярлыков\n(нужны для закрытия)")
 
-        self.title.setAlignment(Qt.AlignCenter)
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.title.setStyleSheet("background: transparent; font-size: 16px; font-weight: bold;")
         main_layout.addWidget(self.title)
 
@@ -732,8 +732,8 @@ class ProcessLinksWidget(QWidget):
         close_button.setStyleSheet("padding: 1px 10px;")
         close_button.clicked.connect(dialog.reject)
 
-        button_box.addButton(ok_button, QDialogButtonBox.AcceptRole)
-        button_box.addButton(close_button, QDialogButtonBox.RejectRole)
+        button_box.addButton(ok_button, QDialogButtonBox.ButtonRole.AcceptRole)
+        button_box.addButton(close_button, QDialogButtonBox.ButtonRole.RejectRole)
 
         layout.addStretch()
 
@@ -771,7 +771,7 @@ class ProcessLinksWidget(QWidget):
         ok_button.clicked.disconnect()
         ok_button.clicked.connect(check_and_accept)
 
-        if dialog.exec() == QDialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             process_edit.setFocus()
 
     def closeEvent(self, event):
@@ -786,10 +786,10 @@ class SearchComboBox(QComboBox):
         self.setEditable(True)
 
         self.completer = QCompleter(self)
-        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self.completer.setFilterMode(Qt.MatchContains)
+        self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.completer.setFilterMode(Qt.MatchFlag.MatchContains)
         self.setCompleter(self.completer)
-        self.setInsertPolicy(QComboBox.NoInsert)
+        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
 
         self._items_data = {}  # {filename: full_path}
 
@@ -819,9 +819,9 @@ class EditCommandDialog(QDialog):
         self.current_key = current_key
         self.current_value = current_value
         self.assistant = assistant
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setFixedSize(320, 150)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.init_ui()
 
     def init_ui(self):
@@ -927,20 +927,20 @@ class EditCommandDialog(QDialog):
         return self.input_field.text().strip()
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             self.close()  # Закрываем только это окно
         else:
             super().keyPressEvent(event)
 
     def mousePressEvent(self, event):
         """Перетаскивание окна за заголовок"""
-        if event.button() == Qt.LeftButton and event.y() < 30:
+        if event.button() == Qt.MouseButton.LeftButton and event.y() < 30:
             self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
             event.accept()
 
     def mouseMoveEvent(self, event):
         """Перетаскивание окна за заголовок"""
-        if hasattr(self, 'drag_position') and event.buttons() == Qt.LeftButton:
+        if hasattr(self, 'drag_position') and event.buttons() == Qt.MouseButton.LeftButton:
             self.move(event.globalPos() - self.drag_position)
             event.accept()
 

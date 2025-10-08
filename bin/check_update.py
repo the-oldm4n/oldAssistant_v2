@@ -2,15 +2,16 @@ import os
 import re
 from typing import Tuple, Optional, Dict
 import requests
-from PyQt5.QtCore import QThread, pyqtSignal
+# from PyQt5.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 from logging_config import debug_logger
 from path_builder import get_path
 
 
 class VersionCheckThread(QThread):
-    version_checked = pyqtSignal(str, str)  # Сигнал для stable и exp версий
-    check_failed = pyqtSignal()  # Сигнал при ошибке
+    version_checked = Signal(str, str)  # Сигнал для stable и exp версий
+    check_failed = Signal()  # Сигнал при ошибке
 
     def run(self):
         try:

@@ -1,11 +1,11 @@
 {
     "window_position": {
-        "x": 1823,
-        "y": 381
+        "x": 1818,
+        "y": 394
     },
     "window_size": {
         "width": 90,
-        "height": 346
+        "height": 397
     },
     "is_compact": true,
     "is_pinned": true,
@@ -14,8 +14,10 @@
         "turnoff_check": true,
         "settings_check": true,
         "screenshot_check": true,
+        "open_youtube": true,
         "microphone_check": true,
         "links_check": true,
         "resize_check": true
-    }
+    },
+    "font_family": "metamorphous"
 }

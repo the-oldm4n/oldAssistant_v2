@@ -5,10 +5,10 @@ from pathlib import Path
 import simpleaudio as sa
 import numpy as np
 import pandas as pd
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QFont, QColor
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QMessageBox, QLabel, QHBoxLayout, QDialog,
-                             QLineEdit, QSlider, QCheckBox, QTextEdit, QDesktopWidget, QListWidget, QListWidgetItem)
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont, QColor
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QMessageBox, QLabel, QHBoxLayout, QDialog,
+                               QLineEdit, QSlider, QCheckBox, QTextEdit, QListWidget, QListWidgetItem)
 from packaging import version
 from bin.apply_color_methods import ApplyColor
 from bin.check_update import check_all_versions
@@ -181,15 +181,15 @@ class CensorCounterWidget(QWidget):
             text="Точно сбросить значения?",
             title="Сброс счетчика",
             message_type="warning",
-            buttons=QMessageBox.Yes | QMessageBox.No
+            buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         # Если пользователь нажал "Нет" или закрыл окно, выходим из метода
-        if result == QMessageBox.No:
+        if result == QMessageBox.StandardButton.No:
             logger.info("Сброс счетчика отменен.")
             debug_logger.info("Сброс счетчика отменен.")
             return
 
-        if result == QMessageBox.Yes:
+        if result == QMessageBox.StandardButton.Yes:
             # Путь к CSV-файлу
             CSV_FILE = get_path('user_settings', 'censor_counter.csv')
 
@@ -303,7 +303,7 @@ class CheckUpdateWidget(QWidget):
 
     def toggle_beta_version(self, state):
         """Включает/отключает проверку экспериментальных версий"""
-        self.assistant.beta_version = state == Qt.Checked
+        self.assistant.beta_version = state == Qt.CheckState.Checked
 
     def wait_and_rollback(self):
         # Показываем диалог и получаем результат
@@ -311,11 +311,11 @@ class CheckUpdateWidget(QWidget):
             "Уверены в своих действиях?",
             "Запрос на откат версии",
             "question",
-            buttons=QMessageBox.Ok
+            buttons=QMessageBox.StandardButton.Ok
         )
 
         # Обрабатываем результат
-        if result == QMessageBox.Ok:
+        if result == QMessageBox.StandardButton.Ok:
             self.rollback_stable_version()
         else:
             pass
@@ -447,10 +447,10 @@ class DebuglogWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedSize(1000, 900)
-        screen_geometry = QDesktopWidget().screenGeometry()
+        screen_geometry = self.screen().availableGeometry()
         x = (screen_geometry.width() - self.width()) // 2
         y = (screen_geometry.height() - self.height()) // 2
         self.move(x, y)
@@ -495,7 +495,7 @@ class DebuglogWindow(QDialog):
         self.log_area.setStyleSheet("background: transparent;")
         self.log_area.setReadOnly(True)
         self.log_area.setFont(QFont("Consolas"))
-        self.log_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.log_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.load_debuglog()
 
         layout.addWidget(self.log_area)
@@ -507,13 +507,13 @@ class DebuglogWindow(QDialog):
 
     def mousePressEvent(self, event):
         """Перетаскивание окна за заголовок"""
-        if event.button() == Qt.LeftButton and event.y() < 30:
+        if event.button() == Qt.MouseButton.LeftButton and event.y() < 30:
             self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
             event.accept()
 
     def mouseMoveEvent(self, event):
         """Перетаскивание окна за заголовок"""
-        if hasattr(self, 'drag_position') and event.buttons() == Qt.LeftButton:
+        if hasattr(self, 'drag_position') and event.buttons() == Qt.MouseButton.LeftButton:
             self.move(event.globalPos() - self.drag_position)
             event.accept()
 
@@ -521,7 +521,7 @@ class DebuglogWindow(QDialog):
         path = get_path("log", "debug_assist.log")
         try:
             if not os.path.exists(path):
-                self.logger.info("Файл логов не найден. Создаем новый.")
+                logger.info("Файл логов не найден. Создаем новый.")
                 with open(path, "w", encoding="utf-8"):
                     pass  # Создаем пустой файл
 
@@ -565,7 +565,7 @@ class DebuglogWindow(QDialog):
                 self.last_position = file.tell()
 
         except Exception as e:
-            self.logger.error(f"Ошибка при чтении файла логов: {e}")
+            logger.error(f"Ошибка при чтении файла логов: {e}")
             self.log_area.append(f"Ошибка при чтении файла логов: {e}")
 
 
@@ -603,7 +603,7 @@ class RelaxWidget(QWidget):
         self.label.setStyleSheet("background: transparent;")
 
         # Создание горизонтального ползунка
-        self.slider = QSlider(Qt.Horizontal, self)
+        self.slider = QSlider(Qt.Orientation.Horizontal, self)
         self.slider.setStyleSheet("background: transparent;")
         self.slider.setMinimum(0)  # Минимальное значение
         self.slider.setMaximum(100)  # Максимальное значение

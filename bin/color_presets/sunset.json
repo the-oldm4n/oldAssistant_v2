@@ -121,7 +121,13 @@
     "update_label": {
         "background": "transparent",
         "color": "#e3d2ff",
-        "font-size": "12px"
+        "font-size": "13px"
+    },
+    "clock_mini": {
+        "color": "#e3d2ff"
+    },
+    "clock_title": {
+        "color": "#e3d2ff"
     },
     "TitleBar": {
         "background": "transparent",

@@ -1,12 +1,43 @@
 import os
 import sys
 
+from path_builder import get_path
+
 censored_list = ['сука', 'сучка', 'пизда', 'ебаный', 'ебать', "ёб твою мать",
                  "ебаный рот", 'нахуй', 'хуй', 'блять', 'блядь', 'ебучий', 'епта',
                  'ёпта', 'гандон', 'пидор', 'пидорас', 'пидар', "залупа", "пиздюк",
                  "ебанутый", "ебарь", "ебанат", "еблан", "ебло", "уебок", "уебан",
                  "ебливый", "еблище", "заебись", "наебать", "объебать", "хуятина",
                  "подъебать", "разъебать", "съебать", "елдак", "шлюха"]
+
+font_digital = get_path("bin", "fonts", "Digital Numbers", "DigitalNumbers-Regular.ttf")
+font_grape_nuts = get_path("bin", "fonts", "Grape_Nuts", "GrapeNuts-Regular.ttf")
+font_cinzel_decorative = get_path("bin", "fonts", "Cinzel_Decorative", "CinzelDecorative-Regular.ttf")
+font_michroma = get_path("bin", "fonts", "Michroma", "Michroma-Regular.ttf")
+font_bruno_ace = get_path("bin", "fonts", "Bruno_Ace", "BrunoAce-Regular.ttf")
+font_jacquard = get_path("bin", "fonts", "Jacquard_12", "Jacquard12-Regular.ttf")
+font_nova_round = get_path("bin", "fonts", "Nova_Round", "NovaRound-Regular.ttf")
+font_orbitron = get_path("bin", "fonts", "Orbitron", "static", "Orbitron-Regular.ttf")
+font_special_elite = get_path("bin", "fonts", "Special_Elite", "SpecialElite-Regular.ttf")
+font_metamorphous = get_path("bin", "fonts", "Metamorphous", "Metamorphous-Regular.ttf")
+
+fonts_list = {
+    "digital": font_digital,
+    "grape_nuts": font_grape_nuts,
+    "cinzel_decorative": font_cinzel_decorative,
+    "michroma": font_michroma,
+    "bruno_ace": font_bruno_ace,
+    "nova_round": font_nova_round,
+    "jacquard": font_jacquard,
+    "orbitron": font_orbitron,
+    "special_elite": font_special_elite,
+    "metamorphous": font_metamorphous,
+}
+
+commands_list = {
+    "ютуб": "www.youtube.com"
+}
+
 
 def get_audio_paths(speaker):
     """

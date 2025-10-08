@@ -2,12 +2,10 @@ import json
 import math
 import os
 import re
-
-from PyQt5.QtCore import pyqtSignal, Qt, QTimer
-from PyQt5.QtGui import QColor, QPainter, QLinearGradient
-from PyQt5.QtWidgets import QLabel, QVBoxLayout, QPushButton, QSpinBox, QSlider, QDialog, QWidget, QTabWidget, \
+from PySide6.QtCore import Signal, Qt, QTimer
+from PySide6.QtGui import QColor, QPainter, QLinearGradient
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QPushButton, QSpinBox, QSlider, QDialog, QWidget, QTabWidget, \
     QColorDialog, QCheckBox, QHBoxLayout, QComboBox, QApplication, QLineEdit
-
 from bin.apply_color_methods import ApplyColor
 from bin.signals import color_signal
 from logging_config import debug_logger
@@ -17,7 +15,7 @@ from path_builder import get_path
 class ColorSettingsWindow(QDialog):
     """Окно изменения оформления интерфейса с поддержкой градиентов"""
 
-    colorChanged = pyqtSignal()  # Сигнал изменения цвета
+    colorChanged = Signal()  # Сигнал изменения цвета
 
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
@@ -31,9 +29,9 @@ class ColorSettingsWindow(QDialog):
         os.makedirs(self.custom_presets, exist_ok=True)
 
         # Настройка окна без рамки
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setFixedSize(500, 600)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         # Инициализация переменных для цветов
         self.bg_color = ""
@@ -77,21 +75,6 @@ class ColorSettingsWindow(QDialog):
         """Применяет все стили к окну"""
         try:
             self.styles = self.style_manager.load_styles()
-            # Применение к конкретным виджетам
-            # self.style_manager.apply_to_widget(self.label_version, 'label_version')
-            # self.style_manager.apply_to_widget(self.update_label, 'update_label')
-            #
-            # self.style_manager.apply_progressbar(key="QPushButton", widget=self.progress_load, style="parts")
-            # Применение к SVG
-            # self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
-            # self.style_manager.apply_color_svg(self.settings_svg, strength=0.90)
-            # self.style_manager.apply_color_svg(self.shortcut_svg, strength=0.90)
-            # self.style_manager.apply_color_svg(self.commands_svg, strength=0.90)
-            # self.style_manager.apply_color_svg(self.guide_svg, strength=0.90)
-            # self.style_manager.apply_color_svg(self.other_svg, strength=0.90)
-            # self.style_manager.apply_color_svg(self.power_svg, strength=0.90)
-            # self.style_manager.apply_color_svg(self.widget_svg, strength=0.90)
-            # self.style_manager.apply_color_svg(self.icon_svg, strength=0.95)
 
             # Применение общего стиля окна
             # if hasattr(self, 'central_widget'):
@@ -115,19 +98,18 @@ class ColorSettingsWindow(QDialog):
 
             # Устанавливаем стиль для текущего окна
             self.setStyleSheet(style_sheet)
-            self.apply_menu_styles(self.menu_tray)
         except Exception as e:
             debug_logger.error(f"Ошибка в методе apply_styles: {e}")
 
     def title_bar_mouse_press(self, event):
         """Обработка нажатия мыши на заголовок"""
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.drag_pos = event.globalPos() - self.frameGeometry().topLeft()
             event.accept()
 
     def title_bar_mouse_move(self, event):
         """Обработка перемещения мыши при удерживании на заголовке"""
-        if self.drag_pos and event.buttons() == Qt.LeftButton:
+        if self.drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
             # Получаем новую позицию основного окна
             new_pos = event.globalPos() - self.drag_pos
             self.move(new_pos)
@@ -287,10 +269,10 @@ class ColorSettingsWindow(QDialog):
         angle_label = QLabel(f'Угол градиента (0-360°):')
         angle_label.setStyleSheet("background: transparent")
         gradient_layout.addWidget(angle_label)
-        angle_slider = QSlider(Qt.Horizontal)
+        angle_slider = QSlider(Qt.Orientation.Horizontal)
         angle_slider.setRange(0, 360)
         angle_slider.setTickInterval(45)
-        angle_slider.setTickPosition(QSlider.TicksBelow)
+        angle_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         angle_slider.valueChanged.connect(lambda angle: self.update_gradient_angle(element_type, angle))
         gradient_layout.addWidget(angle_slider)
         angle_spin = QSpinBox()
@@ -344,12 +326,12 @@ class ColorSettingsWindow(QDialog):
 
         # Превью текста
         self.text_preview = QLabel("Пример текста")
-        self.text_preview.setAlignment(Qt.AlignCenter)
+        self.text_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.text_preview)
 
         # Превью текста
         self.text_edit_preview = QLabel("Пример текста в логах")
-        self.text_edit_preview.setAlignment(Qt.AlignCenter)
+        self.text_edit_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.text_edit_preview)
 
     def choose_text_color(self):
@@ -394,16 +376,31 @@ class ColorSettingsWindow(QDialog):
 
     def toggle_gradient(self, element_type, state):
         """Включает/выключает градиент для конкретного элемента"""
-        enabled = state == Qt.Checked
+
+        # ✅ ИСПРАВЛЕНО: ПРАВИЛЬНОЕ ОПРЕДЕЛЕНИЕ СОСТОЯНИЯ ДЛЯ PYSIDE6
+        from PySide6.QtCore import Qt
+
+        # state может быть: 0, 2, True, False, Qt.CheckState
+        if isinstance(state, Qt.CheckState):
+            enabled = state == Qt.CheckState.Checked
+        elif isinstance(state, int):
+            # 0 = Unchecked, 2 = Checked (в PySide6!)
+            enabled = state == 2
+        else:
+            # bool или другие типы
+            enabled = bool(state)
+
+        debug_logger.info(f"🎛️ toggle_gradient: {element_type}, state={state}, type={type(state)}, enabled={enabled}")
+
         self.gradient_settings[element_type]['enabled'] = enabled
 
         widgets = self.gradient_settings[element_type]['widgets']
-        # --- ЭТИ СТРОКИ УПРАВЛЯЮТ ДОСТУПНОСТЬЮ ---
+
+        # Включаем/выключаем виджеты
         widgets['color1_btn'].setEnabled(enabled)
         widgets['color2_btn'].setEnabled(enabled)
         widgets['slider'].setEnabled(enabled)
         widgets['spinbox'].setEnabled(enabled)
-        # ------------------------------------------
 
         if enabled and self.gradient_settings[element_type]['color1'] and self.gradient_settings[element_type][
             'color2']:
@@ -540,7 +537,8 @@ class ColorSettingsWindow(QDialog):
             # ЯВНО ВЫЗЫВАЕМ toggle_gradient ПОСЛЕ setChecked
             # Это необходимо, чтобы обновить видимость gradient_group и доступность других элементов
             # в соответствии с загруженным значением settings['enabled']
-            self.toggle_gradient(element_type, Qt.Checked if settings['enabled'] else Qt.Unchecked)
+            self.toggle_gradient(element_type,
+                                 Qt.CheckState.Checked if settings['enabled'] else Qt.CheckState.Unchecked)
             if 'solid_color_btn' in widgets:
                 widgets['solid_color_btn'].setText('Выбрать цвет')
 
@@ -629,12 +627,6 @@ class ColorSettingsWindow(QDialog):
                 "WM_MutablePanel": {
                     "background-color": "transparent"
                 },
-                # "WSBgTabWidget": {
-                #     "background": "transparent",
-                #     "border": f"1px solid {self.get_gradient_css('borders')}" if
-                #     self.gradient_settings['borders']['enabled'] else f"1px solid {self.border_color}",
-                #     "border-radius": "15px"
-                # },
                 "TabWidget": {
                     "background": "transparent"
                 },
@@ -696,7 +688,13 @@ class ColorSettingsWindow(QDialog):
                 "update_label": {
                     "background": "transparent",
                     "color": self.text_edit_color,
-                    "font-size": "12px"
+                    "font-size": "13px"
+                },
+                "clock_mini": {
+                    "color": self.text_edit_color
+                },
+                "clock_title": {
+                    "color": self.text_edit_color
                 },
                 "TitleBar": {
                     "background": "transparent",
@@ -815,16 +813,6 @@ class ColorSettingsWindow(QDialog):
             f"stop:1 {settings['color2']})"
         )
 
-    # def generate_stylesheet(self, styles):
-    #     """Генерирует строку CSS из словаря стилей"""
-    #     stylesheet = ""
-    #     for selector, properties in styles.items():
-    #         stylesheet += f"{selector} {{\n"
-    #         for prop, value in properties.items():
-    #             stylesheet += f"    {prop}: {value};\n"
-    #         stylesheet += "}\n"
-    #     return stylesheet
-
     def generate_stylesheet(self, styles):
         """Генерирует строку CSS с правильными селекторами"""
         stylesheet = ""
@@ -911,7 +899,7 @@ class ColorSettingsWindow(QDialog):
         """Сохраняет текущие стили как новый пресет."""
         dialog = SavePresetDialog(self)
 
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec_() != QDialog.DialogCode.Accepted:
             return  # Пользователь отменил действие
 
         preset_name = dialog.get_text().strip()
@@ -993,12 +981,6 @@ class ColorSettingsWindow(QDialog):
                     "WM_MutablePanel": {
                         "background-color": "transparent"
                     },
-                    # "WSBgTabWidget": {
-                    #     "background": "transparent",
-                    #     "border": f"1px solid {self.get_gradient_css('borders')}" if
-                    #     self.gradient_settings['borders']['enabled'] else f"1px solid {self.border_color}",
-                    #     "border-radius": "15px"
-                    # },
                     "TabWidget": {
                         "background": "transparent"
                     },
@@ -1060,7 +1042,13 @@ class ColorSettingsWindow(QDialog):
                     "update_label": {
                         "background": "transparent",
                         "color": self.text_edit_color,
-                        "font-size": "12px"
+                        "font-size": "13px"
+                    },
+                    "clock_mini": {
+                        "color": self.text_edit_color
+                    },
+                    "clock_title": {
+                        "color": self.text_edit_color
                     },
                     "TitleBar": {
                         "background": "transparent",
@@ -1266,9 +1254,9 @@ class SavePresetDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Dialog)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setFixedSize(320, 150)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.init_ui()
 
     def init_ui(self):
@@ -1364,7 +1352,7 @@ class SavePresetDialog(QDialog):
         return self.input_field.text().strip()
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             self.close()  # Закрываем только это окно
         else:
             super().keyPressEvent(event)
@@ -1374,11 +1362,19 @@ class SavePresetDialog(QDialog):
         self.position_strategy = self.center_to_parent()
 
     def ensure_on_screen(self):
-        screen_geometry = QApplication.desktop().availableGeometry()
+        # Получаем экран, на котором находится окно
+        screen = self.screen()
+        if not screen:
+            # Если окно еще не показано, берем основной экран
+            screen = QApplication.primaryScreen()
+
+        screen_geometry = screen.availableGeometry()
+
         if not screen_geometry.contains(self.geometry()):
             self.move(
                 min(screen_geometry.right() - self.width(), max(screen_geometry.left(), self.x())),
-                min(screen_geometry.bottom() - self.height(), max(screen_geometry.top(), self.y())))
+                min(screen_geometry.bottom() - self.height(), max(screen_geometry.top(), self.y()))
+            )
 
     def center_to_parent(self):
         """Центрирует по горизонтали и позиционирует чуть ниже заголовка родителя"""
@@ -1399,12 +1395,12 @@ class SavePresetDialog(QDialog):
 
     def mousePressEvent(self, event):
         """Перетаскивание окна за заголовок"""
-        if event.button() == Qt.LeftButton and event.y() < 30:
+        if event.button() == Qt.MouseButton.LeftButton and event.y() < 30:
             self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
             event.accept()
 
     def mouseMoveEvent(self, event):
         """Перетаскивание окна за заголовок"""
-        if hasattr(self, 'drag_position') and event.buttons() == Qt.LeftButton:
+        if hasattr(self, 'drag_position') and event.buttons() == Qt.MouseButton.LeftButton:
             self.move(event.globalPos() - self.drag_position)
             event.accept()

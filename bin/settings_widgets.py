@@ -2,13 +2,18 @@ import json
 import os
 import sounddevice as sd
 import winshell
+from PySide6.QtGui import QFontDatabase, QFont
+
+from bin.lists import fonts_list
 from bin.signals import color_signal, widget_btns_signal
 from bin.speak_functions import thread_react
 from bin.choose_color_window import ColorSettingsWindow
 from path_builder import get_path
 from logging_config import logger, debug_logger
-from PyQt5.QtCore import pyqtSignal, QTimer
-from PyQt5.QtWidgets import QFileDialog, QLineEdit, QSlider, QComboBox, QWidget, QHBoxLayout
+from PySide6.QtCore import Signal, QTimer
+from PySide6.QtWidgets import QFileDialog, QLineEdit, QSlider, QComboBox, QWidget, QHBoxLayout
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QCheckBox, QApplication, QFrame, QPushButton)
+from PySide6.QtCore import Qt
 
 speakers = dict(Персик="persik", Джарвис="jarvis", Пласид='placide', Бестия='rogue',
                 Джонни='johnny', СанСаныч='sanych', Санбой='sanboy', Woman='tigress', Стейтем='stathem')
@@ -22,7 +27,7 @@ class InterfaceWidget(QWidget):
         self.assistant = assistant
         self.init_ui()
 
-    style_applied = pyqtSignal(dict)  # Сигнал для передачи стиля
+    style_applied = Signal(dict)  # Сигнал для передачи стиля
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -31,7 +36,7 @@ class InterfaceWidget(QWidget):
 
         # Заголовок
         title = QLabel("Выбор стиля интерфейса")
-        title.setAlignment(Qt.AlignCenter)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("background: transparent; font-size: 16px; font-weight: bold;")
         layout.addWidget(title)
 
@@ -124,7 +129,7 @@ class InterfaceWidget(QWidget):
         layout.addStretch()
 
         btn_default = QPushButton("Default")
-        btn_default.clicked.connect(lambda: self.apply_style_file("default.json"))
+        btn_default.clicked.connect(lambda: self.apply_style_file("dark.json"))
         layout.addWidget(btn_default)
 
         # Кнопка создания своего стиля
@@ -216,7 +221,7 @@ class SettingsWidget(QWidget):
     """
     Виджет общих настроек
     """
-    voice_changed = pyqtSignal(str)
+    voice_changed = Signal(str)
 
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
@@ -261,7 +266,7 @@ class SettingsWidget(QWidget):
         # Поле для ввода имени ассистента
         name_label = QLabel("Основное имя ассистента:", self)
         name_label.setStyleSheet("background: transparent;")
-        layout.addWidget(name_label, alignment=Qt.AlignLeft)
+        layout.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.name_input = QLineEdit(self)
         self.name_input.setText(self.assistant.assistant_name)
@@ -269,9 +274,9 @@ class SettingsWidget(QWidget):
 
         # Поле для ввода имени №2
         name2_label = QLabel("Дополнительно:", self)
-        name2_label.setAttribute(Qt.WA_StyledBackground, True)
+        name2_label.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         name2_label.setStyleSheet("background: transparent;")
-        layout.addWidget(name2_label, alignment=Qt.AlignLeft)
+        layout.addWidget(name2_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.name2_input = QLineEdit(self)
         self.name2_input.setText(self.assistant.assist_name2)
@@ -285,7 +290,7 @@ class SettingsWidget(QWidget):
         # Выбор голоса
         voice_label = QLabel("Выберите голос:", self)
         voice_label.setStyleSheet("background: transparent;")
-        layout.addWidget(voice_label, alignment=Qt.AlignLeft)
+        layout.addWidget(voice_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.voice_combo = QComboBox(self)
         self.voice_combo.addItems(list(speakers.keys()))
@@ -297,9 +302,9 @@ class SettingsWidget(QWidget):
         # Громкость
         volume_label = QLabel("Громкость ассистента", self)
         volume_label.setStyleSheet("background: transparent;")
-        layout.addWidget(volume_label, alignment=Qt.AlignLeft)
+        layout.addWidget(volume_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
-        self.volume_slider = QSlider(Qt.Horizontal, self)
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal, self)
         self.volume_slider.setStyleSheet("background: transparent;")
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(int(self.assistant.volume_assist * 100))
@@ -313,7 +318,7 @@ class SettingsWidget(QWidget):
         # Путь к Steam
         steam_label = QLabel("Укажите полный путь к файлу steam.exe", self)
         steam_label.setStyleSheet("background: transparent;")
-        layout.addWidget(steam_label, alignment=Qt.AlignLeft)
+        layout.addWidget(steam_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.steam_path_input = QLineEdit(self)
         self.steam_path_input.setText(self.assistant.steam_path)
@@ -322,19 +327,19 @@ class SettingsWidget(QWidget):
         select_steam_button = QPushButton("Выбрать папку", self)
         select_steam_button.setStyleSheet("padding-left: 5px; padding-right: 5px;")
         select_steam_button.clicked.connect(self.select_steam_folder)
-        layout.addWidget(select_steam_button, alignment=Qt.AlignRight)
+        layout.addWidget(select_steam_button, alignment=Qt.AlignmentFlag.AlignRight)
 
         layout.addStretch()
 
         self.default_btn = QPushButton("По умолчанию")
         self.default_btn.setStyleSheet("padding-left: 5px; padding-right: 5px;")
         self.default_btn.clicked.connect(self.set_default_settings)
-        layout.addWidget(self.default_btn, alignment=Qt.AlignLeft)
+        layout.addWidget(self.default_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # Кнопка применения
         apply_button = QPushButton("Применить", self)
         apply_button.clicked.connect(self.apply_settings)
-        layout.addWidget(apply_button, alignment=Qt.AlignBottom)
+        layout.addWidget(apply_button, alignment=Qt.AlignmentFlag.AlignBottom)
 
     def update_volume(self, value):
         self.assistant.volume_assist = value / 100.0
@@ -387,11 +392,11 @@ class SettingsWidget(QWidget):
         default_settings = {
             "voice": "johnny",
             "assistant_name": "джон",
-            "assist_name2": "джон",
+            "assist_name2": "джонни",
             "assist_name3": "джон",
             "steam_path": "D:/Steam/steam.exe",
             "is_censored": True,
-            "volume_assist": 0.2,
+            "volume_assist": 0.15,
             "run_updater": True,
             "minimize_to_tray": False,
             "start_win": True,
@@ -509,10 +514,6 @@ class OtherSettingsWidget(QWidget):
         self.keep_watch_check.stateChanged.connect(self.toggle_keep_watch)
         layout.addWidget(self.keep_watch_check)
 
-        self.get_widget_btn = QPushButton("Открыть виджет", self)
-        self.get_widget_btn.clicked.connect(self.get_widget)
-        layout.addWidget(self.get_widget_btn)
-
         self.add_link_btn = QPushButton("Добавить ярлык на Рабочий стол", self)
         self.add_link_btn.clicked.connect(self.add_link_desktop)
         layout.addWidget(self.add_link_btn)
@@ -549,9 +550,6 @@ class OtherSettingsWidget(QWidget):
         """Обработка чекбокса 'Запускать виджет'"""
         self.assistant.is_keep_watch = self.keep_watch_check.isChecked()
         self.assistant.save_settings()
-
-    def get_widget(self):
-        self.assistant.open_widget()
 
     def add_link_desktop(self):
         """
@@ -714,73 +712,84 @@ class OtherSettingsWidget(QWidget):
             debug_logger.error("Метод close_settings не найден в assistant")
 
 
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QCheckBox,
-                             QApplication, QFrame, QPushButton)
-from PyQt5.QtCore import Qt
-
-
 class DraggableCheckbox(QCheckBox):
     def __init__(self, text, parent=None):
         super().__init__(text, parent)
         self.drag_mode_enabled = False
         self.is_dragging = False
-        self.setCursor(Qt.ArrowCursor)
+        self.setCursor(Qt.CursorShape.ArrowCursor)
         self.original_pos = None
 
     def set_drag_mode(self, enabled):
         self.drag_mode_enabled = enabled
         if enabled:
-            self.setCursor(Qt.OpenHandCursor)
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
         else:
-            self.setCursor(Qt.ArrowCursor)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self.drag_mode_enabled:
+        if event.button() == Qt.MouseButton.LeftButton and self.drag_mode_enabled:
             self.is_dragging = False
             self.drag_start_position = event.pos()
             self.original_pos = self.pos()
-        super().mousePressEvent(event)
+        else:
+            # В обычном режиме разрешаем стандартную обработку чекбокса
+            super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if not self.drag_mode_enabled:
-            return
+            return super().mouseMoveEvent(event)
 
-        if not (event.buttons() & Qt.LeftButton):
+        if not (event.buttons() & Qt.MouseButton.LeftButton):
             return
 
         if not hasattr(self, 'drag_start_position'):
             return
 
         if not self.is_dragging:
+            # В PySide6 используем startDragDistance как свойство
             if (event.pos() - self.drag_start_position).manhattanLength() < QApplication.startDragDistance():
                 return
 
             # Начинаем перетаскивание
             self.is_dragging = True
-            self.setCursor(Qt.ClosedHandCursor)
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
             # Сообщаем родителю о начале перетаскивания
-            if hasattr(self.parent(), 'start_dragging'):
-                self.parent().start_dragging(self)
+            parent = self.parent()
+            while parent and not hasattr(parent, 'start_dragging'):
+                parent = parent.parent()
+
+            if parent and hasattr(parent, 'start_dragging'):
+                parent.start_dragging(self)
 
         # Обновляем позицию перетаскиваемого элемента
         if self.is_dragging:
-            if hasattr(self.parent(), 'update_drag_position'):
+            parent = self.parent()
+            while parent and not hasattr(parent, 'update_drag_position'):
+                parent = parent.parent()
+
+            if parent and hasattr(parent, 'update_drag_position'):
                 global_pos = self.mapToGlobal(event.pos())
-                local_pos = self.parent().mapFromGlobal(global_pos)
-                self.parent().update_drag_position(local_pos, self)
+                local_pos = parent.mapFromGlobal(global_pos)
+                parent.update_drag_position(local_pos, self)
 
     def mouseReleaseEvent(self, event):
-        if hasattr(self, 'drag_start_position') and self.is_dragging:
+        if event.button() == Qt.MouseButton.LeftButton and self.is_dragging:
             self.is_dragging = False
-            self.setCursor(Qt.OpenHandCursor)
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
 
             # Сообщаем родителю о завершении перетаскивания
-            if hasattr(self.parent(), 'stop_dragging'):
-                self.parent().stop_dragging(self)
+            parent = self.parent()
+            while parent and not hasattr(parent, 'stop_dragging'):
+                parent = parent.parent()
+
+            if parent and hasattr(parent, 'stop_dragging'):
+                parent.stop_dragging(self)
 
         if hasattr(self, 'drag_start_position'):
             delattr(self, 'drag_start_position')
+
         super().mouseReleaseEvent(event)
 
 
@@ -882,7 +891,7 @@ class DragContainer(QFrame):
 
         # Сбрасываем стиль и курсор
         widget.setStyleSheet("")
-        widget.setCursor(Qt.OpenHandCursor)
+        widget.setCursor(Qt.CursorShape.OpenHandCursor)
 
         # Скрываем индикатор
         self.drop_indicator.hide()
@@ -902,20 +911,15 @@ class DragContainer(QFrame):
             if widget and widget != self.placeholder and widget != self.dragged_widget:
                 widget_rect = widget.geometry()
 
-                # Буферные зоны вокруг каждого элемента
-                top_zone = widget_rect.top() - 10
-                bottom_zone = widget_rect.bottom() + 10
-
-                # Проверяем попадание в буферные зоны
-                if top_zone <= pos.y() <= bottom_zone:
+                # Проверяем попадание в область виджета
+                if widget_rect.contains(pos):
                     # Решаем, вставлять до или после элемента
                     if pos.y() < widget_rect.center().y():
-                        closest_index = i  # Вставляем перед этим элементом
+                        return i  # Вставляем перед этим элементом
                     else:
-                        closest_index = i + 1  # Вставляем после этого элемента
-                    break
+                        return i + 1  # Вставляем после этого элемента
 
-                # Если не попали в буферные зоны, ищем ближайший элемент
+                # Если не попали в область, ищем ближайший элемент
                 distance_to_top = abs(widget_rect.top() - pos.y())
                 distance_to_bottom = abs(widget_rect.bottom() - pos.y())
                 distance = min(distance_to_top, distance_to_bottom)
@@ -965,9 +969,12 @@ class SettingsWidgetPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.checkboxes = {}
+        self.assistant = parent
         self.widget_state = get_path("user_settings", "widget_state.json")
         self.drag_mode = False
+        self.fonts_list = fonts_list
         self.init_ui()
+        self.load_saved_font()
         self.load_buttons_settings()
 
     def init_ui(self):
@@ -979,6 +986,10 @@ class SettingsWidgetPanel(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
+        self.get_widget_btn = QPushButton("Открыть виджет", self)
+        self.get_widget_btn.clicked.connect(self.get_widget)
+        layout.addWidget(self.get_widget_btn)
+
         self.title = QLabel("Настройка кнопок на виджет-панели")
         self.title.setStyleSheet("font-size: 16px; background: transparent")
         layout.addWidget(self.title)
@@ -988,25 +999,139 @@ class SettingsWidgetPanel(QWidget):
         self.drag_toggle_btn.clicked.connect(self.toggle_drag_mode)
         layout.addWidget(self.drag_toggle_btn)
 
+        drag_layout = QVBoxLayout()
+
         # Создаем контейнер для перетаскивания
         self.drag_container = DragContainer()
         self.drag_container.setMinimumHeight(300)
         self.drag_container.setStyleSheet("background: transparent")
-        layout.addWidget(self.drag_container)
+        self.drag_container.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.drag_container.layout.setSpacing(10)  # Добавляем отступы между чекбоксами
+        self.drag_container.layout.setContentsMargins(5, 5, 5, 5)
+
+        drag_layout.addWidget(self.drag_container)
 
         # Создаем чекбоксы
         self.create_checkboxes()
+        layout.addLayout(drag_layout)
+
+        # Создание виджетов
+        font_layout = QHBoxLayout()
+
+        # Лейбл с временем для демонстрации шрифта
+        self.font_preview_label = QLabel("12:34")
+        self.font_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.font_preview_label.setStyleSheet("font-size: 24px; background: transparent; padding: 5px;")
+
+        self.label_font_list = QLabel("Выберите шрифт:")
+        self.label_font_list.setStyleSheet("background: transparent;")
+
+        self.font_combo = QComboBox()
+        self.font_combo.addItems(self.fonts_list.keys())
+        font_layout.addWidget(self.label_font_list)
+        font_layout.addWidget(self.font_combo)
+        font_layout.addWidget(self.font_preview_label)
+        layout.addLayout(font_layout)
+        self.setup_font_selector()
 
         layout.addStretch()
 
         self.default_btn = QPushButton("По умолчанию")
         self.default_btn.setStyleSheet("padding-left: 10px; padding-right: 10px")
         self.default_btn.clicked.connect(self.set_default_buttons_settings)
-        layout.addWidget(self.default_btn, alignment=Qt.AlignRight)
+        layout.addWidget(self.default_btn, alignment=Qt.AlignmentFlag.AlignRight)
 
         self.save_btn = QPushButton("Применить")
         self.save_btn.clicked.connect(self.save_order)
         layout.addWidget(self.save_btn)
+
+    def get_widget(self):
+        self.assistant.open_widget()
+
+    def setup_font_selector(self):
+        """Настройка выбора шрифта"""
+        # Подключаем сигнал изменения выбора
+        self.font_combo.currentTextChanged.connect(self.change_font_preview)
+
+        # Устанавливаем начальный шрифт
+        self.change_font_preview(self.font_combo.currentText())
+
+    def change_font_preview(self, font_name):
+        """Изменение шрифта в превью"""
+        if font_name in self.fonts_list:
+            font_path = self.fonts_list[font_name]
+            # Загружаем шрифт
+            font_id = QFontDatabase.addApplicationFont(font_path)
+            if font_id != -1:
+                font_families = QFontDatabase.applicationFontFamilies(font_id)
+                if font_families:
+                    font_family = font_families[0]
+                    font = QFont(font_family, 24)  # Размер 24 для превью
+                    self.font_preview_label.setFont(font)
+
+    def get_selected_font(self):
+        """Получить выбранный шрифт"""
+        font_name = self.font_combo.currentText()
+        if font_name in self.fonts_list:
+            return self.fonts_list[font_name]
+        return None
+
+    def get_selected_font_family(self):
+        """Получить семейство выбранного шрифта"""
+        font_name = self.font_combo.currentText()
+        if font_name in self.fonts_list:
+            font_path = self.fonts_list[font_name]
+            font_id = QFontDatabase.addApplicationFont(font_path)
+            if font_id != -1:
+                font_families = QFontDatabase.applicationFontFamilies(font_id)
+                if font_families:
+                    return font_families[0]
+        return "Arial"  # Fallback шрифт
+
+    def load_saved_font(self):
+        """Загрузка сохраненного шрифта при запуске"""
+        try:
+            with open(self.widget_state, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Проверяем есть ли сохраненный шрифт
+            if "font_family" in data:
+                saved_font = data["font_family"]
+
+                # Устанавливаем в комбобокс
+                if saved_font in self.fonts_list:
+                    index = self.font_combo.findText(saved_font)
+                    if index >= 0:
+                        self.font_combo.setCurrentIndex(index)
+
+        except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+            debug_logger.warning(f"Не удалось загрузить сохраненный шрифт: {e}")
+            # Устанавливаем шрифт по умолчанию
+            default_index = self.font_combo.findText("digital")
+            if default_index >= 0:
+                self.font_combo.setCurrentIndex(default_index)
+
+    def create_checkboxes(self):
+        checkboxes_data = [
+            ("turnoff_check", "Выключение компьютера"),
+            ("settings_check", "Открыть настройки"),
+            ("screenshot_check", "Сделать скриншот"),
+            ("open_youtube", "Запустить YouTube"),
+            ("microphone_check", "Управление микрофоном в Discord"),
+            ("links_check", "Открыть папку с ярлыками"),
+            ("resize_check", "Развернуть окно ассистента"),
+        ]
+
+        # Очищаем контейнер перед добавлением
+        for i in reversed(range(self.drag_container.layout.count())):
+            widget = self.drag_container.layout.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+
+        for key, text in checkboxes_data:
+            checkbox = DraggableCheckbox(text)
+            self.checkboxes[key] = checkbox
+            self.drag_container.layout.addWidget(checkbox)
 
     def toggle_drag_mode(self):
         self.drag_mode = not self.drag_mode
@@ -1014,23 +1139,16 @@ class SettingsWidgetPanel(QWidget):
 
         if self.drag_mode:
             self.drag_toggle_btn.setText("Режим перетаскивания: ВКЛ")
+            # В режиме перетаскивания только меняем курсор, но не блокируем чекбоксы
+            for checkbox in self.checkboxes.values():
+                checkbox.setCursor(Qt.CursorShape.OpenHandCursor)
+                # Сохраняем текущее состояние checked для отображения
+                checkbox.update()
         else:
             self.drag_toggle_btn.setText("Настроить порядок расположения")
-
-    def create_checkboxes(self):
-        checkboxes_data = [
-            ("turnoff_check", "Выключение компьютера"),
-            ("settings_check", "Открыть настройки"),
-            ("screenshot_check", "Сделать скриншот"),
-            ("microphone_check", "Управление микрофоном в Discord"),
-            ("links_check", "Открыть папку с ярлыками"),
-            ("resize_check", "Развернуть окно ассистента")
-        ]
-
-        for key, text in checkboxes_data:
-            checkbox = DraggableCheckbox(text)
-            self.checkboxes[key] = checkbox
-            self.drag_container.addCheckbox(checkbox)
+            # Возвращаем обычный курсор
+            for checkbox in self.checkboxes.values():
+                checkbox.setCursor(Qt.CursorShape.ArrowCursor)
 
     def get_checkbox_order(self):
         order = []
@@ -1105,9 +1223,10 @@ class SettingsWidgetPanel(QWidget):
             "turnoff_check",
             "settings_check",
             "screenshot_check",
+            "open_youtube",
             "microphone_check",
             "links_check",
-            "resize_check"
+            "resize_check",
         ]
 
         # Добавляем в стандартном порядке и включаем все чекбоксы
@@ -1126,6 +1245,8 @@ class SettingsWidgetPanel(QWidget):
 
         # Добавляем данные о кнопках (порядок сохранится в словаре)
         existing_data["buttons"] = self.get_buttons_data()
+
+        existing_data["font_family"] = self.font_combo.currentText()
 
         # Сохраняем обратно
         with open(self.widget_state, 'w', encoding='utf-8') as f:

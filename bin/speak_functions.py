@@ -94,18 +94,19 @@ def react_detail(file_path, trace=""):
 def thread_react(folder_path, trace=""):
     """
     Запускает функцию react в отдельном потоке.
-    :param trace:
+    :param trace: можно передать метод или место из которого вызывается
     :param folder_path: Путь к папке с аудиофайлами.
     """
     thread = threading.Thread(target=react, args=(folder_path, trace), daemon=True)
     thread.start()
 
-def thread_react_detail(file_path):
+def thread_react_detail(file_path, trace=""):
     """
     Запускает функцию react в отдельном потоке.
+    :param trace: можно передать метод или место из которого вызывается
     :param file_path: Путь к папке с аудиофайлами.
     """
-    thread = threading.Thread(target=react_detail, args=(file_path,), daemon=True)
+    thread = threading.Thread(target=react_detail, args=(file_path, trace), daemon=True)
     thread.start()
 
 def play_sound(type_sound):

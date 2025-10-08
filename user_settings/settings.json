@@ -1,16 +1,16 @@
 {
     "voice": "johnny",
-    "assistant_name": "джонни",
+    "assistant_name": "джон",
     "assist_name2": "джонни",
-    "assist_name3": "джонни",
+    "assist_name3": "джон",
     "steam_path": "D:/Steam/steam.exe",
     "is_censored": true,
-    "volume_assist": 0.2,
-    "run_updater": true,
+    "volume_assist": 0.1,
+    "run_updater": false,
     "minimize_to_tray": false,
     "start_win": true,
     "is_widget": true,
     "is_keep_watch": false,
-    "input_device_id": null,
-    "input_device_name": null
+    "input_device_id": 1,
+    "input_device_name": "Microphone (5- USB Audio Device"
 }
