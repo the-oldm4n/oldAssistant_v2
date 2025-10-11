@@ -2,7 +2,7 @@
     "QWidget": {
         "background-color": "qlineargradient(x1:1.00, y1:0.53, x2:0.00, y2:0.47, stop:0 #000000, stop:1 #011b1e)",
         "color": "#e5e5e5",
-        "font-size": "13px"
+        "font-size": "14px"
     },
     "QPushButton": {
         "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #0D313A)",
@@ -10,12 +10,12 @@
         "height": "30px",
         "border": "1px solid #2ad0ca",
         "border-radius": "3px",
-        "font-size": "13px"
+        "font-size": "14px"
     },
     "QPushButton:hover": {
         "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #0D313A, stop:1 #000000)",
         "color": "#e5e5e5",
-        "font-size": "13px"
+        "font-size": "14px"
     },
     "QPushButton:pressed": {
         "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #00131c)",

@@ -7,7 +7,8 @@ from PySide6.QtGui import QColor, QPainter, QLinearGradient
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QPushButton, QSpinBox, QSlider, QDialog, QWidget, QTabWidget, \
     QColorDialog, QCheckBox, QHBoxLayout, QComboBox, QApplication, QLineEdit
 from bin.apply_color_methods import ApplyColor
-from bin.signals import color_signal
+from bin.custom_svg_widget import CustomSvgWidget
+from bin.signals import color_signal, update_presets_signal
 from logging_config import debug_logger
 from path_builder import get_path
 
@@ -143,10 +144,14 @@ class ColorSettingsWindow(QDialog):
         self.title_label.setStyleSheet("background: transparent")
         self.title_layout.addWidget(self.title_label)
 
-        self.close_btn = QPushButton("✕", self.title_bar)
+        self.close_btn = QPushButton("", self.title_bar)
         self.close_btn.setFixedSize(25, 25)
         self.close_btn.setObjectName("CloseButton")
         self.close_btn.clicked.connect(self.close)
+        self.close_svg = CustomSvgWidget(self.assistant.icon_close_path, self.close_btn)
+        self.close_svg.setFixedSize(19, 19)
+        self.close_svg.move(3, 3)
+        self.close_svg.setStyleSheet("background: transparent;")
         self.title_layout.addWidget(self.close_btn)
 
         # Основной контент
@@ -445,6 +450,8 @@ class ColorSettingsWindow(QDialog):
         self.text_color = self.styles.get("QPushButton", {}).get("color", "#8eaee5")
         self.text_edit_color = self.styles.get("QTextEdit", {}).get("color", "#ffffff")
 
+        self.assistant.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#FF0000")
+
         # Загружаем настройки для каждого элемента
         self.load_element_settings(
             'background',
@@ -560,7 +567,7 @@ class ColorSettingsWindow(QDialog):
                     "background-color": self.get_gradient_css('background') if self.gradient_settings['background'][
                         'enabled'] else self.bg_color,
                     "color": self.text_color,
-                    "font-size": "13px"
+                    "font-size": "14px"
                 },
                 "QPushButton": {
                     "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
@@ -570,12 +577,12 @@ class ColorSettingsWindow(QDialog):
                     "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
                         'enabled'] else f"1px solid {self.border_color}",
                     "border-radius": "3px",
-                    "font-size": "13px"
+                    "font-size": "14px"
                 },
                 "QPushButton:hover": {
                     "background-color": self.get_hover_gradient_css('buttons'),
                     "color": self.text_color,
-                    "font-size": "13px"
+                    "font-size": "14px"
                 },
                 "QPushButton:pressed": {
                     "background-color": self.get_pressed_gradient_css('buttons', 30),
@@ -914,7 +921,7 @@ class ColorSettingsWindow(QDialog):
                         "background-color": self.get_gradient_css('background') if self.gradient_settings['background'][
                             'enabled'] else self.bg_color,
                         "color": self.text_color,
-                        "font-size": "13px"
+                        "font-size": "14px"
                     },
                     "QPushButton": {
                         "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
@@ -924,12 +931,12 @@ class ColorSettingsWindow(QDialog):
                         "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
                             'enabled'] else f"1px solid {self.border_color}",
                         "border-radius": "3px",
-                        "font-size": "13px"
+                        "font-size": "14px"
                     },
                     "QPushButton:hover": {
                         "background-color": self.get_hover_gradient_css('buttons'),
                         "color": self.text_color,
-                        "font-size": "13px"
+                        "font-size": "14px"
                     },
                     "QPushButton:pressed": {
                         "background-color": self.get_pressed_gradient_css('buttons', 30),
@@ -1137,6 +1144,7 @@ class ColorSettingsWindow(QDialog):
 
             self.load_presets()
             self.assistant.show_notification_message("Пресет сохранен!")
+            update_presets_signal.presets_updated.emit()
 
         except Exception as e:
             self.assistant.show_notification_message(f"Ошибка сохранения:\n{str(e)}")
@@ -1254,8 +1262,10 @@ class SavePresetDialog(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.parent_window = parent
+        self.icon_close_path = get_path("bin", "icons", "close.svg")
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        self.setFixedSize(320, 150)
+        self.setFixedSize(320, 170)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.init_ui()
 
@@ -1278,11 +1288,17 @@ class SavePresetDialog(QDialog):
         self.title_label.setGeometry(10, 5, 200, 20)
         self.title_layout.addWidget(self.title_label)
 
-        self.close_btn = QPushButton("✕", self.title_bar)
+        self.close_btn = QPushButton("", self.title_bar)
         self.close_btn.setFixedSize(25, 25)
         self.close_btn.setObjectName("CloseButton")
         self.close_btn.clicked.connect(self.reject)
+        self.close_svg = CustomSvgWidget(self.icon_close_path, self.close_btn)
+        self.close_svg.setFixedSize(19, 19)
+        self.close_svg.move(3, 3)
+        self.close_svg.setStyleSheet("background: transparent;")
         self.title_layout.addWidget(self.close_btn)
+        self.parent_window.assistant.style_manager.apply_color_svg(self.close_svg, strength=0.90,
+                                                                   specified_color="#FF0000")
 
         # Основное содержимое
         self.content_widget = QWidget(self.container)

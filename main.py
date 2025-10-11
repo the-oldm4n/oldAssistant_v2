@@ -63,7 +63,7 @@ from bin.lists import get_audio_paths, censored_list, commands_list
 
 MUTEX_NAME = "Assistant_123456789AB"
 build_ini = get_config_value("app", "build")
-version_file = "1.7.0"
+version_file = "1.7.1"
 update_version(version_file)
 
 
@@ -140,7 +140,6 @@ class Assistant(QMainWindow):
         self.toggle_start = None
         self.start_button = None
         self._update_dialog = None
-        self.changelog_file_path = None
         self.is_assistant_running = False
         self.microphone_available = True
         self.first_run = True
@@ -164,6 +163,7 @@ class Assistant(QMainWindow):
         self.init_logger()
         self.svg_file_path = get_path("owl.svg")
         self.install_icons()
+        self.changelog_file_path = get_path('update', 'changelog.md')
         self.process_names = get_path('user_settings', 'process_names.json')
         self.ohm_path = get_path("bin", "OHM", "OpenHardwareMonitor.exe")
         self.style_manager = ApplyColor(self)
@@ -222,10 +222,10 @@ class Assistant(QMainWindow):
             self.showNormal()
         self.run_assist()
         self.toggle_update_button()
-        QTimer.singleShot(2000, lambda: self.check_update_app())
+        # QTimer.singleShot(2000, lambda: self.check_update_app())
         self.update_checker = QTimer()
         self.update_checker.timeout.connect(self.check_update_app)
-        self.update_checker.start(1800000)  # Чек обновлений раз в 30 минут (1800000)
+        self.update_checker.start(3600000)  # Чек обновлений раз в 60 минут (3600000)
 
     def handle_init_result(self, success):
         """Обработчик результата инициализации"""
@@ -277,7 +277,7 @@ class Assistant(QMainWindow):
 
     def install_icons(self):
         self.icon_start_win = get_path("bin", "icons", "start-win.svg")
-        self.icon_update = get_path("bin", "icons", "install-btn.svg")
+        self.icon_update = get_path("bin", "icons", "updates.svg")
         self.icon_settings_path = get_path("bin", "icons", "settings.svg")
         self.icon_shortcut_path = get_path("bin", "icons", "shortcut.svg")
         self.icon_power_path = get_path("bin", "icons", "power.svg")
@@ -307,7 +307,7 @@ class Assistant(QMainWindow):
             self.setWindowIcon(QIcon(get_path('icon_assist.ico')))
             self.setWindowTitle("Ассистент")
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-            self.resize(900, 700)
+            self.resize(700, 700)
 
             # Центрирование окна
             screen_geometry = self.screen().availableGeometry()
@@ -369,11 +369,15 @@ class Assistant(QMainWindow):
             self.start_svg.setStyleSheet("background: transparent;")
             self.title_bar_layout.addWidget(self.start_win_btn)
 
-            self.close_button = QPushButton("✕")
+            self.close_button = QPushButton("")
             self.close_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self.close_button.clicked.connect(self.custom_hide)
             self.close_button.setFixedSize(25, 25)
             self.close_button.setObjectName("CloseButton")
+            self.close_svg = CustomSvgWidget(self.icon_close_path, self.close_button)
+            self.close_svg.setFixedSize(19, 19)
+            self.close_svg.move(3, 3)
+            self.close_svg.setStyleSheet("background: transparent;")
             self.title_bar_layout.addWidget(self.close_button)
 
             root_layout.addWidget(self.title_bar_widget)
@@ -386,11 +390,15 @@ class Assistant(QMainWindow):
 
             # === ЛЕВАЯ ЧАСТЬ: Контейнер с динамической шириной ===
             self.left_container = QWidget()
-            self.left_container.setMaximumWidth(250)
+            self.left_container.setMaximumWidth(230)
+            self.left_container.setMinimumWidth(0)
             self.left_container_layout = QVBoxLayout(self.left_container)
             self.left_container_layout.setContentsMargins(5, 5, 5, 5)
             self.left_container_layout.setSpacing(5)
             self.left_container.setObjectName("WMLeftContainer")
+
+            self.spacer = QSpacerItem(230, 1, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            self.left_container_layout.addSpacerItem(self.spacer)
 
             # === 1. Основные кнопки ===
             self.left_buttons_panel = QWidget()
@@ -401,7 +409,7 @@ class Assistant(QMainWindow):
 
             self.settings_button = QPushButton("Настройки")
             self.settings_button.clicked.connect(self.open_main_settings)
-            self.settings_button.setStyleSheet("height: 40px; width:240px;")
+            self.settings_button.setStyleSheet("height: 40px;")
             self.settings_svg = CustomSvgWidget(self.icon_settings_path, self.settings_button)
             self.settings_svg.setFixedSize(30, 30)
             self.settings_svg.move(10, 5)
@@ -465,7 +473,7 @@ class Assistant(QMainWindow):
             self.buttons_layout.addStretch()
 
             self.svg_image = CustomSvgWidget(self.svg_file_path)
-            self.svg_image.setFixedSize(180, 180)
+            self.svg_image.setFixedSize(150, 150)
             self.svg_image.setStyleSheet("background: transparent; border: none;")
             self.color_svg = QGraphicsColorizeEffect()
             self.svg_image.setGraphicsEffect(self.color_svg)
@@ -475,7 +483,7 @@ class Assistant(QMainWindow):
             self.progress_load.hide()
             self.buttons_layout.addWidget(self.progress_load)
 
-            self.update_label = QLabel("Установлена последняя версия")
+            self.update_label = QLabel("Установлена последняя версия") # Установлена последняя версия
             self.update_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self.update_label.mousePressEvent = self.update_answer
             self.buttons_layout.addWidget(self.update_label)
@@ -669,6 +677,7 @@ class Assistant(QMainWindow):
             self.style_manager.apply_color_svg(self.power_svg, strength=0.90)
             self.style_manager.apply_color_svg(self.widget_svg, strength=0.90)
             self.style_manager.apply_color_svg(self.icon_svg, strength=0.95)
+            self.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#ff0000")
 
             # Применение общего стиля окна
             # if hasattr(self, 'central_widget'):
@@ -823,6 +832,7 @@ class Assistant(QMainWindow):
         """
         if self.update_label.text() == "Доступно обновление":
             self.update_btn.show()
+            self.style_manager.apply_color_svg(self.update_svg, strength=0.90, specified_color="#44D14F")
         else:
             self.update_btn.hide()
 
@@ -909,7 +919,7 @@ class Assistant(QMainWindow):
         type_version = "exp" if self.beta_version else "stable"
 
         load_changelog()
-        self.changelog_file_path = get_path('update', 'changelog.md')
+
 
         if latest_version > current_ver:
             self.download_thread = DownloadThread(type_version)
@@ -1260,7 +1270,7 @@ class Assistant(QMainWindow):
         """Закрытие приложения."""
         if self.is_assistant_running:
             self.stop_assist()
-            QTimer.singleShot(2500, self.force_close)
+            QTimer.singleShot(2500, self.force_close) # Время для проигрывания аудио перед закрытием
         else:
             self.force_close()
 
@@ -1283,7 +1293,7 @@ class Assistant(QMainWindow):
             self.close()
 
     def handle_close_confirmation(self, confirmed, event, dialog):
-        """Обрабатывает ответ пользователя"""
+        """Метод устарел и не используется"""
         dialog.close()
         if confirmed:
             self.stop_assist()
@@ -1434,6 +1444,8 @@ class Assistant(QMainWindow):
         keywords_search = ["найди", "поищи", "посмотри", "загугли"]
         keywords_no = ['нет', 'не', 'no', 'отмена', 'не надо', 'стоп', 'нельзя']
         keywords_yes = ['на', 'да', 'ага', 'угу', 'yes', 'конечно', 'давай', 'го']
+        keywords_reject = ['отмена', 'отменить', 'отмени', 'сброс', 'сбрось', 'сбросить',
+                           'остановить', 'остановись', 'останови', 'стоп', 'забудь']
         screen_list = ["скрин", "область", "выдели область", "скриншот"]
         fullscreen_list = ["фулл скрин", "весь экран", "сфоткать"]
         action_up = ['открыть', 'включить', 'запустить', 'подключить']
@@ -1704,7 +1716,16 @@ class Assistant(QMainWindow):
                                 debug_logger.info(f"Отправлено уведомление ---> {text}")
                                 self.last_unrecognized_command = None
                                 continue
-                                # Конец блока В.
+                        # Конец блока В.
+
+                        if any(word in text for word in keywords_reject):
+                            debug_logger.info("Пользователь отменил команду(ы).")
+                            self.get_reaction(name="confirm_folder")
+                            self.last_unrecognized_command = None
+                            message = "Хорошо, отменяю."
+                            self.show_supply_notice(message, is_confirm=True)
+                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            continue
 
                             self.last_unrecognized_command = None
                         if not default_list and not custom_list:
@@ -2584,7 +2605,7 @@ class Assistant(QMainWindow):
                     isinstance(self.widget_window, SmartWidget))
 
             if widget_exists and self.widget_window.isVisible():
-                return  # Виджет уже видим - ничего не делаем
+                return self.widget_window.close()
 
             if widget_exists:
                 # Виджет существует, но скрыт - показываем
@@ -2684,16 +2705,22 @@ class Assistant(QMainWindow):
             debug_logger.error(f"Ошибка при открытии настроек: {e}")
             self.show_message(f"Ошибка при открытии настроек команд: {str(e)}", "Ошибка", "error")
 
+    def get_size_widget(self, widget):
+        width = widget.width()
+        height = widget.height()
+        size = widget.size()
+
     def show_widget(self):
         """Открывает панель настроек: сначала сжимаем, потом расширяем с изменяемой панелью"""
         # Анимация сжатия левой панели
         self._load_current_panel()
         self.show_layout(self.compact_layout)
         self.show_compact_buttons()
+        self.get_size_widget(self.left_container)
 
         self.animation.stop()
         self.animation.setPropertyName(b"maximumWidth")
-        self.animation.setStartValue(220)
+        self.animation.setStartValue(200)
         self.animation.setEndValue(1)
         self.animation.setDuration(400)
         self.animation.setEasingCurve(QEasingCurve.Type.InBack)
@@ -2754,7 +2781,7 @@ class Assistant(QMainWindow):
             btn = item['button']
             btn.setGraphicsEffect(None)
             btn.setVisible(False)
-
+        self.get_size_widget(self.mutable_panel)
         # Сжимаем
         self.animation.stop()
         self.animation.setPropertyName(b"maximumWidth")
@@ -2783,7 +2810,7 @@ class Assistant(QMainWindow):
         # Восстанавливаем ширину
         self.animation.setPropertyName(b"maximumWidth")
         self.animation.setStartValue(1)
-        self.animation.setEndValue(230)
+        self.animation.setEndValue(220)
         self.animation.setDuration(400)
         self.animation.setEasingCurve(QEasingCurve.Type.OutBack)
         self.animation.start()
@@ -2791,12 +2818,14 @@ class Assistant(QMainWindow):
     def _animate_content_switch(self, new_content_callback):
         """Анимация смены контента в видимой панели"""
         # Анимация исчезновения текущего контента
+        self.get_size_widget(self.mutable_panel)
         self.animation.stop()
         self.animation.setPropertyName(b"maximumWidth")
-        self.animation.setStartValue(400)
+        self.animation.setStartValue(self._get_panel_width())
         self.animation.setEndValue(1)
         self.animation.setDuration(350)
         self.animation.setEasingCurve(QEasingCurve.Type.InBack)
+        self.get_size_widget(self.mutable_panel)
 
         # После сжатия - загружаем новый контент и расширяем
         self.animation.finished.connect(lambda: self._expand_after_switch(new_content_callback))
@@ -2818,7 +2847,7 @@ class Assistant(QMainWindow):
 
     def _get_panel_width(self):
         """Возвращает ширину панели в зависимости от текущего контента"""
-        return 500 if self._current_panel == 'commands' else 400
+        return 360
 
     def _load_settings_panel(self):
         """Инициализация виджетов настроек с SVG на вкладках"""
@@ -3133,7 +3162,7 @@ class Assistant(QMainWindow):
     def changelog_window(self, event):
         """Открываем окно с логами изменений"""
         dialog = ChangelogWindow(self)
-        dialog.exec_()
+        dialog.exec()
 
     def update_app(self, type_version=None):
         """Обработка нажатия кнопки 'Установить обновление'"""
@@ -3532,6 +3561,7 @@ class UpdateApp(QDialog):
 class ChangelogWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.assistant = parent
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedSize(700, 600)
@@ -3557,10 +3587,14 @@ class ChangelogWindow(QDialog):
         title_layout.addWidget(title_label)
         title_layout.addStretch()
 
-        close_btn = QPushButton("✕")
+        close_btn = QPushButton("")
         close_btn.setObjectName("CloseButton")
         close_btn.setFixedSize(25, 25)
         close_btn.clicked.connect(self.close)
+        self.close_svg = CustomSvgWidget(self.assistant.icon_close_path, close_btn)
+        self.close_svg.setFixedSize(19, 19)
+        self.close_svg.move(3, 3)
+        self.close_svg.setStyleSheet("background: transparent;")
         title_layout.addWidget(close_btn)
 
         # Основное содержимое
@@ -3647,15 +3681,16 @@ class ChangelogWindow(QDialog):
         layout.addWidget(close_button)
 
         self.load_changelog()
+        self.assistant.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#FF6666")
 
     def load_changelog(self):
         """Загружает и отображает Markdown файл"""
         try:
-            if not hasattr(self.parent(), 'changelog_file_path'):
+            if not hasattr(self.assistant, 'changelog_file_path'):
                 self._show_error("Не указан путь к файлу изменений")
                 return
 
-            changelog_path = self.parent().changelog_file_path
+            changelog_path = self.assistant.changelog_file_path
 
             if not os.path.exists(changelog_path):
                 self._show_error(f"Файл не найден: {changelog_path}")

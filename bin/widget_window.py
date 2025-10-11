@@ -65,7 +65,6 @@ class WindowStateManager:
         except:
             pass  # Если файла нет или ошибка, создаем новый
 
-        # Обновляем только данные окна, сохраняя кнопки
         state = {
             "window_position": {
                 "x": window.pos().x(),
@@ -77,7 +76,7 @@ class WindowStateManager:
             },
             "is_compact": getattr(window, 'is_compact', False),
             "is_pinned": getattr(window, 'is_pinned', False),
-            "is_locked": getattr(window, 'is_locked', False)
+            "is_locked": getattr(window, 'is_locked', 0)
         }
 
         # Объединяем с существующими данными (кнопки и др.)
@@ -128,6 +127,7 @@ class SmartWidget(QWidget):
         self.pin_path = get_path("bin", "icons", "pin.svg")
         self.active_pin_path = get_path("bin", "icons", "active_pin.svg")
         self.lock_path = get_path("bin", "icons", "lock.svg")
+        self.partial_lock_path = get_path("bin", "icons", "partial_lock.svg")
         self.unlock_path = get_path("bin", "icons", "unlock.svg")
         self.close_path = get_path("bin", "icons", "cancel.svg")
         self.resize_path = get_path("bin", "icons", "resize.svg")
@@ -152,7 +152,7 @@ class SmartWidget(QWidget):
         saved_state = self.state_manager.apply_state(self)
         self.is_compact = saved_state["is_compact"]
         self.is_pinned = saved_state["is_pinned"]
-        self.is_locked = False
+        self.is_locked = 0
 
         # Шрифт
         self.fonts_list = fonts_list
@@ -298,7 +298,7 @@ class SmartWidget(QWidget):
                 background: rgba(40, 110, 230, 80%);
             }
         """)
-        self.lock_svg = CustomSvgWidget(self.lock_path, self.lock_btn)
+        self.lock_svg = CustomSvgWidget(self.unlock_path, self.lock_btn)
         self.lock_svg.setFixedSize(13, 13)
         self.lock_svg.move(3, 3)
         self.lock_svg.setStyleSheet("background: transparent; border: none;")
@@ -664,12 +664,12 @@ class SmartWidget(QWidget):
 
     # Методы для перемещения окна
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and not getattr(self, 'is_locked', False):
+        if event.button() == Qt.MouseButton.LeftButton and not getattr(self, 'is_locked', 0):
             self.old_pos = event.globalPos()
             self.is_dragging = False  # Флаг для отслеживания начала перемещения
 
     def mouseMoveEvent(self, event):
-        if hasattr(self, 'old_pos') and self.old_pos and not getattr(self, 'is_locked', False):
+        if hasattr(self, 'old_pos') and self.old_pos and not getattr(self, 'is_locked', 0):
             delta = event.globalPos() - self.old_pos
             new_pos = self.pos() + delta
             self.move(new_pos)
@@ -921,7 +921,7 @@ class SmartWidget(QWidget):
         self.content_layout.removeWidget(old_buttons_widget)
         old_buttons_widget.deleteLater()
 
-        if self.is_locked:
+        if self.is_locked != 0:
             self.buttons_widget.setEnabled(False)
 
     def hide_main_btns(self):
@@ -1112,44 +1112,59 @@ class SmartWidget(QWidget):
             debug_logger.error(f"Ошибка при открытии основного окна через виджет {e}")
 
     def lock_state(self):
-        """Переключает возможность перетаскивания виджета"""
+        """Переключает возможность перетаскивания виджета между тремя состояниями"""
         try:
             if not hasattr(self, 'lock_btn') or not hasattr(self, 'lock_svg'):
                 return
-            self.is_locked = not getattr(self, 'is_locked', False)
 
-            # Меняем иконку в зависимости от состояния
+            # Три состояния: 0-разблокирован, 1-частично заблокирован, 2-полностью заблокирован
+            current_state = getattr(self, 'is_locked', 0)
+            self.is_locked = (current_state + 1) % 3  # Циклически переключаем 0→1→2→0
+
+            # Меняем иконку и настройки в зависимости от состояния
             if hasattr(self, 'lock_svg'):
-                if self.is_locked:
-                    # Меняем на иконку "разблокировки"
+                if self.is_locked == 0:
+                    # Состояние 0: полностью разблокирован
                     self.lock_svg.load(self.unlock_path)
-                    self.lock_btn.setToolTip("Включить перемещение")
-                    self.lock_title_widget(state=False)
-                    if hasattr(self, "audio_widget") and hasattr(self, "buttons_widget"):
-                        self.audio_widget.setEnabled(False)
-                        self.buttons_widget.setEnabled(False)
-                        self.hide_btns.setEnabled(False)
-                    if hasattr(self, "tab_widget"):
-                        self.tab_widget.setEnabled(False)
-                else:
-                    # Возвращаем стандартную иконку
-                    self.lock_svg.load(self.lock_path)
-                    self.lock_btn.setToolTip("Отключить перемещение")
-                    self.lock_title_widget()
-                    if hasattr(self, "audio_widget") and hasattr(self, "buttons_widget"):
-                        self.audio_widget.setEnabled(True)
-                        self.buttons_widget.setEnabled(True)
-                        self.hide_btns.setEnabled(True)
-                    if hasattr(self, "tab_widget"):
-                        self.tab_widget.setEnabled(True)
+                    self.lock_btn.setToolTip("Полностью разблокирован")
+                    self.lock_title_widget(state=True)
+                    # Включаем все виджеты
+                    self._set_widgets_enabled(True, True, True)
+                    self.style_manager.apply_color_svg(self.lock_svg, strength=0.95)
 
-                # Применяем цвет к SVG
-                self.style_manager.apply_color_svg(self.lock_svg, strength=0.95)
+                elif self.is_locked == 1:
+                    # Состояние 1: частично заблокирован
+                    self.lock_svg.load(self.partial_lock_path)
+                    self.lock_btn.setToolTip("Частично заблокирован")
+                    self.lock_title_widget(state=True)
+                    # Частично отключаем - например, только audio_widget
+                    self._set_widgets_enabled(True, True, True)
+                    self.style_manager.apply_color_svg(self.lock_svg, strength=0.95)
+
+                elif self.is_locked == 2:
+                    # Состояние 2: полностью заблокирован
+                    self.lock_svg.load(self.lock_path)
+                    self.lock_btn.setToolTip("Полностью заблокирован")
+                    self.lock_title_widget(state=False)
+                    # Отключаем все виджеты
+                    self._set_widgets_enabled(False, False, False)
+                    self.style_manager.apply_color_svg(self.lock_svg, strength=0.95, specified_color="#FF6666")
 
             # Сохраняем состояние блокировки
             self.save_state()
         except Exception as e:
             debug_logger.error(f"Ошибка в методе lock_state: {e}")
+
+    def _set_widgets_enabled(self, audio_enabled, buttons_enabled, tabs_enabled):
+        """Вспомогательный метод для управления состоянием виджетов"""
+        if hasattr(self, "audio_widget"):
+            self.audio_widget.setEnabled(audio_enabled)
+        if hasattr(self, "buttons_widget"):
+            self.buttons_widget.setEnabled(buttons_enabled)
+        if hasattr(self, "hide_btns"):
+            self.hide_btns.setEnabled(buttons_enabled)
+        if hasattr(self, "tab_widget"):
+            self.tab_widget.setEnabled(tabs_enabled)
 
     def save_state(self):
         self.state_manager.save_window_state(self)

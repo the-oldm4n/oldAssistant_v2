@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QMessageBox, Q
 from packaging import version
 from bin.apply_color_methods import ApplyColor
 from bin.check_update import check_all_versions
+from bin.custom_svg_widget import CustomSvgWidget
 from bin.download_thread import DownloadThread, SliderProgressBar
 from bin.signals import progress_signal
 from logging_config import logger, debug_logger
@@ -409,6 +410,7 @@ class DebugLoggerWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.assistant = parent
         self.check_button = None
         self.init_ui()
 
@@ -446,10 +448,11 @@ class DebuglogWindow(QDialog):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-
+        self.parent_window = parent
+        self.icon_close_path = get_path("bin", "icons", "close.svg")
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(1000, 900)
+        self.setFixedSize(1000, 600)
         screen_geometry = self.screen().availableGeometry()
         x = (screen_geometry.width() - self.width()) // 2
         y = (screen_geometry.height() - self.height()) // 2
@@ -476,11 +479,17 @@ class DebuglogWindow(QDialog):
         title_layout.addWidget(title_label)
         title_layout.addStretch()
 
-        close_btn = QPushButton("✕")
+        close_btn = QPushButton("")
         close_btn.setObjectName("CloseButton")
         close_btn.setFixedSize(25, 25)
         close_btn.clicked.connect(self.close)
+        self.close_svg = CustomSvgWidget(self.icon_close_path, close_btn)
+        self.close_svg.setFixedSize(19, 19)
+        self.close_svg.move(3, 3)
+        self.close_svg.setStyleSheet("background: transparent;")
         title_layout.addWidget(close_btn)
+        self.parent_window.assistant.style_manager.apply_color_svg(self.close_svg, strength=0.90,
+                                                                   specified_color="#FF0000")
 
         # Основное содержимое
         content_widget = QWidget(container)

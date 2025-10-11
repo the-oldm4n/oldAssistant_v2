@@ -5,12 +5,12 @@ import winshell
 from PySide6.QtGui import QFontDatabase, QFont
 
 from bin.lists import fonts_list
-from bin.signals import color_signal, widget_btns_signal
+from bin.signals import color_signal, widget_btns_signal, update_presets_signal
 from bin.speak_functions import thread_react
 from bin.choose_color_window import ColorSettingsWindow
 from path_builder import get_path
 from logging_config import logger, debug_logger
-from PySide6.QtCore import Signal, QTimer
+from PySide6.QtCore import Signal, QTimer, QEvent
 from PySide6.QtWidgets import QFileDialog, QLineEdit, QSlider, QComboBox, QWidget, QHBoxLayout
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QCheckBox, QApplication, QFrame, QPushButton)
 from PySide6.QtCore import Qt
@@ -25,6 +25,7 @@ class InterfaceWidget(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
+        update_presets_signal.presets_updated.connect(self.load_custom_presets)
         self.init_ui()
 
     style_applied = Signal(dict)  # Сигнал для передачи стиля
@@ -64,7 +65,7 @@ class InterfaceWidget(QWidget):
 
         btn_dark_red = QPushButton("Красный неон")
         btn_dark_red.clicked.connect(lambda: self.apply_style_file("red_neon.json"))
-        left_col.addWidget(btn_dark_red)
+        # left_col.addWidget(btn_dark_red)
 
         btn_dark_blue = QPushButton("Голубой неон")
         btn_dark_blue.clicked.connect(lambda: self.apply_style_file("dark_blue.json"))
@@ -76,7 +77,7 @@ class InterfaceWidget(QWidget):
 
         btn_ice_flame = QPushButton("Ice&Flame")
         btn_ice_flame.clicked.connect(lambda: self.apply_style_file("ice_and_flame.json"))
-        left_col.addWidget(btn_ice_flame)
+        # left_col.addWidget(btn_ice_flame)
 
         # Правая колонка
         btn_dark = QPushButton("Dark")
@@ -85,11 +86,11 @@ class InterfaceWidget(QWidget):
 
         btn_legacy = QPushButton("Legacy")
         btn_legacy.clicked.connect(lambda: self.apply_style_file("legacy.json"))
-        right_col.addWidget(btn_legacy)
+        # right_col.addWidget(btn_legacy)
 
         btn_white = QPushButton("White")
         btn_white.clicked.connect(lambda: self.apply_style_file("white.json"))
-        right_col.addWidget(btn_white)
+        # right_col.addWidget(btn_white)
 
         btn_white_orange = QPushButton("Blue-Orange")
         btn_white_orange.clicked.connect(lambda: self.apply_style_file("blue_orange.json"))
@@ -120,9 +121,6 @@ class InterfaceWidget(QWidget):
         self.custom_presets_combo.addItem("Выберите пользовательский стиль...")
         self.load_custom_presets()
         self.custom_presets_combo.currentIndexChanged.connect(self.apply_custom_style)
-        self.label_styles = QLabel("Пользовательские стили:")
-        self.label_styles.setStyleSheet("background: transparent;")
-        layout.addWidget(self.label_styles)
 
         layout.addWidget(self.custom_presets_combo)
 
@@ -255,6 +253,7 @@ class SettingsWidget(QWidget):
     def init_ui(self):
         # Создаем виджет-контейнер для содержимого
         content_widget = QWidget()
+        content_widget.setMaximumWidth(420)
         content_widget.setObjectName("WMSettingsContent")
         self.setLayout(QVBoxLayout())
         self.layout().addWidget(content_widget)
@@ -480,7 +479,7 @@ class OtherSettingsWidget(QWidget):
         self.censor_check.stateChanged.connect(self.toggle_censor)
         layout.addWidget(self.censor_check)
 
-        self.update_check = QCheckBox("Запуск утилиты обновления перед стартом", self)
+        self.update_check = QCheckBox("Запуск утилиты обновления \n перед стартом программы", self)
         self.update_check.setStyleSheet("background: transparent;")
         self.update_check.setChecked(self.assistant.run_updater)
         self.update_check.stateChanged.connect(self.toggle_update)
@@ -506,7 +505,7 @@ class OtherSettingsWidget(QWidget):
         self.widget_check.stateChanged.connect(self.toggle_widget)
         layout.addWidget(self.widget_check)
 
-        self.keep_watch_check = QCheckBox("Обрабатывать команды без имени ассистента"
+        self.keep_watch_check = QCheckBox("Обрабатывать команды \nбез имени ассистента"
                                           "\n(возможны ложные срабатывания)", self)
         self.keep_watch_check.setStyleSheet("background: transparent;")
         self.keep_watch_check.setToolTip("Расширенная обработка команд")
@@ -965,6 +964,52 @@ class DragContainer(QFrame):
             self.drop_indicator.hide()
 
 
+class NonClosingComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._popup_open = False
+
+    def showPopup(self):
+        super().showPopup()
+        self._popup_open = True
+        # Устанавливаем глобальный фильтр событий
+        QApplication.instance().installEventFilter(self)
+
+    def hidePopup(self):
+        # Блокируем автоматическое закрытие
+        if not self._popup_open:
+            super().hidePopup()
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Type.MouseButtonPress and self._popup_open:
+            # Получаем позицию клика в глобальных координатах
+            mouse_event = event
+            global_pos = mouse_event.globalPos()
+
+            # Геометрия выпадающего списка
+            popup = self.view()
+            popup_global_rect = popup.rect()
+            popup_global_rect.moveTo(popup.mapToGlobal(popup_global_rect.topLeft()))
+
+            # Геометрия комбобокса
+            combo_global_rect = self.rect()
+            combo_global_rect.moveTo(self.mapToGlobal(combo_global_rect.topLeft()))
+
+            # Если клик вне обоих областей - закрываем
+            if not popup_global_rect.contains(global_pos) and not combo_global_rect.contains(global_pos):
+                self._popup_open = False
+                QApplication.instance().removeEventFilter(self)
+                super().hidePopup()
+                return True
+
+        return False
+
+    def closePopup(self):
+        self._popup_open = False
+        QApplication.instance().removeEventFilter(self)
+        super().hidePopup()
+
+
 class SettingsWidgetPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1020,15 +1065,12 @@ class SettingsWidgetPanel(QWidget):
 
         # Лейбл с временем для демонстрации шрифта
         self.font_preview_label = QLabel("12:34")
+        self.font_preview_label.setObjectName("preview_clock")
         self.font_preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.font_preview_label.setStyleSheet("font-size: 24px; background: transparent; padding: 5px;")
+        self.font_preview_label.setStyleSheet("background: transparent; padding: 5px;")
 
-        self.label_font_list = QLabel("Выберите шрифт:")
-        self.label_font_list.setStyleSheet("background: transparent;")
-
-        self.font_combo = QComboBox()
+        self.font_combo = NonClosingComboBox()
         self.font_combo.addItems(self.fonts_list.keys())
-        font_layout.addWidget(self.label_font_list)
         font_layout.addWidget(self.font_combo)
         font_layout.addWidget(self.font_preview_label)
         layout.addLayout(font_layout)
@@ -1054,7 +1096,54 @@ class SettingsWidgetPanel(QWidget):
         self.font_combo.currentTextChanged.connect(self.change_font_preview)
 
         # Устанавливаем начальный шрифт
-        self.change_font_preview(self.font_combo.currentText())
+        if self.font_combo.currentText():
+            self.change_font_preview(self.font_combo.currentText())
+
+    def get_font_size_for_family(self, font_family):
+        """Возвращает размер шрифта в зависимости от семейства"""
+        font_sizes = {
+            'digital': '16px',
+            'grape_nuts': '26px',
+            'cinzel_decorative': '26px',
+            'michroma': '20px',
+            'bruno_ace': '20px',
+            'jacquard': '40px',
+            'nova_round': '23px',
+            'orbitron': '20px',
+            'special_elite': '26px',
+            'metamorphous': '24px',
+        }
+
+        # Ищем подходящий размер
+        font_lower = font_family.lower()
+        for font_name, size in font_sizes.items():
+            if font_name in font_lower:
+                return size
+
+        return '18px'
+
+    def apply_font_styles(self, font_family, font_name):
+        """Применить шрифт с индивидуальным размером для каждого семейства"""
+        font_size = self.get_font_size_for_family(font_name)
+
+        debug_logger.info(f"Применение шрифта для превью: {font_family} с размером: {font_size}")
+
+        styles = f"""
+            #preview_clock {{
+                font-family: "{font_family}";
+                font-size: {font_size};
+                font-weight: normal;
+                padding: 0px;
+                background: transparent;
+            }}
+        """
+
+        # ✅ Убедимся, что objectName установлен
+        if self.font_preview_label.objectName() != "preview_clock":
+            self.font_preview_label.setObjectName("preview_clock")
+
+        # ✅ Применяем стили к preview_label
+        self.font_preview_label.setStyleSheet(styles)
 
     def change_font_preview(self, font_name):
         """Изменение шрифта в превью"""
@@ -1066,8 +1155,9 @@ class SettingsWidgetPanel(QWidget):
                 font_families = QFontDatabase.applicationFontFamilies(font_id)
                 if font_families:
                     font_family = font_families[0]
-                    font = QFont(font_family, 24)  # Размер 24 для превью
-                    self.font_preview_label.setFont(font)
+
+                    # Используем новый метод apply_font_styles
+                    self.apply_font_styles(font_family, font_name)
 
     def get_selected_font(self):
         """Получить выбранный шрифт"""

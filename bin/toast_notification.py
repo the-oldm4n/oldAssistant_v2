@@ -29,6 +29,7 @@ class ToastNotification(QDialog):
         self.timeout = timeout
         self.message = message
         self.svg_path = get_path("bin", "logo.svg")
+        self.icon_close_path = get_path("bin", "icons", "close.svg")
         self.style_path = get_path('user_settings', 'color_settings.json')
         self.style_manager = ApplyColor(self)
         self.styles = self.style_manager.load_styles()
@@ -83,6 +84,26 @@ class ToastNotification(QDialog):
         self.label.setWordWrap(True)
         self.label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         content_layout.addWidget(self.label, stretch=1)
+
+        close_btn = QPushButton("")
+        close_btn.setObjectName("CloseButton_clear")
+        close_btn.setFixedSize(35, 20)
+        close_btn.clicked.connect(self.hide_animated)
+        self.close_svg = CustomSvgWidget(self.icon_close_path, close_btn)
+        self.close_svg.setFixedSize(20, 20)
+        self.close_svg.move(8, 0)
+        self.close_svg.setStyleSheet("background: transparent;")
+        content_layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        close_btn.setStyleSheet("""
+                #CloseButton_clear {
+                    border: none;
+                    background: transparent;
+                    border-radius: 10px;
+                }
+                #CloseButton_clear:hover {
+                    background: rgba(70, 70, 70, 240);
+                }
+                """)
 
         main_layout.addWidget(content_widget)
 
@@ -241,6 +262,7 @@ class ToastNotification(QDialog):
             self.styles = self.style_manager.load_styles()
             # Применение к SVG
             self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
+            self.style_manager.apply_color_svg(self.close_svg, strength=0.95, specified_color="#FF0000")
 
             # Применяем стили к текущему окну
             style_sheet = ""
@@ -271,6 +293,7 @@ class SimpleNotice():
         self.title = title
         self.buttons = buttons
         self.style_path = get_path('user_settings', 'color_settings.json')
+        self.icon_close_path = get_path("bin", "icons", "close.svg")
         self.style_manager = ApplyColor(self)
         self.styles = self.style_manager.load_styles()
         self.result = None
@@ -327,11 +350,14 @@ class SimpleNotice():
         title_layout.addWidget(title_label)
         title_layout.addStretch()
 
-        close_btn = QPushButton("✕")
+        close_btn = QPushButton("")
         close_btn.setObjectName("CloseButton")
-        close_btn.setFixedSize(20, 20)
-
+        close_btn.setFixedSize(24, 24)
         close_btn.clicked.connect(self.main.reject)
+        self.close_svg = CustomSvgWidget(self.icon_close_path, close_btn)
+        self.close_svg.setFixedSize(17, 17)
+        self.close_svg.move(4, 4)
+        self.close_svg.setStyleSheet("background: transparent;")
         title_layout.addWidget(close_btn)
         title_layout.addSpacing(0)
 
@@ -424,6 +450,8 @@ class SimpleNotice():
         try:
             self.styles = self.style_manager.load_styles()
 
+            self.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#ff0000")
+
             # Применяем стили к текущему окну (если они есть в файле стилей)
             style_sheet = ""
             for widget, styles in self.styles.items():
@@ -472,6 +500,7 @@ class SupplyNotice(QDialog):
         self.message = message
         self.svg_path = get_path("bin", "logo.svg")
         self.style_path = get_path('user_settings', 'color_settings.json')
+        self.icon_close_path = get_path("bin", "icons", "close.svg")
         self.style_manager = ApplyColor(self)
         self.styles = self.style_manager.load_styles()
         self.init_ui()
@@ -525,6 +554,26 @@ class SupplyNotice(QDialog):
         self.label.setWordWrap(True)
         self.label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         content_layout.addWidget(self.label, stretch=1)
+
+        close_btn = QPushButton("")
+        close_btn.setObjectName("CloseButton_clear")
+        close_btn.setFixedSize(35, 20)
+        close_btn.clicked.connect(self.hide_animated)
+        self.close_svg = CustomSvgWidget(self.icon_close_path, close_btn)
+        self.close_svg.setFixedSize(20, 20)
+        self.close_svg.move(8, 0)
+        self.close_svg.setStyleSheet("background: transparent;")
+        content_layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        close_btn.setStyleSheet("""
+                #CloseButton_clear {
+                    border: none;
+                    background: transparent;
+                    border-radius: 10px;
+                }
+                #CloseButton_clear:hover {
+                    background: rgba(70, 70, 70, 240);
+                }
+                """)
 
         main_layout.addWidget(content_widget)
 
@@ -683,6 +732,7 @@ class SupplyNotice(QDialog):
             self.styles = self.style_manager.load_styles()
             # Применение к SVG
             self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
+            self.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#FF0000")
 
             # Применяем стили к текущему окну
             style_sheet = ""

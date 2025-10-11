@@ -31,11 +31,14 @@ class ApplyColor():
         if widget_name in self.styles:
             widget.setStyleSheet(self.format_style(self.styles[widget_name]))
 
-    def apply_color_svg(self, svg_widget, strength: float) -> None:
+    def apply_color_svg(self, svg_widget, strength: float, specified_color: str = "") -> None:
         """
         Применяет цвет к SVG виджету
         """
         try:
+            if specified_color:
+                color = QColor(specified_color)
+                return svg_widget.applyColorEffect(color, strength)
             if "TitleBar" in self.styles and "border-bottom" in self.styles["TitleBar"]:
                 border_value = self.styles["TitleBar"]["border-bottom"]
                 color = QColor("#000000")

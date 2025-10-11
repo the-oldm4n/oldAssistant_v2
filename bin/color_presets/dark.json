@@ -1,8 +1,8 @@
 {
     "QWidget": {
-        "background-color": "qlineargradient(x1:0.97, y1:0.66, x2:0.03, y2:0.34, stop:0 #000000, stop:1 #14141d)",
+        "background-color": "qlineargradient(x1:0.98, y1:0.65, x2:0.02, y2:0.35, stop:0 #000000, stop:1 #14141d)",
         "color": "#ffffff",
-        "font-size": "13px"
+        "font-size": "14px"
     },
     "QPushButton": {
         "background-color": "qlineargradient(x1:0.47, y1:1.00, x2:0.53, y2:0.00, stop:0 #000000, stop:1 #141419)",
@@ -10,12 +10,12 @@
         "height": "30px",
         "border": "1px solid qlineargradient(x1:0.54, y1:1.00, x2:0.46, y2:0.00, stop:0 #9191c6, stop:1 #232323)",
         "border-radius": "3px",
-        "font-size": "13px"
+        "font-size": "14px"
     },
     "QPushButton:hover": {
         "background-color": "qlineargradient(x1:0.47, y1:1.00, x2:0.53, y2:0.00, stop:0 #141419, stop:1 #000000)",
         "color": "#ffffff",
-        "font-size": "13px"
+        "font-size": "14px"
     },
     "QPushButton:pressed": {
         "background-color": "qlineargradient(x1:0.47, y1:1.00, x2:0.53, y2:0.00, stop:0 #000000, stop:1 #000000)",
@@ -125,10 +125,10 @@
     },
     "clock_mini": {
         "color": "#d6cfff"
-      },
+    },
     "clock_title": {
         "color": "#d6cfff"
-      },
+    },
     "TitleBar": {
         "background": "transparent",
         "border-bottom": "1px solid qlineargradient(x1:0.54, y1:1.00, x2:0.46, y2:0.00, stop:0 #9191c6, stop:1 #232323)",

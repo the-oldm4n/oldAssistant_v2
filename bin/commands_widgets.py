@@ -25,8 +25,8 @@ class CreateCommandsWidget(QWidget):
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(15)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
 
         # Заголовок
         title = QLabel("Для чего создаем команду?")
@@ -39,18 +39,21 @@ class CreateCommandsWidget(QWidget):
 
         # Кнопка для создания команды ярлыка
         self.btn_shortcut = QPushButton("Для ярлыка")
+        self.btn_shortcut.setStyleSheet("padding-left: 10px, padding-right: 10px;")
         self.btn_shortcut.setCheckable(True)
         self.btn_shortcut.clicked.connect(self.show_shortcut_form)
         btn_layout.addWidget(self.btn_shortcut)
 
         # Кнопка для создания команды папки
         self.btn_folder = QPushButton("Для папки")
+        self.btn_folder.setStyleSheet("padding-left: 10px, padding-right: 10px;")
         self.btn_folder.setCheckable(True)
         self.btn_folder.clicked.connect(self.show_folder_form)
         btn_layout.addWidget(self.btn_folder)
 
         # Кнопка для создания команды папки
-        self.btn_url = QPushButton("Для url-ссылки")
+        self.btn_url = QPushButton("Для сайта")
+        self.btn_url.setStyleSheet("padding-left: 10px, padding-right: 10px;")
         self.btn_url.setCheckable(True)
         self.btn_url.clicked.connect(self.show_url_form)
         btn_layout.addWidget(self.btn_url)

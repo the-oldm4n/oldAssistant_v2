@@ -28,3 +28,8 @@ class WidgetButtonsSignal(QObject):
     buttons_updated = Signal()
 
 widget_btns_signal = WidgetButtonsSignal()
+
+class UpdatePresetsSignal(QObject):
+    presets_updated = Signal()
+
+update_presets_signal = UpdatePresetsSignal()
