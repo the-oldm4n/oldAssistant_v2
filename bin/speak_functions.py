@@ -127,13 +127,13 @@ def play_sound(type_sound):
 
         # Загрузка и воспроизведение аудиофайла
         pygame.mixer.music.load(file_path)
-        pygame.mixer.music.set_volume(0.5)  # Установка громкости
+        pygame.mixer.music.set_volume(0.3)  # Установка громкости
         pygame.mixer.music.play()
-
-        # Ожидание завершения воспроизведения
-        while pygame.mixer.music.get_busy():
-            pygame.time.Clock().tick(10)
 
     except Exception as e:
         logger.error(f"Ошибка при воспроизведении аудио: {e}")
         debug_logger.error(f"Ошибка при воспроизведении аудио: {e}")
+        
+def thread_play_sound(type_sound):
+    thread = threading.Thread(target=play_sound, args=(type_sound,), daemon=True)
+    thread.start()

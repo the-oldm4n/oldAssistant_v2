@@ -15,6 +15,7 @@ class ToastNotification(QDialog):
     Окно всплывающего уведомления
     """
     _active_toast = None
+    _creating_notification = False  # Флаг для защиты от рекурсии
 
     def __init__(self, parent=None, message="", timeout=3000):
         super().__init__(parent)
@@ -195,40 +196,41 @@ class ToastNotification(QDialog):
 
         except Exception as e:
             debug_logger.error(f"Ошибка при закрытии уведомления: {e}")
-
+    
     def showEvent(self, event):
-        # Устанавливаем начальную прозрачность
-        self.setWindowOpacity(0.0)
+        try:
+            # Устанавливаем начальную прозрачность
+            self.setWindowOpacity(0.0)
+            screen_geo = QApplication.primaryScreen().availableGeometry()
+            if self.parent and self.parent.isVisible() and not self.parent.isMinimized():
+                parent_geo = self.parent.geometry()
+                start_x = parent_geo.right() - self.width()
+                start_y = parent_geo.top() - self.height()
+                end_x = start_x
+                end_y = parent_geo.top() + 90
+            else:
+                start_x = screen_geo.width() - self.width()
+                start_y = -self.height()
+                end_x = start_x
+                end_y = 21
 
-        screen_geo = QApplication.primaryScreen().availableGeometry()
+            self.move(start_x, start_y)
+            
+            super().showEvent(event)
 
-        if self.parent and self.parent.isVisible() and not self.parent.isMinimized():
-            # Если есть видимый родитель - позиционируем относительно него
-            parent_geo = self.parent.geometry()
-            start_x = parent_geo.right() - self.width()
-            start_y = parent_geo.top() - self.height()
-            end_x = start_x
-            end_y = parent_geo.top() + 90
-        else:
-            # Иначе - позиционируем в правом верхнем углу экрана
-            start_x = screen_geo.width() - self.width()  # 10px отступ от края
-            start_y = -self.height()
-            end_x = start_x
-            end_y = 21  # 10px отступ сверху
+            # Настраиваем анимацию позиции
+            self.animation.setStartValue(QPoint(start_x, start_y))
+            self.animation.setEndValue(QPoint(end_x, end_y))
 
-        self.move(start_x, start_y)
-        self.show()
+            # Запускаем обе анимации параллельно
+            self.animation.start()
+            self.opacity_animation.start()
 
-        # Настраиваем анимацию позиции
-        self.animation.setStartValue(QPoint(start_x, start_y))
-        self.animation.setEndValue(QPoint(end_x, end_y))
-
-        # Запускаем обе анимации параллельно
-        self.animation.start()
-        self.opacity_animation.start()
-
-        # Таймер для автоматического скрытия
-        self.timer.start(self.timeout)
+            # Таймер для автоматического скрытия
+            self.timer.start(self.timeout)      
+        except Exception as e:
+            debug_logger.error(f"showEvent FAILED: {e}", exc_info=True)
+            raise
 
     def hide_animated(self):
         """Анимация скрытия с изменением прозрачности"""
@@ -667,38 +669,39 @@ class SupplyNotice(QDialog):
             debug_logger.error(f"Ошибка при закрытии уведомления: {e}")
 
     def showEvent(self, event):
-        # Устанавливаем начальную прозрачность
-        self.setWindowOpacity(0.0)
+        try:
+            # Устанавливаем начальную прозрачность
+            self.setWindowOpacity(0.0)
+            screen_geo = QApplication.primaryScreen().availableGeometry()
+            if self.parent and self.parent.isVisible() and not self.parent.isMinimized():
+                parent_geo = self.parent.geometry()
+                start_x = parent_geo.right() - self.width()
+                start_y = parent_geo.top() - self.height()
+                end_x = start_x
+                end_y = parent_geo.top() + 90
+            else:
+                start_x = screen_geo.width() - self.width()
+                start_y = -self.height()
+                end_x = start_x
+                end_y = 21
 
-        screen_geo = QApplication.primaryScreen().availableGeometry()
+            self.move(start_x, start_y)
+            
+            super().showEvent(event)
 
-        if self.parent and self.parent.isVisible() and not self.parent.isMinimized():
-            # Если есть видимый родитель - позиционируем относительно него
-            parent_geo = self.parent.geometry()
-            start_x = parent_geo.right() - self.width()
-            start_y = parent_geo.top() - self.height()
-            end_x = start_x
-            end_y = parent_geo.top() + 90
-        else:
-            # Иначе - позиционируем в правом верхнем углу экрана
-            start_x = screen_geo.width() - self.width()  # 10px отступ от края
-            start_y = -self.height()
-            end_x = start_x
-            end_y = 21  # 10px отступ сверху
+            # Настраиваем анимацию позиции
+            self.animation.setStartValue(QPoint(start_x, start_y))
+            self.animation.setEndValue(QPoint(end_x, end_y))
 
-        self.move(start_x, start_y)
-        self.show()
+            # Запускаем обе анимации параллельно
+            self.animation.start()
+            self.opacity_animation.start()
 
-        # Настраиваем анимацию позиции
-        self.animation.setStartValue(QPoint(start_x, start_y))
-        self.animation.setEndValue(QPoint(end_x, end_y))
-
-        # Запускаем обе анимации параллельно
-        self.animation.start()
-        self.opacity_animation.start()
-
-        # Таймер для автоматического скрытия
-        self.timer.start(self.timeout)
+            # Таймер для автоматического скрытия
+            self.timer.start(self.timeout)      
+        except Exception as e:
+            debug_logger.error(f"showEvent FAILED: {e}", exc_info=True)
+            raise
 
     def hide_animated(self):
         """Анимация скрытия с изменением прозрачности"""

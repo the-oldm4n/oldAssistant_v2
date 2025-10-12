@@ -5,8 +5,8 @@ a = Analysis(
     ['main.py'],
     pathex=['G:/PycharmProjects/oldAssistant_v2'],
     binaries=[
-        (r'G:\PycharmProjects\oldAssistant_v2\venv\Lib\site-packages\vosk\libvosk.dll', 'vosk'),
-        (r'G:\PycharmProjects\oldAssistant_v2\venv\Lib\site-packages\vgamepad\win\vigem\client\x64\ViGEmClient.dll',
+        (r'G:\PycharmProjects\oldAssistant_v2\.venv\Lib\site-packages\vosk\libvosk.dll', 'vosk'),
+        (r'G:\PycharmProjects\oldAssistant_v2\.venv\Lib\site-packages\vgamepad\win\vigem\client\x64\ViGEmClient.dll',
         'vgamepad/win/vigem/client/x64')
     ],
     datas=[

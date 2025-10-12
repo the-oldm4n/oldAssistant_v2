@@ -17,7 +17,7 @@ import win32clipboard
 from PIL import ImageGrab, Image
 from bin.custom_svg_widget import CustomSvgWidget
 # noinspection PyUnresolvedReferences
-ctypes.windll.user32.SetProcessDPIAware()
+# ctypes.windll.user32.SetProcessDPIAware()
 import io
 import logging
 import os.path
@@ -45,6 +45,7 @@ from PySide6.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, Signal, QProp
 from bin.apply_color_methods import ApplyColor
 from bin.check_update import load_changelog, VersionCheckThread
 from bin.download_thread import DownloadThread, SliderProgressBar
+from bin.screenshot_tool import SystemScreenshot
 from bin.signals import gui_signals, color_signal, progress_signal, commands_signal
 from bin.toast_notification import ToastNotification, SimpleNotice, SupplyNotice
 from bin.toggle_mute_discord import ToggleMuteDiscord
@@ -57,13 +58,13 @@ from bin.function_list_main import *
 from path_builder import get_path
 from bin.audio_control import controller
 from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel
-from bin.speak_functions import thread_react_detail, thread_react, react, play_sound
+from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react, play_sound
 from logging_config import logger, debug_logger
 from bin.lists import get_audio_paths, censored_list, commands_list
 
 MUTEX_NAME = "Assistant_123456789AB"
 build_ini = get_config_value("app", "build")
-version_file = "1.7.1"
+version_file = "1.7.2"
 update_version(version_file)
 
 
@@ -1802,7 +1803,7 @@ class Assistant(QMainWindow):
                                         if closest_cmd:
                                             message = f"Вы имели в виду: '{closest_cmd}'?\nСкажите: Да/Нет"
                                             self.show_supply_notice(message, is_confirm=True)
-                                            play_sound(type_sound="what")
+                                            thread_play_sound(type_sound="what")
                                             debug_logger.info(f"Отправлено уведомление ---> {message}")
 
                                             # Сохраняем контекст с предложенной командой + флаг ожидания подтверждения
@@ -1883,7 +1884,7 @@ class Assistant(QMainWindow):
 
                             message = ";\n".join(parts) + "\n\nСкажите: Да/Нет"
                             self.show_supply_notice(message, is_confirm=True)
-                            play_sound(type_sound="what")
+                            thread_play_sound(type_sound="what")
                             debug_logger.info(f"Отправлено уведомление ---> {message}")
 
                             self.last_unrecognized_command = {
@@ -1961,7 +1962,7 @@ class Assistant(QMainWindow):
                 action_pc = "Перезагрузить"
             message = f"{action_pc} ПК?\n\nСкажите: Да/Нет"
             self.show_supply_notice(message, is_confirm=True)
-            play_sound(type_sound="what")
+            thread_play_sound(type_sound="what")
             debug_logger.info(f"Отправлено уведомление ---> {message}")
 
             # Сохраняем контекст
@@ -3441,9 +3442,9 @@ class Assistant(QMainWindow):
     def capture_fullscreen(self):
         try:
             self.screenshot_tool.capture_fullscreen()
-            play_sound(type_sound="ok")
+            thread_play_sound(type_sound="ok")
         except Exception as e:
-            play_sound(type_sound="error")
+            thread_play_sound(type_sound="error")
             logger.error(f'Ошибка {e}')
             debug_logger.error(f'Ошибка {e}')
 
@@ -3987,195 +3988,6 @@ class CheckThread(QThread):
 
         self.progress_update.emit("Аудиоустройства проверены.", 20)
         return True
-
-
-class SystemScreenshot:
-    def __init__(self, save_dir=get_path("user_settings", "screenshots")):
-        self.save_dir = save_dir
-        os.makedirs(self.save_dir, exist_ok=True)
-
-    def capture_area(self):
-        """Захват области с надежной проверкой буфера"""
-        try:
-            # Очищаем буфер перед захватом
-            self._clear_clipboard()
-
-            # Вызываем системный инструмент
-            self._press_win_shift_s()
-            logger.info("Выделите область на экране...")
-            debug_logger.info("Выделите область на экране...")
-
-            result = self._wait_and_save_screenshot()
-
-            if result:
-                play_sound(type_sound="ok")
-                logger.info("Скриншот успешно сохранен")
-                debug_logger.info("Скриншот успешно сохранен")
-            else:
-                play_sound(type_sound="error")
-                logger.warning("Не удалось сохранить скриншот")
-                debug_logger.warning("Не удалось сохранить скриншот")
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Ошибка: {e}")
-            debug_logger.error(f"Ошибка: {e}")
-
-            return None
-
-    def capture_fullscreen(self):
-        """Захват всего экрана через Win+PrtScn"""
-        try:
-            # Очищаем буфер перед захватом
-            self._clear_clipboard()
-            self._press_win_prtscn()
-            time.sleep(1)
-            return self._wait_and_save_screenshot()
-        except Exception as e:
-            logger.error(f"Ошибка: {e}")
-            debug_logger.error(f"Ошибка: {e}")
-            return None
-
-    # noinspection PyUnresolvedReferences
-    def _press_win_shift_s(self):
-        """Нажатие Win+Shift+S"""
-        ctypes.windll.user32.keybd_event(0x5B, 0, 0, 0)  # Win
-        ctypes.windll.user32.keybd_event(0x10, 0, 0, 0)  # Shift
-        ctypes.windll.user32.keybd_event(0x53, 0, 0, 0)  # S
-        time.sleep(0.1)
-        ctypes.windll.user32.keybd_event(0x53, 0, 2, 0)
-        ctypes.windll.user32.keybd_event(0x10, 0, 2, 0)
-        ctypes.windll.user32.keybd_event(0x5B, 0, 2, 0)
-
-    # noinspection PyUnresolvedReferences
-    def _press_win_prtscn(self):
-        """Нажатие Win+PrtScn"""
-        ctypes.windll.user32.keybd_event(0x5B, 0, 0, 0)  # Win
-        ctypes.windll.user32.keybd_event(0x2C, 0, 0, 0)  # PrtScn
-        time.sleep(0.1)
-        ctypes.windll.user32.keybd_event(0x2C, 0, 2, 0)
-        ctypes.windll.user32.keybd_event(0x5B, 0, 2, 0)
-
-    def _move_latest_screenshot(self):
-        """Переносит последний скриншот из стандартной папки"""
-        try:
-            pics_dir = os.path.join(os.environ['USERPROFILE'], 'Pictures', 'Screenshots')
-            if os.path.exists(pics_dir):
-                files = [f for f in os.listdir(pics_dir) if f.lower().endswith('.png')]
-                if files:
-                    latest = max(
-                        [os.path.join(pics_dir, f) for f in files],
-                        key=os.path.getctime
-                    )
-                    filename = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-                    new_path = os.path.join(self.save_dir, filename)
-                    os.rename(latest, new_path)
-                    return new_path
-        except Exception as e:
-            logger.error(f"Ошибка переноса: {e}")
-            debug_logger.error(f"Ошибка переноса: {e}")
-        return None
-
-    def _get_clipboard_sequence(self):
-        """Получаем номер последовательности буфера обмена"""
-        try:
-            win32clipboard.OpenClipboard()
-            return win32clipboard.GetClipboardSequenceNumber()
-        finally:
-            win32clipboard.CloseClipboard()
-
-    def _clear_clipboard(self):
-        """Очищаем буфер обмена"""
-        try:
-            win32clipboard.OpenClipboard()
-            win32clipboard.EmptyClipboard()
-        finally:
-            win32clipboard.CloseClipboard()
-
-    def _get_image_from_clipboard(self):
-        """Улучшенное получение изображения из буфера обмена"""
-        try:
-            win32clipboard.OpenClipboard()
-
-            # Проверяем доступные форматы
-            if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_DIB):
-                # Работаем с DIB (Device Independent Bitmap)
-                try:
-                    data = win32clipboard.GetClipboardData(win32clipboard.CF_DIB)
-                    if isinstance(data, bytes):
-                        # Создаем BMP-файл в памяти
-                        bmp_header = b'BM' + (len(data) + 14).to_bytes(4,
-                                                                       'little') + b'\x00\x00\x00\x00\x36\x00\x00\x00'
-                        bmp_data = bmp_header + data
-                        return Image.open(io.BytesIO(bmp_data))
-                except Exception as e:
-                    logger.error(f"Ошибка обработки DIB: {e}")
-                    debug_logger.error(f"Ошибка обработки DIB: {e}")
-
-            # Альтернативный способ через ImageGrab
-            try:
-                image = ImageGrab.grabclipboard()
-                if image:
-                    return image
-            except Exception as e:
-                logger.error(f"Ошибка ImageGrab: {e}")
-                debug_logger.error(f"Ошибка ImageGrab: {e}")
-
-            # Проверяем PNG (если доступен)
-            png_format = win32clipboard.RegisterClipboardFormat("PNG")
-            if win32clipboard.IsClipboardFormatAvailable(png_format):
-                try:
-                    data = win32clipboard.GetClipboardData(png_format)
-                    if isinstance(data, bytes):
-                        return Image.open(io.BytesIO(data))
-                except Exception as e:
-                    logger.error(f"Ошибка обработки PNG: {e}")
-                    debug_logger.error(f"Ошибка обработки PNG: {e}")
-
-        except Exception as e:
-            logger.error(f"Ошибка доступа к буферу: {e}")
-            debug_logger.error(f"Ошибка доступа к буферу: {e}")
-        finally:
-            win32clipboard.CloseClipboard()
-
-        return None
-
-    def _wait_and_save_screenshot(self, timeout=10):
-        """Улучшенная версия с быстрым выходом при отмене"""
-        start_time = time.time()
-        last_sequence = -1
-        last_change_time = time.time()
-
-        while time.time() - start_time < timeout:
-            try:
-                # Проверяем номер последовательности буфера
-                current_sequence = self._get_clipboard_sequence()
-
-                # Если буфер изменился
-                if current_sequence != last_sequence:
-                    image = self._get_image_from_clipboard()
-                    if image:
-                        filename = f"screenshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
-                        filepath = os.path.join(self.save_dir, filename)
-                        image.save(filepath, "PNG")
-                        return True  # Успешное сохранение
-
-                    last_sequence = current_sequence
-                    last_change_time = time.time()  # Сбрасываем таймер изменений
-                else:
-                    # Если буфер не менялся более 1 секунды - вероятно пользователь отменил
-                    if time.time() - last_change_time > 1.0:
-                        debug_logger.info("Буфер не меняется - пользователь отменил захват")
-                        return False
-
-            except Exception as e:
-                debug_logger.error(f"Ошибка проверки буфера: {e}")
-
-            time.sleep(0.1)  # Уменьшаем задержку
-
-        debug_logger.warning("Таймаут ожидания скриншота")
-        return False
 
 
 def should_launch_updater():
