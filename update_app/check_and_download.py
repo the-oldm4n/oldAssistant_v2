@@ -1,14 +1,14 @@
 import os
 import re
 import requests
-from PyQt5.QtCore import QThread, pyqtSignal
+from PySide6.QtCore import QThread, Signal
 
 from utils import logger, get_base_directory
 
 
 class VersionCheckThread(QThread):
-    version_checked = pyqtSignal(str, str)  # Сигнал для stable и exp версий
-    check_failed = pyqtSignal()  # Сигнал при ошибке
+    version_checked = Signal(str, str)  # Сигнал для stable и exp версий
+    check_failed = Signal()  # Сигнал при ошибке
 
     def run(self):
         try:
@@ -64,8 +64,8 @@ def check_version():
 
 
 class DownloadThread(QThread):
-    download_complete = pyqtSignal(str, bool, bool, str)  # file_path, success, skipped, error
-    download_progress = pyqtSignal(int)
+    download_complete = Signal(str, bool, bool, str)  # file_path, success, skipped, error
+    download_progress = Signal(int)
 
     def __init__(self, type_version, version=None, parent=None):
         super().__init__(parent)

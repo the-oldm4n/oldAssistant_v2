@@ -45,6 +45,7 @@ from PySide6.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, Signal, QProp
 from bin.apply_color_methods import ApplyColor
 from bin.check_update import load_changelog, VersionCheckThread
 from bin.download_thread import DownloadThread, SliderProgressBar
+from bin.progress_bar_widget import CustomProgressBar, SVGProgressBar
 from bin.screenshot_tool import SystemScreenshot
 from bin.signals import gui_signals, color_signal, progress_signal, commands_signal
 from bin.toast_notification import ToastNotification, SimpleNotice, SupplyNotice
@@ -64,7 +65,7 @@ from bin.lists import get_audio_paths, censored_list, commands_list
 
 MUTEX_NAME = "Assistant_123456789AB"
 build_ini = get_config_value("app", "build")
-version_file = "1.7.2"
+version_file = "1.7.3"
 update_version(version_file)
 
 
@@ -407,69 +408,80 @@ class Assistant(QMainWindow):
             self.buttons_layout = QVBoxLayout(self.left_buttons_panel)
             self.buttons_layout.setContentsMargins(0, 0, 0, 0)
             self.buttons_layout.setSpacing(10)
+            
+            # Словарь для хранения кнопок
+            self.buttons = {}
 
-            self.settings_button = QPushButton("Настройки")
-            self.settings_button.clicked.connect(self.open_main_settings)
-            self.settings_button.setStyleSheet("height: 40px;")
-            self.settings_svg = CustomSvgWidget(self.icon_settings_path, self.settings_button)
-            self.settings_svg.setFixedSize(30, 30)
-            self.settings_svg.move(10, 5)
-            self.settings_svg.setStyleSheet("background:transparent;")
-            self.buttons_layout.addWidget(self.settings_button)
+            buttons_data = [
+                {
+                    "key": "settings",
+                    "text": "Настройки",
+                    "icon_path": self.icon_settings_path,
+                    "slot": self.open_main_settings,
+                    "svg_attr": "settings_svg"
+                },
+                {
+                    "key": "shortcuts", 
+                    "text": "Ярлыки", 
+                    "icon_path": self.icon_shortcut_path,
+                    "slot": self.open_folder_shortcuts,
+                    "svg_attr": "shortcut_svg"
+                },
+                {
+                    "key": "commands",
+                    "text": "Команды",
+                    "icon_path": self.icon_commands_path, 
+                    "slot": self.open_commands_settings,
+                    "svg_attr": "commands_svg"
+                },
+                {
+                    "key": "other",
+                    "text": "Прочее",
+                    "icon_path": self.icon_other_path,
+                    "slot": self.other_options, 
+                    "svg_attr": "other_svg"
+                },
+                {
+                    "key": "guide",
+                    "text": "Обучение",
+                    "icon_path": self.icon_guide_path,
+                    "slot": self.guide_options,
+                    "svg_attr": "guide_svg"
+                },
+                {
+                    "key": "start", 
+                    "text": "Старт ассистента", 
+                    "icon_path": self.icon_power_path,
+                    "slot": self.start_assist_toggle,
+                    "svg_attr": "power_svg"
+                },
+                {
+                    "key": "widget",
+                    "text": "Открыть виджет",
+                    "icon_path": self.icon_widget_path,
+                    "slot": self.open_widget,
+                    "svg_attr": "widget_svg"
+                }
+            ]
 
-            self.shortcuts_button = QPushButton("Ваши ярлыки")
-            self.shortcuts_button.clicked.connect(self.open_folder_shortcuts)
-            self.shortcuts_button.setStyleSheet("height: 40px;")
-            self.shortcut_svg = CustomSvgWidget(self.icon_shortcut_path, self.shortcuts_button)
-            self.shortcut_svg.setFixedSize(30, 30)
-            self.shortcut_svg.move(10, 5)
-            self.shortcut_svg.setStyleSheet("background:transparent;")
-            self.buttons_layout.addWidget(self.shortcuts_button)
-
-            self.commands_button = QPushButton("Ваши команды")
-            self.commands_button.clicked.connect(self.open_commands_settings)
-            self.commands_button.setStyleSheet("height: 40px;")
-            self.commands_svg = CustomSvgWidget(self.icon_commands_path, self.commands_button)
-            self.commands_svg.setFixedSize(30, 30)
-            self.commands_svg.move(10, 5)
-            self.commands_svg.setStyleSheet("background:transparent;")
-            self.buttons_layout.addWidget(self.commands_button)
-
-            self.other_button = QPushButton("Прочее")
-            self.other_button.clicked.connect(self.other_options)
-            self.other_button.setStyleSheet("height: 40px;")
-            self.other_svg = CustomSvgWidget(self.icon_other_path, self.other_button)
-            self.other_svg.setFixedSize(30, 30)
-            self.other_svg.move(10, 5)
-            self.other_svg.setStyleSheet("background:transparent;")
-            self.buttons_layout.addWidget(self.other_button)
-
-            self.guide_button = QPushButton("Обучение")
-            self.guide_button.clicked.connect(self.guide_options)
-            self.guide_button.setStyleSheet("height: 40px;")
-            self.guide_svg = CustomSvgWidget(self.icon_guide_path, self.guide_button)
-            self.guide_svg.setFixedSize(30, 30)
-            self.guide_svg.move(10, 5)
-            self.guide_svg.setStyleSheet("background:transparent;")
-            self.buttons_layout.addWidget(self.guide_button)
-
-            self.start_button = QPushButton("Старт ассистента")
-            self.start_button.clicked.connect(self.start_assist_toggle)
-            self.start_button.setStyleSheet("height: 40px;")
-            self.power_svg = CustomSvgWidget(self.icon_power_path, self.start_button)
-            self.power_svg.setFixedSize(30, 30)
-            self.power_svg.move(10, 5)
-            self.power_svg.setStyleSheet("background:transparent;")
-            self.buttons_layout.addWidget(self.start_button)
-
-            self.open_widget_btn = QPushButton("Открыть виджет")
-            self.open_widget_btn.clicked.connect(self.open_widget)
-            self.open_widget_btn.setStyleSheet("height: 40px;")
-            self.widget_svg = CustomSvgWidget(self.icon_widget_path, self.open_widget_btn)
-            self.widget_svg.setFixedSize(30, 30)
-            self.widget_svg.move(10, 5)
-            self.widget_svg.setStyleSheet("background:transparent;")
-            self.buttons_layout.addWidget(self.open_widget_btn)
+            # Создаем кнопки через цикл
+            for button_data in buttons_data:
+                button = QPushButton(button_data["text"])
+                button.clicked.connect(button_data["slot"])
+                button.setStyleSheet("height: 40px; text-align: left; padding-left:50px")
+                
+                # Создаем SVG иконку
+                svg_widget = CustomSvgWidget(button_data["icon_path"], button)
+                svg_widget.setFixedSize(30, 30)
+                svg_widget.move(10, 5)
+                svg_widget.setStyleSheet("background:transparent;")
+                
+                # Сохраняем кнопку в словарь
+                self.buttons[button_data["key"]] = button
+                # Сохраняем ссылку на SVG как атрибут экземпляра
+                setattr(self, button_data["svg_attr"], svg_widget)
+                
+                self.buttons_layout.addWidget(button)
 
             self.buttons_layout.addStretch()
 
@@ -480,7 +492,7 @@ class Assistant(QMainWindow):
             self.svg_image.setGraphicsEffect(self.color_svg)
             self.buttons_layout.addWidget(self.svg_image, alignment=Qt.AlignmentFlag.AlignCenter)
 
-            self.progress_load = SliderProgressBar(self)
+            self.progress_load = CustomProgressBar(self, style="looper")
             self.progress_load.hide()
             self.buttons_layout.addWidget(self.progress_load)
 
@@ -1312,7 +1324,8 @@ class Assistant(QMainWindow):
     def run_assist(self):
         """Запуск ассистента"""
         self.is_assistant_running = True
-        self.start_button.setText("Остановить работу")  # Меняем текст кнопки
+        self.buttons["start"].setText("Остановить работу")
+        # self.start_button.setText("Остановить работу")  # Меняем текст кнопки
         self.log_area.append("Ассистент запущен...")  # Добавляем запись в лог
 
         # Запуск ассистента в отдельном потоке
@@ -1322,7 +1335,8 @@ class Assistant(QMainWindow):
     def stop_assist(self, reaction=True):
         """Остановка ассистента"""
         self.is_assistant_running = False
-        self.start_button.setText("Старт ассистента")
+        self.buttons["start"].setText("Старт ассистента")
+        # self.start_button.setText("Старт ассистента")
         debug_logger.info("[Ассистент остановлен]")
         if reaction:
             debug_logger.info("Реакция на выключение ассистента...")
@@ -1435,6 +1449,7 @@ class Assistant(QMainWindow):
             'корзина': (open_recycle_bin, close_recycle_bin),
             'ап дата': (open_appdata, close_appdata),
             'панель': (self._open_widget_signal, self._close_widget_signal),
+            'виджет': (self._open_widget_signal, self._close_widget_signal),
             "микрофон": (self.toggle_mute_discord, self.toggle_mute_discord),
             "микро": (self.toggle_mute_discord, self.toggle_mute_discord),
             "ютуб": (lambda: self.start_default_command("ютуб", "open"), None)
@@ -1453,7 +1468,7 @@ class Assistant(QMainWindow):
         action_down = ['закрыть', 'выключить', 'отключить', 'отрубить', 'вырубить']
         all_actions = action_up + action_down
         # Списки для плеера
-        keywords_player = ["плеер", "плейлист", "музыка", "проигрыватель", "аудио", "песня"]
+        keywords_player = ["плеер", "плейлист", "музыка", "проигрыватель", "аудио", "песня", "трек", "трэк"]
         keywords_playpause = ['пауза', 'пуск', 'запуск', 'включить', 'врубить',
                               'отрубить', 'выключить', 'стоп', 'продолжить', 'плэй']
         keywords_next = ["некст", "следующий", "дальше", "вперед", "переключить"]
@@ -1895,19 +1910,19 @@ class Assistant(QMainWindow):
                             continue
 
                 # Обработка плеера
-                if any(self.find_closest_command(word, keywords_player, threshold=70) for word in words):
+                if any(self.find_closest_command(word, keywords_player, threshold=80) for word in words):
 
                     # Ищем первое подходящее действие (в порядке приоритета: пауза, след, пред)
                     for word in words:
-                        if self.find_closest_command(word, keywords_playpause, threshold=70):
+                        if self.find_closest_command(word, keywords_playpause, threshold=80):
                             controller.play_pause()
                             self.get_reaction(name="player_folder")
                             continue
-                        elif self.find_closest_command(word, keywords_next, threshold=70):
+                        elif self.find_closest_command(word, keywords_next, threshold=80):
                             controller.next_track()
                             self.get_reaction(name="player_folder")
                             continue
-                        elif self.find_closest_command(word, keywords_prev, threshold=70):
+                        elif self.find_closest_command(word, keywords_prev, threshold=80):
                             controller.previous_track()
                             self.get_reaction(name="player_folder")
                             continue
@@ -2596,17 +2611,18 @@ class Assistant(QMainWindow):
 
     def open_widget(self, is_auto_start=False):
         QTimer.singleShot(100, lambda: self._show_smart_widget(is_auto_start))
-
+    
     def _show_smart_widget(self, is_auto_start=False):
         try:
-            # Полная проверка существующего виджета
+            # Проверяем существует ли виджет и не удален ли он
             widget_exists = (
-                    hasattr(self, 'widget_window') and
-                    self.widget_window is not None and
-                    isinstance(self.widget_window, SmartWidget))
+                hasattr(self, 'widget_window') and
+                self.widget_window is not None)
 
             if widget_exists and self.widget_window.isVisible():
-                return self.widget_window.close()
+                # Полное закрытие с очисткой
+                self._close_smart_widget()
+                return
 
             if widget_exists:
                 # Виджет существует, но скрыт - показываем
@@ -2614,15 +2630,32 @@ class Assistant(QMainWindow):
             else:
                 # Создаем новый виджет
                 self.widget_window = SmartWidget(self)
+                # Устанавливаем атрибут для автоматического удаления
+                self.widget_window.setAttribute(Qt.WA_DeleteOnClose, True)
+                # Подключаем сигнал уничтожения
+                self.widget_window.destroyed.connect(self._on_widget_destroyed)
                 self.widget_window.show()
 
-            # Воспроизводим звук только если это не автоматический запуск
             if not is_auto_start:
                 self.get_reaction(name="approve_folder")
 
         except Exception as e:
             debug_logger.error(f"Ошибка при открытии виджета: {str(e)}")
             self.show_notification_message(f"Ошибка при открытии виджета: {str(e)}")
+
+    def _close_smart_widget(self):
+        """Полное закрытие виджета с очисткой"""
+        if hasattr(self, 'widget_window') and self.widget_window is not None:
+            # Явно закрываем и удаляем
+            self.widget_window.close()
+            self.widget_window.deleteLater()
+            self.widget_window = None
+            
+    def _on_widget_destroyed(self):
+        """Слот вызывается когда виджет уничтожен"""
+        if hasattr(self, 'widget_window'):
+            self.widget_window = None
+        debug_logger.info("Виджет полностью уничтожен")
 
     def close_widget(self):
         try:
@@ -3759,7 +3792,7 @@ class InitScreen(QWidget):
         content_layout.addStretch()
 
         self.svg_image = CustomSvgWidget(self.svg_path)
-        self.svg_image.setFixedSize(140, 130)
+        self.svg_image.setFixedSize(120, 110)
         self.svg_image.setStyleSheet("""
                     background: transparent;
                     border: none;
@@ -3771,15 +3804,23 @@ class InitScreen(QWidget):
 
         content_layout.addStretch()
 
+        
+
+        self.progress = SVGProgressBar(
+            svg_widget=self.svg_image,
+            style="circle",
+            circle_size=180,
+            show_text=False,
+            line_width=3)
+        # self.progress = CustomProgressBar()
+        content_layout.addWidget(self.progress, alignment=Qt.AlignmentFlag.AlignCenter)
+        
         self.label = QLabel("Инициализация...", self)
         self.label.setStyleSheet("background: transparent; min-height: 35px; max-height: 35px;")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setWordWrap(True)
         self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         content_layout.addWidget(self.label)
-
-        self.progress = QProgressBar(self)
-        content_layout.addWidget(self.progress)
 
         # Кнопка выхода при ошибке
         self.error_button = QPushButton("Закрыть программу", self)
@@ -3919,11 +3960,11 @@ class CheckThread(QThread):
 
     def check_main_files(self, files_weight):
         files_to_check = (
-            "settings_widgets.py", "speak_functions.py", "audio_control.py",
-            "commands_widgets.py", "utils.py", "function_list_main.py",
-            "lists.py", "other_options_widgets.py", "apply_color_methods.py", "check_update.py",
-            "choose_color_window.py", "download_thread.py", "signals.py",
-            "toast_notification.py", "widget_window.py")
+            "apply_color_methods.py", "audio_control.py", "check_update.py", "choose_color_window.py",
+            "commands_widgets.py", "custom_svg_widget.py", "download_thread.py", "function_list_main.py",
+            "lists.py", "other_options_widgets.py", "progress_bar_widget.py", "screenshot_tool.py",
+            "settings_widgets.py", "signals.py", "speak_functions.py", "toast_notification.py",
+            "toggle_mute_discord.py", "utils.py", "widget_window.py")
 
         total_files = len(files_to_check)
         step_per_file = files_weight / total_files if total_files else 0
@@ -3937,7 +3978,7 @@ class CheckThread(QThread):
 
             progress = int((i + 1) * step_per_file) + 20
             self.progress_update.emit(f"Проверка {file}...", progress)
-            QThread.msleep(10)  # Имитация работы
+            QThread.msleep(5)  # Имитация работы
 
         return True
 

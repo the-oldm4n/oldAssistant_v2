@@ -2,7 +2,7 @@ import json
 import re
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPixmap, QPainter
+from PySide6.QtGui import QColor, QPixmap, QPainter, QLinearGradient
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QGraphicsColorizeEffect
 
@@ -87,90 +87,217 @@ class ApplyColor():
         """Форматирует стиль в строку"""
         return '; '.join(f"{key}: {value}" for key, value in style_dict.items())
 
-    def get_color_from_border(self, widget_key):
-        """Извлекает цвет из CSS-свойства border"""
-        try:
-            if widget_key and widget_key in self.styles:
-                style = self.styles[widget_key]
-                border_value = style.get("border", "")
+    # def get_color_from_border(self, widget_key):
+    #     """Извлекает цвет из CSS-свойства border"""
+    #     try:
+    #         if widget_key and widget_key in self.styles:
+    #             style = self.styles[widget_key]
+    #             border_value = style.get("border", "")
 
-                # Ищем цвет в форматах: #RRGGBB, rgb(), rgba()
-                import re
-                color_match = re.search(
-                    r'#(?:[0-9a-fA-F]{3}){1,2}|rgb\([^)]*\)|rgba\([^)]*\)',
-                    border_value
-                )
-                return color_match.group(0) if color_match else "#05B8CC"  # Цвет по умолчанию
-        except Exception as e:
-            debug_logger.error(f"Ошибка извлечения цвета: {e}")
-        return "#05B8CC"  # Возвращаем синий по умолчанию при ошибках
+    #             # Ищем цвет в форматах: #RRGGBB, rgb(), rgba()
+    #             import re
+    #             color_match = re.search(
+    #                 r'#(?:[0-9a-fA-F]{3}){1,2}|rgb\([^)]*\)|rgba\([^)]*\)',
+    #                 border_value
+    #             )
+    #             return color_match.group(0) if color_match else "#05B8CC"  # Цвет по умолчанию
+    #     except Exception as e:
+    #         debug_logger.error(f"Ошибка извлечения цвета: {e}")
+    #     return "#BB05CC"  # Возвращаем синий по умолчанию при ошибках
 
-    def apply_progressbar(self, key=None, widget=None, style="solid"):
-        """
-        Применяет стиль к прогресс-бару
-        :param style: стиль заполнения полоски
-        :param key: Ключ из стилей для извлечения цвета (например "QPushButton")
-        :param widget: Ссылка на виджет QProgressBar
-        """
-        if not widget or not hasattr(widget, 'setStyleSheet'):
-            debug_logger.warning("Не передан виджет или он не поддерживает стилизацию")
-            return
+    # def apply_progressbar(self, key=None, widget=None, style="solid"):
+    #     """
+    #     Применяет стиль к прогресс-бару
+    #     :param style: стиль заполнения полоски
+    #     :param key: Ключ из стилей для извлечения цвета (например "QPushButton")
+    #     :param widget: Ссылка на виджет QProgressBar
+    #     """
+    #     if not widget or not hasattr(widget, 'setStyleSheet'):
+    #         debug_logger.warning("Не передан виджет или он не поддерживает стилизацию")
+    #         return
 
-        try:
-            # Получаем цвет из стилей или используем по умолчанию
-            color = self.get_color_from_border(key) if key else "#05B8CC"
+    #     try:
+    #         # Получаем цвет из стилей или используем по умолчанию
+    #         color = self.get_color_from_border(key) if key else "#05B8CC"
 
-            if style == "solid":
-                progress_style = f"""
-                    QProgressBar {{
-                        border: 1px solid {self.adjust_color(color, brightness=-30)};
-                        border-radius: 5px;
-                        height: 20px;
-                        text-align: center;
-                    }}
-                    QProgressBar::chunk {{
-                        background: qlineargradient(
-                            x1:0, y1:0, x2:1, y2:0,
-                            stop:0 {self.adjust_color(color, brightness=-10)},
-                            stop:1 {color}
-                        );
-                    }}
-                """
-            else:
-                # Формируем стиль с плавной анимацией
-                progress_style = f"""
-                    QProgressBar {{
-                        border: 1px solid {self.adjust_color(color, brightness=-30)};
-                        border-radius: 5px;
-                        background: {self.adjust_color(color, brightness=-80)};
-                        height: 20px;
-                        text-align: center;
-                    }}
-                    QProgressBar::chunk {{
-                        background: qlineargradient(
-                            x1:0, y1:0, x2:1, y2:0,
-                            stop:0 {self.adjust_color(color, brightness=-10)},
-                            stop:1 {color}
-                        );
-                        border-radius: 2px;
-                        width: 20px;
-                        margin: 1px;
-                    }}
-                """
-            widget.setStyleSheet(progress_style)
+    #         if style == "solid":
+    #             progress_style = f"""
+    #                 QProgressBar {{
+    #                     border: 1px solid {self.adjust_color(color, brightness=-30)};
+    #                     border-radius: 5px;
+    #                     height: 20px;
+    #                     text-align: center;
+    #                 }}
+    #                 QProgressBar::chunk {{
+    #                     background: qlineargradient(
+    #                         x1:0, y1:0, x2:1, y2:0,
+    #                         stop:0 {self.adjust_color(color, brightness=-10)},
+    #                         stop:1 {color}
+    #                     );
+    #                 }}
+    #             """
+    #         else:
+    #             # Формируем стиль с плавной анимацией
+    #             progress_style = f"""
+    #                 QProgressBar {{
+    #                     border: 1px solid {self.adjust_color(color, brightness=-30)};
+    #                     border-radius: 5px;
+    #                     background: {self.adjust_color(color, brightness=-80)};
+    #                     height: 20px;
+    #                     text-align: center;
+    #                 }}
+    #                 QProgressBar::chunk {{
+    #                     background: qlineargradient(
+    #                         x1:0, y1:0, x2:1, y2:0,
+    #                         stop:0 {self.adjust_color(color, brightness=-10)},
+    #                         stop:1 {color}
+    #                     );
+    #                     border-radius: 2px;
+    #                     width: 20px;
+    #                     margin: 1px;
+    #                 }}
+    #             """
+    #         widget.setStyleSheet(progress_style)
 
-        except Exception as e:
-            debug_logger.error(f"Ошибка применения стиля прогресс-бара: {e}")
-            # Применяем минимальный рабочий стиль при ошибках
-            widget.setStyleSheet("""
-                QProgressBar {
-                    border: 1px solid #cccccc;
-                    border-radius: 5px;
-                }
-                QProgressBar::chunk {
-                    background-color: #05B8CC;
-                }
-            """)
+    #     except Exception as e:
+    #         debug_logger.error(f"Ошибка применения стиля прогресс-бара: {e}")
+    #         # Применяем минимальный рабочий стиль при ошибках
+    #         widget.setStyleSheet("""
+    #             QProgressBar {
+    #                 border: 1px solid #cccccc;
+    #                 border-radius: 5px;
+    #             }
+    #             QProgressBar::chunk {
+    #                 background-color: #05B8CC;
+    #             }
+    #         """)
+    
+    # def apply_progressbar(self, key=None, widget=None, style="solid", circle_size=100):
+    #     """
+    #     Применяет стиль к прогресс-бару
+    #     :param style: "solid" (default), "looper", "circle"
+    #     :param key: Ключ из стилей для извлечения цвета (например "QPushButton")
+    #     :param widget: Ссылка на виджет QProgressBar или UniversalProgressBar
+    #     :param circle_size: Размер кругового прогрессбара (только для style="circle")
+    #     """
+    #     if not widget or not hasattr(widget, 'setStyleSheet'):
+    #         debug_logger.warning("Не передан виджет или он не поддерживает стилизацию")
+    #         return
+
+    #     try:
+    #         # Получаем цвет из стилей или используем по умолчанию
+    #         color = self.get_color_from_border(key) if key else "#05B8CC"
+
+    #         # Если виджет является UniversalProgressBar (круговой или looper)
+    #         if hasattr(widget, 'style') and hasattr(widget, 'setProgressColor'):
+    #             # Устанавливаем цвет прогресса
+    #             widget.setProgressColor(color)
+                
+    #             # # Для кругового прогрессбара устанавливаем размер
+    #             # if widget.style == "circle":
+    #             #     widget.setCircleSize(circle_size)
+                
+    #             # Для линейных прогрессбаров применяем CSS стиль
+    #             if widget.style in ["default", "looper"]:
+    #                 if widget.style == "looper":
+    #                     # Стиль для бесконечной анимации
+    #                     progress_style = f"""
+    #                         QProgressBar {{
+    #                             border: 1px solid {self.adjust_color(color, brightness=-30)};
+    #                             border-radius: 5px;
+    #                             background: {self.adjust_color(color, brightness=-80)};
+    #                             height: 20px;
+    #                             text-align: center;
+    #                         }}
+    #                         QProgressBar::chunk {{
+    #                             background: qlineargradient(
+    #                                 x1:0, y1:0, x2:1, y2:0,
+    #                                 stop:0 {self.adjust_color(color, brightness=-10)},
+    #                                 stop:1 {color}
+    #                             );
+    #                             border-radius: 2px;
+    #                             width: 20px;
+    #                             margin: 1px;
+    #                         }}
+    #                     """
+    #                 else:  # default
+    #                     # Стандартный стиль
+    #                     progress_style = f"""
+    #                         QProgressBar {{
+    #                             border: 1px solid {self.adjust_color(color, brightness=-30)};
+    #                             border-radius: 5px;
+    #                             height: 20px;
+    #                             text-align: center;
+    #                         }}
+    #                         QProgressBar::chunk {{
+    #                             background: qlineargradient(
+    #                                 x1:0, y1:0, x2:1, y2:0,
+    #                                 stop:0 {self.adjust_color(color, brightness=-10)},
+    #                                 stop:1 {color}
+    #                             );
+    #                         }}
+    #                     """
+    #                 widget.linear_progress.setStyleSheet(progress_style)
+                
+    #             return  # Выходим, так как для UniversalProgressBar стиль применен
+
+    #         # Старый функционал для обычного QProgressBar
+    #         if style == "solid":
+    #             progress_style = f"""
+    #                 QProgressBar {{
+    #                     border: 1px solid {self.adjust_color(color, brightness=-30)};
+    #                     border-radius: 5px;
+    #                     height: 20px;
+    #                     text-align: center;
+    #                 }}
+    #                 QProgressBar::chunk {{
+    #                     background: qlineargradient(
+    #                         x1:0, y1:0, x2:1, y2:0,
+    #                         stop:0 {self.adjust_color(color, brightness=-10)},
+    #                         stop:1 {color}
+    #                     );
+    #                 }}
+    #             """
+    #         else:  # looper style для обычного QProgressBar
+    #             # Формируем стиль с плавной анимацией
+    #             progress_style = f"""
+    #                 QProgressBar {{
+    #                     border: 1px solid {self.adjust_color(color, brightness=-30)};
+    #                     border-radius: 5px;
+    #                     background: {self.adjust_color(color, brightness=-80)};
+    #                     height: 20px;
+    #                     text-align: center;
+    #                 }}
+    #                 QProgressBar::chunk {{
+    #                     background: qlineargradient(
+    #                         x1:0, y1:0, x2:1, y2:0,
+    #                         stop:0 {self.adjust_color(color, brightness=-10)},
+    #                         stop:1 {color}
+    #                     );
+    #                     border-radius: 2px;
+    #                     width: 20px;
+    #                     margin: 1px;
+    #                 }}
+    #             """
+    #         widget.setStyleSheet(progress_style)
+
+    #     except Exception as e:
+    #         debug_logger.error(f"Ошибка применения стиля прогресс-бара: {e}")
+    #         # Применяем минимальный рабочий стиль при ошибках
+    #         fallback_style = """
+    #             QProgressBar {
+    #                 border: 1px solid #cccccc;
+    #                 border-radius: 5px;
+    #             }
+    #             QProgressBar::chunk {
+    #                 background-color: #05B8CC;
+    #             }
+    #         """
+    #         # Для UniversalProgressBar применяем к линейному прогрессу
+    #         if hasattr(widget, 'linear_progress'):
+    #             widget.linear_progress.setStyleSheet(fallback_style)
+    #         else:
+    #             widget.setStyleSheet(fallback_style)
 
     def adjust_color(self, color, brightness=0):
         """
@@ -189,3 +316,236 @@ class ApplyColor():
             return qcolor.name()
         except:
             return color
+        
+    def get_color_from_border(self, widget_key):
+        """Извлекает цвет или градиент из CSS-свойства border"""
+        try:
+            if widget_key and widget_key in self.styles:
+                style = self.styles[widget_key]
+                border_value = style.get("border", "")
+
+                # Сначала ищем градиент в border
+                import re
+                gradient_match = re.search(
+                    r'qlineargradient\([^)]*\)|qradialgradient\([^)]*\)|qconicalgradient\([^)]*\)',
+                    border_value
+                )
+                
+                if gradient_match:
+                    return gradient_match.group(0)  # Возвращаем градиент как есть
+                
+                # Если градиента нет, ищем простой цвет
+                color_match = re.search(
+                    r'#(?:[0-9a-fA-F]{3}){1,2}|rgb\([^)]*\)|rgba\([^)]*\)',
+                    border_value
+                )
+                return color_match.group(0) if color_match else "#05B8CC"
+                
+        except Exception as e:
+            debug_logger.error(f"Ошибка извлечения цвета: {e}")
+        return "#BB05CC"
+    
+    def apply_progressbar(self, key=None, widget=None, style="solid"):
+        """
+        Применяет стиль к прогресс-бару
+        :param style: "solid" (default), "looper", "circle"
+        :param key: Ключ из стилей для извлечения цвета (например "QPushButton")
+        :param widget: Ссылка на виджет QProgressBar или CustomProgressBar
+        """
+        if not widget or not hasattr(widget, 'setStyleSheet'):
+            debug_logger.warning("Не передан виджет или он не поддерживает стилизацию")
+            return
+
+        try:
+            # Получаем цвет или градиент из стилей
+            color_or_gradient = self.get_color_from_border(key) if key else "#05B8CC"
+
+            # Если виджет является CustomProgressBar (круговой или looper)
+            if hasattr(widget, 'style') and hasattr(widget, 'setProgressColor'):
+                
+                # Для кругового прогрессбара
+                if widget.style == "circle":
+                    # Обрабатываем градиент или цвет для кругового прогрессбара
+                    if self.is_gradient(color_or_gradient):
+                        # Если это градиент, используем первый цвет для прогресса
+                        gradient = self.parse_gradient(color_or_gradient, widget.width(), widget.height())
+                        widget.setProgressGradient(gradient)
+                    else:
+                        # Если это простой цвет
+                        widget.setProgressColor(color_or_gradient)
+                    
+                    # Автоматически настраиваем дополнительные цвета
+                    self.setup_circular_colors(widget, color_or_gradient)
+                
+                # Для линейных прогрессбаров применяем CSS стиль
+                elif widget.style in ["default", "looper"]:
+                    if self.is_gradient(color_or_gradient):
+                        # Для градиента создаем специальный CSS
+                        progress_style = self.create_gradient_css(color_or_gradient, widget.style)
+                    else:
+                        # Для простого цвета используем старую логику
+                        progress_style = self.create_solid_css(color_or_gradient, widget.style)
+                    
+                    widget.linear_progress.setStyleSheet(progress_style)
+                
+                return
+
+            # Старый функционал для обычного QProgressBar
+            if self.is_gradient(color_or_gradient):
+                progress_style = self.create_gradient_css(color_or_gradient, style)
+            else:
+                progress_style = self.create_solid_css(color_or_gradient, style)
+                
+            widget.setStyleSheet(progress_style)
+
+        except Exception as e:
+            debug_logger.error(f"Ошибка применения стиля прогресс-бара: {e}")
+            # Применяем минимальный рабочий стиль при ошибках
+            fallback_style = """
+                QProgressBar {
+                    border: 1px solid #cccccc;
+                    border-radius: 5px;
+                }
+                QProgressBar::chunk {
+                    background-color: #05B8CC;
+                }
+            """
+            if hasattr(widget, 'linear_progress'):
+                widget.linear_progress.setStyleSheet(fallback_style)
+            else:
+                widget.setStyleSheet(fallback_style)
+
+    def is_gradient(self, color_string):
+        """Проверяет, является ли строка градиентом"""
+        return color_string.startswith('qlineargradient') or color_string.startswith('qradialgradient')
+
+    def parse_gradient(self, gradient_string, width, height):
+        """Создает QLinearGradient из строки"""
+        try:
+            # Парсим параметры градиента
+            import re
+            params = re.findall(r'([xy]\d):([\d.]+)', gradient_string)
+            stops = re.findall(r'stop:([\d.]+)\s+([^,)]+)', gradient_string)
+            
+            # Создаем градиент
+            gradient = QLinearGradient(0, 0, width, height)
+            
+            for stop in stops:
+                pos = float(stop[0])
+                color = stop[1].strip()
+                gradient.setColorAt(pos, QColor(color))
+                
+            return gradient
+        except Exception as e:
+            debug_logger.error(f"Ошибка парсинга градиента: {e}")
+            # Возвращаем градиент по умолчанию
+            gradient = QLinearGradient(0, 0, width, height)
+            gradient.setColorAt(0, QColor("#05B8CC"))
+            gradient.setColorAt(1, QColor("#05B8CC"))
+            return gradient
+
+    def get_first_gradient_color(self, gradient_string):
+        """Извлекает первый цвет из градиента"""
+        try:
+            import re
+            stops = re.findall(r'stop:([\d.]+)\s+([^,)]+)', gradient_string)
+            if stops:
+                return stops[0][1].strip()
+        except:
+            pass
+        return "#05B8CC"
+
+    def setup_circular_colors(self, widget, color_or_gradient):
+        """Автоматически настраивает цвета для кругового прогрессбара"""
+        if self.is_gradient(color_or_gradient):
+            first_color = self.get_first_gradient_color(color_or_gradient)
+            base_color = QColor(first_color)
+        else:
+            base_color = QColor(color_or_gradient)
+        
+        # Фон под полосой прогресса (темнее основного цвета)
+        widget.setTrackColor(base_color.darker(300))
+        
+        # Внутренняя область (еще темнее)
+        # widget.setBackgroundColor(base_color.darker(300))
+
+    def create_gradient_css(self, gradient, style_type):
+        """Создает CSS для градиентного прогрессбара"""
+        if style_type == "looper":
+            return f"""
+                QProgressBar {{
+                    border: 1px solid {self.adjust_gradient_border(gradient)};
+                    border-radius: 5px;
+                    background: {self.adjust_gradient_background(gradient)};
+                    height: 20px;
+                    text-align: center;
+                }}
+                QProgressBar::chunk {{
+                    background: {gradient};
+                    border-radius: 2px;
+                    width: 20px;
+                    margin: 1px;
+                }}
+            """
+        else:  # solid или default
+            return f"""
+                QProgressBar {{
+                    border: 1px solid {self.adjust_gradient_border(gradient)};
+                    border-radius: 5px;
+                    height: 20px;
+                    text-align: center;
+                }}
+                QProgressBar::chunk {{
+                    background: {gradient};
+                }}
+            """
+
+    def create_solid_css(self, color, style_type):
+        """Создает CSS для одноцветного прогрессбара (старая логика)"""
+        if style_type == "looper":
+            return f"""
+                QProgressBar {{
+                    border: 1px solid {self.adjust_color(color, brightness=-30)};
+                    border-radius: 5px;
+                    background: {self.adjust_color(color, brightness=-80)};
+                    height: 20px;
+                    text-align: center;
+                }}
+                QProgressBar::chunk {{
+                    background: qlineargradient(
+                        x1:0, y1:0, x2:1, y2:0,
+                        stop:0 {self.adjust_color(color, brightness=-10)},
+                        stop:1 {color}
+                    );
+                    border-radius: 2px;
+                    width: 20px;
+                    margin: 1px;
+                }}
+            """
+        else:
+            return f"""
+                QProgressBar {{
+                    border: 1px solid {self.adjust_color(color, brightness=-30)};
+                    border-radius: 5px;
+                    height: 20px;
+                    text-align: center;
+                }}
+                QProgressBar::chunk {{
+                    background: qlineargradient(
+                        x1:0, y1:0, x2:1, y2:0,
+                        stop:0 {self.adjust_color(color, brightness=-10)},
+                        stop:1 {color}
+                    );
+                }}
+            """
+
+    def adjust_gradient_border(self, gradient):
+        """Создает темную версию градиента для border"""
+        # Для простоты используем первый цвет градиента, затемненный
+        first_color = self.get_first_gradient_color(gradient)
+        return self.adjust_color(first_color, brightness=-30)
+
+    def adjust_gradient_background(self, gradient):
+        """Создает очень темную версию градиента для background"""
+        first_color = self.get_first_gradient_color(gradient)
+        return self.adjust_color(first_color, brightness=-80)

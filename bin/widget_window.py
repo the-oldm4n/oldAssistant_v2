@@ -55,7 +55,7 @@ class WindowStateManager:
         except IOError as e:
             debug_logger.error(f"Ошибка сохранения состояния: {e}")
 
-    def save_window_state(self, window):
+    def save_window_state(self, window, pos_x=None, pos_y=None):
         """Специальный метод для сохранения состояния QWidget"""
         # Сначала загружаем существующие данные, чтобы не потерять кнопки
         existing_data = {}
@@ -64,20 +64,29 @@ class WindowStateManager:
                 existing_data = json.load(f)
         except:
             pass  # Если файла нет или ошибка, создаем новый
-
-        state = {
-            "window_position": {
-                "x": window.pos().x(),
-                "y": window.pos().y()
-            },
-            "window_size": {
-                "width": window.width(),
-                "height": window.height()
-            },
-            "is_compact": getattr(window, 'is_compact', False),
-            "is_pinned": getattr(window, 'is_pinned', False),
-            "is_locked": getattr(window, 'is_locked', 0)
-        }
+        
+        if pos_x and pos_y:
+            state = {
+                "window_position": {
+                    "x": pos_x,
+                    "y": pos_y
+                }
+            }
+            
+        else:
+            state = {
+                "window_position": {
+                    "x": window.pos().x(),
+                    "y": window.pos().y()
+                },
+                "window_size": {
+                    "width": window.width(),
+                    "height": window.height()
+                },
+                "is_compact": getattr(window, 'is_compact', False),
+                "is_pinned": getattr(window, 'is_pinned', False),
+                "is_locked": getattr(window, 'is_locked', 0)
+            }
 
         # Объединяем с существующими данными (кнопки и др.)
         existing_data.update(state)
@@ -153,6 +162,7 @@ class SmartWidget(QWidget):
         self.is_compact = saved_state["is_compact"]
         self.is_pinned = saved_state["is_pinned"]
         self.is_locked = 0
+        self.check_widget_pos()
 
         # Шрифт
         self.fonts_list = fonts_list
@@ -686,6 +696,66 @@ class SmartWidget(QWidget):
             state["window_position"] = self.current_position
             self.state_manager.save_state(state)
             self.is_dragging = False
+            
+    def check_widget_pos(self, min_visibility_percent=15):
+        """Проверяет положение виджета используя сохраненные данные"""
+        try:
+            # Загружаем сохраненное состояние
+            state = self.state_manager.load_state()
+            saved_x = state["window_position"]["x"]
+            saved_y = state["window_position"]["y"]
+            saved_width = state["window_size"]["width"]
+            saved_height = state["window_size"]["height"]
+            
+            debug_logger.info(f"Сохраненная позиция: ({saved_x}, {saved_y})")
+            debug_logger.info(f"Сохраненный размер: {saved_width}x{saved_height}")
+            
+            # Создаем прямоугольник виджета на основе сохраненных данных
+            widget_rect = QRect(saved_x, saved_y, saved_width, saved_height)
+            
+            # Проверяем на всех экранах
+            screens = QApplication.screens()
+            max_visibility = 0
+            best_screen = None
+            
+            for screen in screens:
+                screen_geometry = screen.availableGeometry()
+                debug_logger.info(f"Экран: {screen_geometry}")
+                
+                if screen_geometry.intersects(widget_rect):
+                    # Вычисляем сколько процентов виджета видно
+                    intersection = screen_geometry.intersected(widget_rect)
+                    visible_area = intersection.width() * intersection.height()
+                    total_area = saved_width * saved_height
+                    visibility_percent = (visible_area / total_area) * 100
+                    
+                    debug_logger.info(f"Видимость на экране: {visibility_percent:.1f}%")
+                    
+                    # Запоминаем максимальную видимость
+                    if visibility_percent > max_visibility:
+                        max_visibility = visibility_percent
+                        best_screen = screen
+            
+            debug_logger.info(f"Максимальная видимость виджета: {max_visibility:.1f}%")
+            
+            # Проверяем достаточно ли видно
+            if max_visibility < min_visibility_percent:
+                debug_logger.info(f"Видимость менее {min_visibility_percent}%! Центрируем...")
+                self.center_widget()
+                return False
+            else:
+                debug_logger.info(f"Виджет в пределах экрана (видимость: {max_visibility:.1f}%)")
+                return True
+                
+        except Exception as e:
+            debug_logger.info(f"Ошибка при проверке положения виджета: {e}")
+            return False
+
+    def center_widget(self):
+        """Центрирует окно на экране"""
+        # Сохраняем новую позицию
+        self.state_manager.save_window_state(self, pos_x=100, pos_y=100)
+        self.state_manager.apply_state(self)
 
     def load_window_state(self):
         """Загружает состояние окна из JSON"""
@@ -1230,6 +1300,8 @@ class SmartWidget(QWidget):
             else:
                 # В противном случае вызываем специальный метод
                 self.assistant.restore_and_hide()
+                
+        self.deleteLater()
 
         super().closeEvent(event)
 

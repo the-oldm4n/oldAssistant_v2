@@ -3,10 +3,11 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QIcon, QColor
-from PyQt5.QtSvg import QSvgWidget
-from PyQt5.QtWidgets import (
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QIcon, QColor, Qt
+from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtCore import Property
+from PySide6.QtWidgets import (
     QApplication, QWidget, QLabel, QPushButton,
     QVBoxLayout, QGraphicsColorizeEffect, QSizePolicy, QProgressBar, QSpacerItem, QFileDialog
 )
@@ -58,21 +59,16 @@ class InstallerWindow(QWidget):
         content_layout.setContentsMargins(15, 0, 15, 10)
         content_layout.addStretch()
 
-        self.svg_image = QSvgWidget()
-        self.svg_image.load(self.svg_path)
+        self.svg_image = CustomSvgWidget(self.svg_path)
         self.svg_image.setFixedSize(120, 110)
-        self.svg_image.setStyleSheet("""
-                            background: transparent;
-                            border: none;
-                            outline: none;
-                        """)
+        self.svg_image.setStyleSheet("background: transparent; border: none;")
         self.color_svg = QGraphicsColorizeEffect()
         self.svg_image.setGraphicsEffect(self.color_svg)
         content_layout.addWidget(self.svg_image, alignment=Qt.AlignCenter)
 
         # Текст
         self.label = QLabel("Выбор папки установки...")
-        self.label.setStyleSheet("background-color: transparent;")
+        self.label.setStyleSheet("background-color: transparent; font-size: 14px")
         self.label.setAlignment(Qt.AlignCenter)
         self.label.setWordWrap(True)
         content_layout.addWidget(self.label)
@@ -243,12 +239,78 @@ class InstallerWindow(QWidget):
         sys.exit(1)
 
 
+class CustomSvgWidget(QSvgWidget):
+    """
+    Кастомный SVG виджет для встраивания в кнопки
+    Автоматически синхронизируется с родительской кнопкой
+    """
+
+    def __init__(self, svg_path, parent_button=None):
+        """
+        :param svg_path: путь к SVG файлу
+        :param parent_button: родительская кнопка (QPushButton)
+        """
+        super().__init__(parent_button)  # Передаем кнопку как родителя
+        self._parent_button = parent_button
+        self._color_effect = None
+        self._current_color = QColor("#000000")
+        self._current_strength = 1.0
+
+        # Загружаем SVG
+        if svg_path:
+            self.load(svg_path)
+
+        # Настройки для встраивания в кнопку
+        self.setStyleSheet("background: transparent; border: none;")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+    def applyColorEffect(self, color, strength=1.0):
+        """
+        Применяет цветовой эффект
+        """
+        try:
+            self._current_color = color
+            self._current_strength = strength
+
+            # Удаляем старый эффект
+            if self._color_effect:
+                self._color_effect.deleteLater()
+
+            # Создаем и применяем эффект
+            self._color_effect = QGraphicsColorizeEffect(self)
+            self._color_effect.setColor(color)
+            self._color_effect.setStrength(strength)
+            self.setGraphicsEffect(self._color_effect)
+
+            self._forceUpdate()
+            return True
+
+        except Exception as e:
+            print(f"❌ Ошибка применения цвета: {e}")
+            return False
+
+    def _forceUpdate(self):
+        """Принудительное обновление"""
+        self.update()
+        self.repaint()
+        if self._parent_button:
+            self._parent_button.update()
+
+    # Свойства
+    def getEffectColor(self):
+        return self._current_color
+
+    def setEffectColor(self, color):
+        self.applyColorEffect(color, self._current_strength)
+
+    effectColor = Property(QColor, getEffectColor, setEffectColor)
+
+
 class ApplyColor():
     def __init__(self, new_color=None, parent=None):
         self.parent = parent  # Сохраняем ссылку на родительское окно
         self.color_path = get_path('user_settings', 'color_settings.json')
-        self.default_color_path = get_path('color_presets', 'default.json')
-        self.styles = {}
+        self.styles = self.load_styles()
         if new_color:
             self.color_path = new_color
 
@@ -258,11 +320,7 @@ class ApplyColor():
             with open(self.color_path, 'r') as file:
                 self.styles = json.load(file)
         except (FileNotFoundError, json.JSONDecodeError):
-            try:
-                with open(self.default_color_path, 'r') as default_file:
-                    self.styles = json.load(default_file)
-            except (FileNotFoundError, json.JSONDecodeError):
-                self.styles = {}
+            self.styles = {}
         return self.styles
 
     def apply_to_widget(self, widget, widget_name):
@@ -270,29 +328,57 @@ class ApplyColor():
         if widget_name in self.styles:
             widget.setStyleSheet(self.format_style(self.styles[widget_name]))
 
-    def apply_color_svg(self, svg_widget: QSvgWidget, strength: float) -> None:
-        if "TitleBar" in self.styles and "border-bottom" in self.styles["TitleBar"]:
-            border_value = self.styles["TitleBar"]["border-bottom"]
-            color = QColor("#000000")  # Fallback
+    def apply_color_svg(self, svg_widget, strength: float, specified_color: str = "") -> None:
+        """
+        Применяет цвет к SVG виджету
+        """
+        try:
+            if specified_color:
+                color = QColor(specified_color)
+                return svg_widget.applyColorEffect(color, strength)
+            if "TitleBar" in self.styles and "border-bottom" in self.styles["TitleBar"]:
+                border_value = self.styles["TitleBar"]["border-bottom"]
+                color = QColor("#000000")
 
-            # Ищем градиент в любой части строки
-            gradient_match = re.search(r"qlineargradient\([^)]+\)", border_value)
-            if gradient_match:
-                gradient_str = gradient_match.group(0)
-                # Ищем первый цвет градиента
-                color_match = re.search(r"stop:0\s+(#[0-9a-fA-F]+)", gradient_str)
-                if color_match:
-                    color = QColor(color_match.group(1))
-            else:
-                # Стандартная обработка HEX-цвета
-                hex_match = re.search(r"#[0-9a-fA-F]{3,6}", border_value)
-                if hex_match:
-                    color = QColor(hex_match.group(0))
+                # Ваш существующий код извлечения цвета
+                gradient_match = re.search(r"qlineargradient\([^)]+\)", border_value)
+                if gradient_match:
+                    gradient_str = gradient_match.group(0)
+                    color_match = re.search(r"stop:0\s+(#[0-9a-fA-F]+)", gradient_str)
+                    if color_match:
+                        color = QColor(color_match.group(1))
+                else:
+                    hex_match = re.search(r"#[0-9a-fA-F]{3,6}", border_value)
+                    if hex_match:
+                        color = QColor(hex_match.group(0))
 
-            color_effect = QGraphicsColorizeEffect()
-            color_effect.setColor(color)
-            svg_widget.setGraphicsEffect(color_effect)
-            color_effect.setStrength(strength)
+                if isinstance(svg_widget, CustomSvgWidget):
+                    # Используем наш кастомный метод
+                    svg_widget.applyColorEffect(color, strength)
+                else:
+                    # Fallback для обычных QSvgWidget
+                    self._apply_effect_fallback(svg_widget, color, strength)
+
+        except Exception as e:
+            logger.error(f"Ошибка в apply_color_svg: {e}")
+
+    def _apply_effect_fallback(self, svg_widget, color, strength):
+        """Fallback для обычных QSvgWidget"""
+        try:
+            effect = QGraphicsColorizeEffect()
+            effect.setColor(color)
+            effect.setStrength(strength)
+
+            # Удаляем старый эффект
+            old_effect = svg_widget.graphicsEffect()
+            if old_effect:
+                old_effect.deleteLater()
+
+            svg_widget.setGraphicsEffect(effect)
+            svg_widget.update()
+
+        except Exception as e:
+            logger.error(f"❌ Fallback ошибка: {e}")
 
     def format_style(self, style_dict):
         """Форматирует стиль в строку"""
@@ -390,7 +476,7 @@ class ApplyColor():
         :param brightness: Значение от -100 до 100
         :return: Новый цвет в hex-формате
         """
-        from PyQt5.QtGui import QColor
+        from PySide6.QtGui import QColor
         try:
             qcolor = QColor(color)
             if brightness > 0:

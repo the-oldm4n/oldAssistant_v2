@@ -3,7 +3,7 @@ import logging
 import sys
 from pathlib import Path
 
-from PyQt5.QtCore import QObject, pyqtSignal
+from PySide6.QtCore import QObject, Signal
 
 logger = logging.getLogger("update")
 logger.setLevel(logging.DEBUG)  # Уровень логирования
@@ -73,11 +73,11 @@ def get_config_value(section, key, default=None):
     return config.get(section, key, fallback=default)
 
 class UpdateStatusSignal(QObject):
-    status_update = pyqtSignal(str, int)
+    status_update = Signal(str, int)
 
 update_signal = UpdateStatusSignal()
 
 class RunAppSignal(QObject):
-    run_main_app = pyqtSignal()
+    run_main_app = Signal()
 
 run_app_signal = RunAppSignal()

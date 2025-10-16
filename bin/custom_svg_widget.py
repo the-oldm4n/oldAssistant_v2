@@ -1,7 +1,7 @@
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtWidgets import QGraphicsColorizeEffect, QGraphicsOpacityEffect
+from PySide6.QtWidgets import QGraphicsColorizeEffect
 from PySide6.QtGui import QColor, Qt
-from PySide6.QtCore import Property, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Property
 
 
 class CustomSvgWidget(QSvgWidget):

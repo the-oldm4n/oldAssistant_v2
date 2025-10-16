@@ -13,3 +13,13 @@
 /update.log
 /bin/calculator.py
 /venv/
+/install_app/__pycache__
+/update_app/__pycache__
+/bin/__pycache__
+/.idea
+/__pycache__/
+/update_pack
+/installer.log
+.idea/misc.xml
+.idea/OldAssistant.iml
+
