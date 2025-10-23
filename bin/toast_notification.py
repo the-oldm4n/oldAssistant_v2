@@ -17,7 +17,7 @@ class ToastNotification(QDialog):
     _active_toast = None
     _creating_notification = False  # Флаг для защиты от рекурсии
 
-    def __init__(self, parent=None, message="", timeout=3000):
+    def __init__(self, parent=None, message="", timeout=3500):
         super().__init__(parent)
         if ToastNotification._active_toast:
             ToastNotification._active_toast.close_immediately()
@@ -207,12 +207,12 @@ class ToastNotification(QDialog):
                 start_x = parent_geo.right() - self.width()
                 start_y = parent_geo.top() - self.height()
                 end_x = start_x
-                end_y = parent_geo.top() + 90
+                end_y = parent_geo.top() + 100
             else:
                 start_x = screen_geo.width() - self.width()
                 start_y = -self.height()
                 end_x = start_x
-                end_y = 21
+                end_y = 35
 
             self.move(start_x, start_y)
             
@@ -316,9 +316,9 @@ class SimpleNotice():
         self.main = QDialog(self.parent) if self.parent else QDialog()
         self.main.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.main.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.main.setMinimumWidth(250)
+        self.main.setMinimumWidth(280)
         self.main.setMaximumWidth(500)
-        self.main.setMinimumHeight(170)
+        self.main.setMinimumHeight(190)
         self.main.setMaximumHeight(250)
 
         screen_geometry = self.main.screen().availableGeometry()
@@ -339,8 +339,8 @@ class SimpleNotice():
         # Панель заголовка
         title_bar = QWidget()
         title_bar.setObjectName("TitleBar")
-        title_bar.setFixedHeight(35)
-        title_bar.setGeometry(1, 1, self.main.width() - 2, 34)
+        title_bar.setFixedHeight(40)
+        # title_bar.setGeometry(1, 1, self.main.width() - 2, 34)
 
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(10, 5, 10, 5)
@@ -354,11 +354,11 @@ class SimpleNotice():
 
         close_btn = QPushButton("")
         close_btn.setObjectName("CloseButton")
-        close_btn.setFixedSize(24, 24)
+        close_btn.setFixedSize(30, 30)
         close_btn.clicked.connect(self.main.reject)
         self.close_svg = CustomSvgWidget(self.icon_close_path, close_btn)
-        self.close_svg.setFixedSize(17, 17)
-        self.close_svg.move(4, 4)
+        self.close_svg.setFixedSize(24, 24)
+        self.close_svg.move(3, 3)
         self.close_svg.setStyleSheet("background: transparent;")
         title_layout.addWidget(close_btn)
         title_layout.addSpacing(0)
@@ -368,12 +368,12 @@ class SimpleNotice():
         # Область содержимого (сообщение + кнопки)
         content_widget = QWidget()
         content_widget.setObjectName("ContentWidget")
-        content_widget.setGeometry(
-            1,
-            36,
-            self.main.width() - 2,
-            self.main.height() - 36 - 45
-        )
+        # content_widget.setGeometry(
+        #     1,
+        #     36,
+        #     self.main.width() - 2,
+        #     self.main.height() - 36 - 45
+        # )
         content_layout = QVBoxLayout(content_widget)
 
         # Текст сообщения

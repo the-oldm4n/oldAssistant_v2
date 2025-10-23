@@ -1,5 +1,5 @@
 ﻿from PySide6.QtWidgets import QProgressBar, QWidget, QVBoxLayout, QHBoxLayout
-from PySide6.QtCore import Qt, QPropertyAnimation
+from PySide6.QtCore import Qt, QPropertyAnimation, Property
 from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient, QLinearGradient, QBrush
 
 from bin.custom_svg_widget import CustomSvgWidget
@@ -12,6 +12,7 @@ class CustomProgressBar(QWidget):
         self.value = 0
         self.max_value = 100
         self.line_width = line_width
+        self._value = 0
         
         # Цвета для кругового прогрессбара
         self.progress_color = QColor("#05B8CC")          # Цвет самой полосы прогресса
@@ -31,6 +32,15 @@ class CustomProgressBar(QWidget):
         self.animation.setStartValue(0)
         self.animation.setEndValue(100)
         self.animation.setLoopCount(-1)
+        
+    def _get_value(self):
+        return self._value
+
+    def _set_value(self, val):
+        self._value = val
+
+    # Объявляем свойство 'value'
+    value = Property(int, _get_value, _set_value)
 
     def setup_linear_progressbar(self):
         """Настройка линейного QProgressBar (default и looper)"""

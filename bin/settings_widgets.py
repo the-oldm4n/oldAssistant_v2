@@ -324,14 +324,14 @@ class SettingsWidget(QWidget):
         layout.addWidget(self.steam_path_input)
 
         select_steam_button = QPushButton("Выбрать папку", self)
-        select_steam_button.setStyleSheet("padding-left: 5px; padding-right: 5px;")
+        select_steam_button.setStyleSheet("padding-left: 10px; padding-right: 10px;")
         select_steam_button.clicked.connect(self.select_steam_folder)
         layout.addWidget(select_steam_button, alignment=Qt.AlignmentFlag.AlignRight)
 
         layout.addStretch()
 
         self.default_btn = QPushButton("По умолчанию")
-        self.default_btn.setStyleSheet("padding-left: 5px; padding-right: 5px;")
+        self.default_btn.setStyleSheet("padding-left: 10px; padding-right: 10px;")
         self.default_btn.clicked.connect(self.set_default_settings)
         layout.addWidget(self.default_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
@@ -393,7 +393,7 @@ class SettingsWidget(QWidget):
             "assistant_name": "джон",
             "assist_name2": "джонни",
             "assist_name3": "джон",
-            "steam_path": "D:/Steam/steam.exe",
+            "steam_path": "",
             "is_censored": True,
             "volume_assist": 0.15,
             "run_updater": True,
@@ -438,9 +438,9 @@ class SettingsWidget(QWidget):
         new_name3 = self.name3_input.text().strip().lower()
         new_steam_path = self.steam_path_input.text().strip()
 
-        if not os.path.isfile(new_steam_path):
-            self.assistant.show_message(f"Укажите правильный путь к steam.exe", "Предупреждение", "warning")
-            return
+        # if not os.path.isfile(new_steam_path):
+        #     self.assistant.show_message(f"Укажите правильный путь к steam.exe", "Предупреждение", "warning")
+        #     return
 
         # Обновляем параметры в родительском окне
         self.assistant.assistant_name = new_name

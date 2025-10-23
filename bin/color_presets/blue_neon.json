@@ -9,7 +9,7 @@
         "color": "#ffffff",
         "height": "30px",
         "border": "1px solid #4577ff",
-        "border-radius": "3px",
+        "border-radius": "10px",
         "font-size": "14px"
     },
     "QPushButton:hover": {
@@ -27,7 +27,7 @@
         "color": "#ffffff",
         "height": "30px",
         "border": "1px solid #4577ff",
-        "border-radius": "2px",
+        "border-radius": "10px",
         "font-size": "13px",
         "margin": "0",
         "padding": "3px"
@@ -76,13 +76,13 @@
     "QLineEdit": {
         "background-color": "transparent",
         "border": "1px solid #4577ff",
-        "border-radius": "3px",
+        "border-radius": "10px",
         "padding": "5px"
     },
     "QComboBox": {
         "background-color": "transparent",
         "border": "1px solid #4577ff",
-        "border-radius": "3px",
+        "border-radius": "10px",
         "padding": "5px"
     },
     "QCheckBox": {
@@ -140,7 +140,7 @@
         "color": "#ffffff",
         "height": "30px",
         "border": "1px solid #4577ff",
-        "border-radius": "3px",
+        "border-radius": "10px",
         "font-size": "13px"
     },
     "TrayButton:hover": {
@@ -153,7 +153,7 @@
         "color": "#ffffff",
         "height": "30px",
         "border": "1px solid #4577ff",
-        "border-radius": "3px",
+        "border-radius": "10px",
         "font-size": "13px"
     },
     "CloseButton:hover": {
@@ -163,14 +163,14 @@
     },
     "MessageContainer": {
         "border": "1px solid #4577ff",
-        "border-radius": "10px"
+        "border-radius": "15px"
     },
     "WindowContainer": {
         "border": "1px solid #4577ff",
-        "border-radius": "10px"
+        "border-radius": "15px"
     },
     "MainWindowWidget": {
-        "border": "none",
+        "border": "1px solid #4577ff",
         "border-radius": "15px"
     },
     "SettingsWidget": {
@@ -185,22 +185,58 @@
         "border": "none"
     },
     "QMenu": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #18154B)",
+        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #0F0D31)",
         "color": "#ffffff",
         "font-size": "13px",
-        "padding": "5px"
+        "padding": "5px",
+        "border": "1px solid #4577ff",
+        "margin": "0px"
     },
     "QMenu::item": {
-        "padding": "8px 20px",
-        "border-radius": "5px"
+        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #18154B)",
+        "padding": "8px 30px",
+        "margin": "1px",
+        "border-radius": "10px",
+        "border-left": "1px solid #1345cd",
+        "border-right": "1px solid #1345cd"
     },
     "QMenu::item:selected": {
-        "border-radius": "5px",
+        "border-radius": "10px",
         "background-color": "#4577ff",
         "color": "#ffffff"
     },
     "QColorDialog QPushButton": {
         "padding-left": "5px",
         "padding-right": "5px"
+    },
+    "UserProfileWidget": {
+        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #18154B)",
+        "color": "#ffffff",
+        "border": "1px solid #4577ff",
+        "border-radius": "10px"
+    },
+    "UserProfileWidget::hover": {
+        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #18154B, stop:1 #000000)",
+        "border": "1px solid #4577ff",
+        "border-radius": "10px"
+    },
+    "QSlider::handle:horizontal": {
+        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #18154B)",
+        "border": "1px solid #4577ff",
+        "border-radius": "3px",
+        "width": "12px",
+        "height": "18px",
+        "margin": "-7px 0"
+    },
+    "QSlider::groove:horizontal": {
+        "background": "1px solid #4577ff",
+        "height": "8px",
+        "border-radius": "4px",
+        "margin": "0"
+    },
+    "LabelSliderValue": {
+        "background": "transparent",
+        "border": "1px solid #4577ff",
+        "border-radius": "3px"
     }
 }

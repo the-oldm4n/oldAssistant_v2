@@ -188,11 +188,17 @@
         "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #381e2f)",
         "color": "#ffffff",
         "font-size": "13px",
-        "padding": "5px"
+        "padding": "5px",
+        "border": "1px solid qlineargradient(x1:0.88, y1:0.17, x2:0.12, y2:0.83, stop:0 #b84a88, stop:1 #3742b3)",
+        "margin": "0px"
     },
     "QMenu::item": {
+        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #381e2f)",
         "padding": "8px 20px",
-        "border-radius": "5px"
+        "margin": "1px",
+        "border-radius": "5px",
+        "border-left": "1px solid qlineargradient(x1:0.88, y1:0.17, x2:0.12, y2:0.83, stop:0 #861856, stop:1 #051081)",
+        "border-right": "1px solid qlineargradient(x1:0.88, y1:0.17, x2:0.12, y2:0.83, stop:0 #861856, stop:1 #051081)"
     },
     "QMenu::item:selected": {
         "border-radius": "5px",
@@ -202,5 +208,35 @@
     "QColorDialog QPushButton": {
         "padding-left": "5px",
         "padding-right": "5px"
+    },
+    "UserProfileWidget": {
+        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #390a3f)",
+        "color": "#ffffff",
+        "border": "1px solid #985b9c",
+        "border-radius": "10px"
+    },
+    "UserProfileWidget::hover": {
+        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #390a3f, stop:1 #000000)",
+        "border": "1px solid #985b9c",
+        "border-radius": "10px"
+    },
+    "QSlider::handle:horizontal": {
+        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #381e2f)",
+        "border": "1px solid qlineargradient(x1:0.88, y1:0.17, x2:0.12, y2:0.83, stop:0 #b84a88, stop:1 #3742b3)",
+        "border-radius": "3px",
+        "width": "12px",
+        "height": "18px",
+        "margin": "-7px 0"
+    },
+    "QSlider::groove:horizontal": {
+        "background": "qlineargradient(x1:0.88, y1:0.17, x2:0.12, y2:0.83, stop:0 #b84a88, stop:1 #3742b3)",
+        "height": "8px",
+        "border-radius": "4px",
+        "margin": "0"
+    },
+    "LabelSliderValue": {
+        "background": "transparent",
+        "border": "1px solid qlineargradient(x1:0.88, y1:0.17, x2:0.12, y2:0.83, stop:0 #b84a88, stop:1 #3742b3)",
+        "border-radius": "3px"
     }
 }

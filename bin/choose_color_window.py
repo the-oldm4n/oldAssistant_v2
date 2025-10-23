@@ -34,12 +34,15 @@ class ColorSettingsWindow(QDialog):
         self.setFixedSize(500, 600)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
-        # Инициализация переменных для цветов
+        # Инициализация переменных для цветов и прочего
         self.bg_color = ""
         self.btn_color = ""
         self.text_color = ""
         self.text_edit_color = ""
         self.border_color = ""
+        self.border_btn_radius = None
+        self.border_main_radius = None
+        self.border_in_main_window = False
 
         # Настройки градиентов
         self.gradient_settings = {
@@ -71,6 +74,14 @@ class ColorSettingsWindow(QDialog):
 
         self.load_color_settings()
         # self.apply_styles()
+        
+    # def __setattr__(self, name, value):
+    #     if name in ['border_btn_radius', 'border_main_radius']:
+    #         old_value = getattr(self, name, 'NOT_SET')
+    #         print(f"🚨 ПЕРЕЗАПИСЬ {name}: {old_value} -> {value} (тип: {type(value)})")
+    #         import traceback
+    #         traceback.print_stack(limit=10)
+    #     super().__setattr__(name, value)
 
     def apply_styles(self):
         """Применяет все стили к окну"""
@@ -131,6 +142,7 @@ class ColorSettingsWindow(QDialog):
         # Кастомный заголовок
         self.title_bar = QWidget(self.container)
         self.title_bar.setObjectName("TitleBar")
+        self.title_bar.setFixedHeight(40)
         self.title_bar.setGeometry(1, 1, self.width() - 2, 35)
         self.title_layout = QHBoxLayout(self.title_bar)
         self.title_layout.setContentsMargins(10, 5, 10, 5)
@@ -145,11 +157,11 @@ class ColorSettingsWindow(QDialog):
         self.title_layout.addWidget(self.title_label)
 
         self.close_btn = QPushButton("", self.title_bar)
-        self.close_btn.setFixedSize(25, 25)
+        self.close_btn.setFixedSize(30, 30)
         self.close_btn.setObjectName("CloseButton")
         self.close_btn.clicked.connect(self.close)
         self.close_svg = CustomSvgWidget(self.assistant.icon_close_path, self.close_btn)
-        self.close_svg.setFixedSize(19, 19)
+        self.close_svg.setFixedSize(24, 24)
         self.close_svg.move(3, 3)
         self.close_svg.setStyleSheet("background: transparent;")
         self.title_layout.addWidget(self.close_btn)
@@ -191,11 +203,15 @@ class ColorSettingsWindow(QDialog):
 
         self.border_tab = QWidget()
         self.init_gradient_tab(self.border_tab, 'borders', 'Обводки')
+        
+        self.radius_tab = QWidget()
+        self.change_radius_tab(self.radius_tab)
 
         self.tab_widget.addTab(self.bg_tab, "Фон")
         self.tab_widget.addTab(self.text_tab, "Текст")
         self.tab_widget.addTab(self.btn_tab, "Кнопки")
         self.tab_widget.addTab(self.border_tab, "Обводки")
+        self.tab_widget.addTab(self.radius_tab, "Радиус обводки")
 
         self.tabs_layout.addWidget(self.tab_widget)
 
@@ -312,6 +328,80 @@ class ColorSettingsWindow(QDialog):
 
         # Инициализируем состояние
         self.toggle_gradient(element_type, checkbox.isChecked())
+        
+    def change_radius_tab(self, tab):
+        """Добавляет секцию настроек радиуса"""
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(8)
+
+            # === Радиус кнопок ===
+        btn_radius_layout = QHBoxLayout()
+        btn_radius_label = QLabel("Радиус кнопок (px):")
+        btn_radius_label.setStyleSheet("background: transparent")
+        
+        self.btn_radius_slider = QSlider(Qt.Orientation.Horizontal)
+        self.btn_radius_slider.setRange(0, 15)
+        self.btn_radius_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.btn_radius_slider.setTickInterval(1)
+        self.btn_radius_slider.valueChanged.connect(self.on_btn_radius_changed)
+        
+        self.btn_radius_value_label = QLabel("0")
+        self.btn_radius_value_label.setObjectName("LabelSliderValue")
+        self.btn_radius_value_label.setFixedWidth(25)
+        self.btn_radius_value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        btn_radius_layout.addWidget(btn_radius_label)
+        btn_radius_layout.addWidget(self.btn_radius_slider)
+        btn_radius_layout.addWidget(self.btn_radius_value_label)
+        layout.addLayout(btn_radius_layout)
+
+        # === Радиус главного окна ===
+        main_radius_layout = QHBoxLayout()
+        main_radius_label = QLabel("Радиус главного окна (px):")
+        main_radius_label.setStyleSheet("background: transparent")
+        
+        self.main_radius_slider = QSlider(Qt.Orientation.Horizontal)
+        self.main_radius_slider.setRange(0, 20)
+        self.main_radius_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        self.main_radius_slider.setTickInterval(1)
+        self.main_radius_slider.valueChanged.connect(self.on_main_radius_changed)
+        
+        self.main_radius_value_label = QLabel("0")
+        self.main_radius_value_label.setObjectName("LabelSliderValue")
+        self.main_radius_value_label.setFixedWidth(25)
+        self.main_radius_value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        main_radius_layout.addWidget(main_radius_label)
+        main_radius_layout.addWidget(self.main_radius_slider)
+        main_radius_layout.addWidget(self.main_radius_value_label)
+        layout.addLayout(main_radius_layout)
+
+        # === Бордер у главного окна ===
+        self.main_border_checkbox = QCheckBox("Показывать бордер у главного окна")
+        self.main_border_checkbox.setStyleSheet("background: transparent")
+        self.main_border_checkbox.setChecked(self.border_in_main_window)
+        self.main_border_checkbox.stateChanged.connect(self.on_border_state_changed)
+        layout.addWidget(self.main_border_checkbox)
+
+        layout.addStretch()
+        
+    def on_btn_radius_changed(self, value):
+        """Обработчик изменения радиуса кнопок"""
+        self.btn_radius_value_label.setText(str(value))
+        self.border_btn_radius = str(value)
+        self.apply_changes(preview=True)
+
+    def on_main_radius_changed(self, value):
+        """Обработчик изменения радиуса главного окна"""
+        self.main_radius_value_label.setText(str(value))
+        self.border_main_radius = str(value)
+        self.apply_changes(preview=True)
+        
+    def on_border_state_changed(self):
+        """Обновляет внутренние переменные и применяет превью"""
+        self.border_in_main_window = self.main_border_checkbox.isChecked()
+        self.apply_changes(preview=True)
 
     def add_text_color_section(self, tab):
         """Добавляет секцию настроек текста"""
@@ -381,8 +471,6 @@ class ColorSettingsWindow(QDialog):
 
     def toggle_gradient(self, element_type, state):
         """Включает/выключает градиент для конкретного элемента"""
-
-        # ✅ ИСПРАВЛЕНО: ПРАВИЛЬНОЕ ОПРЕДЕЛЕНИЕ СОСТОЯНИЯ ДЛЯ PYSIDE6
         from PySide6.QtCore import Qt
 
         # state может быть: 0, 2, True, False, Qt.CheckState
@@ -395,7 +483,7 @@ class ColorSettingsWindow(QDialog):
             # bool или другие типы
             enabled = bool(state)
 
-        debug_logger.info(f"🎛️ toggle_gradient: {element_type}, state={state}, type={type(state)}, enabled={enabled}")
+        # debug_logger.info(f"🎛️ toggle_gradient: {element_type}, state={state}, type={type(state)}, enabled={enabled}")
 
         self.gradient_settings[element_type]['enabled'] = enabled
 
@@ -475,6 +563,30 @@ class ColorSettingsWindow(QDialog):
         else:
             # Если формат неожиданный, попробуем взять из gradient_settings
             self.border_color = self.gradient_settings['borders']['solid_color']
+            
+         # Радиус кнопок
+        btn_radius_str = self.styles.get("QPushButton", {}).get("border-radius", "0px")
+        self.border_btn_radius = int(btn_radius_str.rstrip("px"))
+        
+        # Радиус главного окна
+        main_radius_str = self.styles.get("MainWindowWidget", {}).get("border-radius", "0px")
+        self.border_main_radius = int(main_radius_str.rstrip("px"))
+        
+        # Устанавливаем значения в слайдеры
+        if hasattr(self, 'btn_radius_slider'):
+            self.btn_radius_slider.setValue(self.border_btn_radius)
+            self.btn_radius_value_label.setText(str(self.border_btn_radius))
+            
+        if hasattr(self, 'main_radius_slider'):
+            self.main_radius_slider.setValue(self.border_main_radius)
+            self.main_radius_value_label.setText(str(self.border_main_radius))
+
+        # Бордер главного окна
+        main_border = self.styles.get("MainWindowWidget", {}).get("border", "none")
+        self.border_in_main_window = main_border != "none"
+
+        self.main_border_checkbox.setChecked(self.border_in_main_window)
+        debug_logger.info(f"Стили загружены в переменные!")
 
     def load_element_settings(self, element_type, css_value):
         """Загружает настройки элемента (градиент или сплошной цвет)"""
@@ -562,231 +674,7 @@ class ColorSettingsWindow(QDialog):
 
     def apply_changes(self, preview=False):
         try:
-            new_styles = {
-                "QWidget": {
-                    "background-color": self.get_gradient_css('background') if self.gradient_settings['background'][
-                        'enabled'] else self.bg_color,
-                    "color": self.text_color,
-                    "font-size": "14px"
-                },
-                "QPushButton": {
-                    "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                        'enabled'] else self.btn_color,
-                    "color": self.text_color,
-                    "height": "30px",
-                    "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"1px solid {self.border_color}",
-                    "border-radius": "3px",
-                    "font-size": "14px"
-                },
-                "QPushButton:hover": {
-                    "background-color": self.get_hover_gradient_css('buttons'),
-                    "color": self.text_color,
-                    "font-size": "14px"
-                },
-                "QPushButton:pressed": {
-                    "background-color": self.get_pressed_gradient_css('buttons', 30),
-                    "padding-left": "3px",
-                    "padding-top": "3px",
-                },
-                "QTabBar::tab": {
-                    "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                        'enabled'] else self.btn_color,
-                    "color": self.text_color,
-                    "height": "30px",
-                    "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"1px solid {self.border_color}",
-                    "border-radius": "2px",
-                    "font-size": "13px",
-                    "margin": "0",
-                    "padding": "3px"
-                },
-                "QTabBar::tab:selected": {
-                    "background-color": self.get_hover_gradient_css('buttons'),
-                    "color": self.text_color,
-                    "font-size": "13px",
-                    "margin": "0",
-                    "padding": "3px",
-                    "padding-top": "10px"
-                },
-                "WSTabsContainer": {
-                    "background": "transparent",
-                    "border-radius": "10px"
-                },
-                "WSBottomContainer": {
-                    "background-color": "transparent"
-                },
-                "WSMainTabBar": {
-                    "background-color": "transparent"
-                },
-                "WMLeftContainer": {
-                    "background-color": "transparent"
-                },
-                "WMLeftButtonsPanel": {
-                    "background-color": "transparent"
-                },
-                "WMSettingsWidget": {
-                    "background-color": "transparent"
-                },
-                "WMSettingsContent": {
-                    "background-color": "transparent"
-                },
-                "WM_MutablePanel": {
-                    "background-color": "transparent"
-                },
-                "TabWidget": {
-                    "background": "transparent"
-                },
-                "TabWidget::pane": {
-                    "margin": "0px",
-                    "padding": "0px",
-                    "background": "transparent"
-                },
-
-                "QLineEdit": {
-                    "background-color": "transparent",
-                    "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"1px solid {self.border_color}",
-                    "border-radius": "3px",
-                    "padding": "5px"
-                },
-                "QComboBox": {
-                    "background-color": "transparent",
-                    "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"1px solid {self.border_color}",
-                    "border-radius": "3px",
-                    "padding": "5px"
-                },
-                "QCheckBox": {
-                    "background-color": "transparent",
-                    "padding": "2px"
-                },
-                "QCheckBox::indicator": {
-                    "width": "12px",
-                    "height": "12px",
-                    "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"1px solid {self.border_color}",
-                    "border-radius": "5px",
-                    "padding": "5px"
-                },
-                "QCheckBox::indicator:hover": {
-                    "width": "11px",
-                    "height": "11px"
-                },
-                "QCheckBox::indicator:checked": {
-                    "background-color": f"{self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"{self.border_color}",
-                },
-                "QTextEdit": {
-                    "background": "transparent",
-                    "color": self.text_edit_color,
-                    "border": "none",
-                    "font-size": "15px"
-                },
-                "label_version": {
-                    "background": "transparent",
-                    "color": self.text_edit_color,
-                    "font-size": "10px"
-                },
-                "label_message": {
-                    "color": self.text_color,
-                    "font-size": "13px"
-                },
-                "update_label": {
-                    "background": "transparent",
-                    "color": self.text_edit_color,
-                    "font-size": "13px"
-                },
-                "clock_mini": {
-                    "color": self.text_edit_color
-                },
-                "clock_title": {
-                    "color": self.text_edit_color
-                },
-                "TitleBar": {
-                    "background": "transparent",
-                    "border-bottom": f"1px solid {self.get_gradient_css('borders')}" if
-                    self.gradient_settings['borders']['enabled'] else f"1px solid {self.border_color}",
-                    "border-bottom-left-radius": "0px",
-                    "border-bottom-right-radius": "0px"
-                },
-                "TrayButton": {
-                    "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                        'enabled'] else self.btn_color,
-                    "color": self.text_color,
-                    "height": "30px",
-                    "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"1px solid {self.border_color}",
-                    "border-radius": "3px",
-                    "font-size": "13px"
-                },
-                "TrayButton:hover": {
-                    "color": "#ffffff",
-                    "background-color": "#0790EC",
-                    "border": "1px solid #0790EC"
-                },
-                "CloseButton": {
-                    "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                        'enabled'] else self.btn_color,
-                    "color": self.text_color,
-                    "height": "30px",
-                    "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"1px solid {self.border_color}",
-                    "border-radius": "3px",
-                    "font-size": "13px"
-                },
-                "CloseButton:hover": {
-                    "color": "#ffffff",
-                    "background-color": "#E04F4F",
-                    "border": "1px solid #E04F4F"
-                },
-                "MessageContainer": {
-                    "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"1px solid {self.border_color}",
-                    "border-radius": "10px"
-                },
-                "WindowContainer": {
-                    "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"1px solid {self.border_color}",
-                    "border-radius": "10px"
-                },
-                "MainWindowWidget": {
-                    "border": "none",
-                    "border-radius": "15px"
-                },
-                "SettingsWidget": {
-                    "border": "none",
-                    "border-radius": "10px"
-                },
-                "ContentWidget": {
-                    "background-color": "transparent"
-                },
-                "QMainWindow": {
-                    "background-color": "transparent",
-                    "border": "none"
-                },
-                "QMenu": {
-                    "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                        'enabled'] else self.btn_color,
-                    "color": "#ffffff",
-                    "font-size": "13px",
-                    "padding": "5px"
-                },
-                "QMenu::item": {
-                    "padding": "8px 20px",
-                    "border-radius": "5px"
-                },
-                "QMenu::item:selected": {
-                    "border-radius": "5px",
-                    "background-color": f"{self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                        'enabled'] else f"{self.border_color}",
-                    "color": "#ffffff"
-                },
-                "QColorDialog QPushButton": {
-                    "padding-left": "5px",
-                    "padding-right": "5px"
-                }
-            }
+            new_styles = self.reference_style()
 
             if not preview:
                 self.save_color_settings(new_styles)
@@ -916,231 +804,7 @@ class ColorSettingsWindow(QDialog):
             preset_path = os.path.join(self.custom_presets, f"{preset_name}.json")
 
             with open(preset_path, 'w', encoding='utf-8') as f:
-                json.dump({
-                    "QWidget": {
-                        "background-color": self.get_gradient_css('background') if self.gradient_settings['background'][
-                            'enabled'] else self.bg_color,
-                        "color": self.text_color,
-                        "font-size": "14px"
-                    },
-                    "QPushButton": {
-                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                            'enabled'] else self.btn_color,
-                        "color": self.text_color,
-                        "height": "30px",
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "3px",
-                        "font-size": "14px"
-                    },
-                    "QPushButton:hover": {
-                        "background-color": self.get_hover_gradient_css('buttons'),
-                        "color": self.text_color,
-                        "font-size": "14px"
-                    },
-                    "QPushButton:pressed": {
-                        "background-color": self.get_pressed_gradient_css('buttons', 30),
-                        "padding-left": "3px",
-                        "padding-top": "3px",
-                    },
-                    "QTabBar::tab": {
-                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                            'enabled'] else self.btn_color,
-                        "color": self.text_color,
-                        "height": "30px",
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "2px",
-                        "font-size": "13px",
-                        "margin": "0",
-                        "padding": "3px"
-                    },
-                    "QTabBar::tab:selected": {
-                        "background-color": self.get_hover_gradient_css('buttons'),
-                        "color": self.text_color,
-                        "font-size": "13px",
-                        "margin": "0",
-                        "padding": "3px",
-                        "padding-top": "10px"
-                    },
-                    "WSTabsContainer": {
-                        "background": "transparent",
-                        "border-radius": "10px"
-                    },
-                    "WSBottomContainer": {
-                        "background-color": "transparent"
-                    },
-                    "WSMainTabBar": {
-                        "background-color": "transparent"
-                    },
-                    "WMLeftContainer": {
-                        "background-color": "transparent"
-                    },
-                    "WMLeftButtonsPanel": {
-                        "background-color": "transparent"
-                    },
-                    "WMSettingsWidget": {
-                        "background-color": "transparent"
-                    },
-                    "WMSettingsContent": {
-                        "background-color": "transparent"
-                    },
-                    "WM_MutablePanel": {
-                        "background-color": "transparent"
-                    },
-                    "TabWidget": {
-                        "background": "transparent"
-                    },
-                    "TabWidget::pane": {
-                        "margin": "0px",
-                        "padding": "0px",
-                        "background": "transparent"
-                    },
-
-                    "QLineEdit": {
-                        "background-color": "transparent",
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "3px",
-                        "padding": "5px"
-                    },
-                    "QComboBox": {
-                        "background-color": "transparent",
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "3px",
-                        "padding": "5px"
-                    },
-                    "QCheckBox": {
-                        "background-color": "transparent",
-                        "padding": "2px"
-                    },
-                    "QCheckBox::indicator": {
-                        "width": "12px",
-                        "height": "12px",
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "5px",
-                        "padding": "5px"
-                    },
-                    "QCheckBox::indicator:hover": {
-                        "width": "11px",
-                        "height": "11px"
-                    },
-                    "QCheckBox::indicator:checked": {
-                        "background-color": f"{self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"{self.border_color}",
-                    },
-                    "QTextEdit": {
-                        "background": "transparent",
-                        "color": self.text_edit_color,
-                        "border": "none",
-                        "font-size": "15px"
-                    },
-                    "label_version": {
-                        "background": "transparent",
-                        "color": self.text_edit_color,
-                        "font-size": "10px"
-                    },
-                    "label_message": {
-                        "color": self.text_color,
-                        "font-size": "13px"
-                    },
-                    "update_label": {
-                        "background": "transparent",
-                        "color": self.text_edit_color,
-                        "font-size": "13px"
-                    },
-                    "clock_mini": {
-                        "color": self.text_edit_color
-                    },
-                    "clock_title": {
-                        "color": self.text_edit_color
-                    },
-                    "TitleBar": {
-                        "background": "transparent",
-                        "border-bottom": f"1px solid {self.get_gradient_css('borders')}" if
-                        self.gradient_settings['borders']['enabled'] else f"1px solid {self.border_color}",
-                        "border-bottom-left-radius": "0px",
-                        "border-bottom-right-radius": "0px"
-                    },
-                    "TrayButton": {
-                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                            'enabled'] else self.btn_color,
-                        "color": self.text_color,
-                        "height": "30px",
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "3px",
-                        "font-size": "13px"
-                    },
-                    "TrayButton:hover": {
-                        "color": "#ffffff",
-                        "background-color": "#0790EC",
-                        "border": "1px solid #0790EC"
-                    },
-                    "CloseButton": {
-                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                            'enabled'] else self.btn_color,
-                        "color": self.text_color,
-                        "height": "30px",
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "3px",
-                        "font-size": "13px"
-                    },
-                    "CloseButton:hover": {
-                        "color": "#ffffff",
-                        "background-color": "#E04F4F",
-                        "border": "1px solid #E04F4F"
-                    },
-                    "MessageContainer": {
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "10px"
-                    },
-                    "WindowContainer": {
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": "10px"
-                    },
-                    "MainWindowWidget": {
-                        "border": "none",
-                        "border-radius": "15px"
-                    },
-                    "SettingsWidget": {
-                        "border": "none",
-                        "border-radius": "10px"
-                    },
-                    "ContentWidget": {
-                        "background-color": "transparent"
-                    },
-                    "QMainWindow": {
-                        "background-color": "transparent",
-                        "border": "none"
-                    },
-                    "QMenu": {
-                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                            'enabled'] else self.btn_color,
-                        "color": "#ffffff",
-                        "font-size": "13px",
-                        "padding": "5px"
-                    },
-                    "QMenu::item": {
-                        "padding": "8px 20px",
-                        "border-radius": "5px"
-                    },
-                    "QMenu::item:selected": {
-                        "border-radius": "5px",
-                        "background-color": f"{self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"{self.border_color}",
-                        "color": "#ffffff"
-                    },
-                    "QColorDialog QPushButton": {
-                        "padding-left": "5px",
-                        "padding-right": "5px"
-                    }
-                }, f, indent=4, ensure_ascii=False)
+                json.dump(self.reference_style(), f, indent=4, ensure_ascii=False)
 
             self.load_presets()
             self.assistant.show_notification_message("Пресет сохранен!")
@@ -1220,6 +884,382 @@ class ColorSettingsWindow(QDialog):
 
         except Exception as e:
             self.assistant.show_notification_message(f"Ошибка загрузки пресета: {e}")
+            
+    def reference_style(self):
+        """Эталонный стиль на основе текущих переменных"""
+        return {
+                    "QWidget": {
+                        "background-color": self.get_gradient_css('background') if self.gradient_settings['background'][
+                            'enabled'] else self.bg_color,
+                        "color": self.text_color,
+                        "font-size": "14px"
+                    },
+                    "QPushButton": {
+                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
+                            'enabled'] else self.btn_color,
+                        "color": self.text_color,
+                        "height": "30px",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_btn_radius}px",
+                        "font-size": "14px"
+                    },
+                    "QPushButton:hover": {
+                        "background-color": self.get_hover_gradient_css('buttons'),
+                        "color": self.text_color,
+                        "font-size": "14px"
+                    },
+                    "QPushButton:pressed": {
+                        "background-color": self.get_pressed_gradient_css('buttons', 30),
+                        "padding-left": "3px",
+                        "padding-top": "3px",
+                    },
+                    "QTabBar::tab": {
+                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
+                            'enabled'] else self.btn_color,
+                        "color": self.text_color,
+                        "height": "30px",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_btn_radius}px",
+                        "font-size": "13px",
+                        "margin": "0",
+                        "padding": "3px"
+                    },
+                    "QTabBar::tab:selected": {
+                        "background-color": self.get_hover_gradient_css('buttons'),
+                        "color": self.text_color,
+                        "font-size": "13px",
+                        "margin": "0",
+                        "padding": "3px",
+                        "padding-top": "10px"
+                    },
+                    "WSTabsContainer": {
+                        "background": "transparent",
+                        "border-radius": "10px"
+                    },
+                    "WSBottomContainer": {
+                        "background-color": "transparent"
+                    },
+                    "WSMainTabBar": {
+                        "background-color": "transparent"
+                    },
+                    "WMLeftContainer": {
+                        "background-color": "transparent"
+                    },
+                    "WMLeftButtonsPanel": {
+                        "background-color": "transparent"
+                    },
+                    "WMSettingsWidget": {
+                        "background-color": "transparent"
+                    },
+                    "WMSettingsContent": {
+                        "background-color": "transparent"
+                    },
+                    "WM_MutablePanel": {
+                        "background-color": "transparent"
+                    },
+                    "TabWidget": {
+                        "background": "transparent"
+                    },
+                    "TabWidget::pane": {
+                        "margin": "0px",
+                        "padding": "0px",
+                        "background": "transparent"
+                    },
+
+                    "QLineEdit": {
+                        "background-color": "transparent",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_btn_radius}px",
+                        "padding": "5px"
+                    },
+                    "QComboBox": {
+                        "background-color": "transparent",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_btn_radius}px",
+                        "padding": "5px"
+                    },
+                    "QCheckBox": {
+                        "background-color": "transparent",
+                        "padding": "2px"
+                    },
+                    "QCheckBox::indicator": {
+                        "width": "12px",
+                        "height": "12px",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": "5px",
+                        "padding": "5px"
+                    },
+                    "QCheckBox::indicator:hover": {
+                        "width": "11px",
+                        "height": "11px"
+                    },
+                    "QCheckBox::indicator:checked": {
+                        "background-color": f"{self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"{self.border_color}",
+                    },
+                    "QTextEdit": {
+                        "background": "transparent",
+                        "color": self.text_edit_color,
+                        "border": "none",
+                        "font-size": "15px"
+                    },
+                    "label_version": {
+                        "background": "transparent",
+                        "color": self.text_edit_color,
+                        "font-size": "10px"
+                    },
+                    "label_message": {
+                        "color": self.text_color,
+                        "font-size": "13px"
+                    },
+                    "update_label": {
+                        "background": "transparent",
+                        "color": self.text_edit_color,
+                        "font-size": "13px"
+                    },
+                    "clock_mini": {
+                        "color": self.text_edit_color
+                    },
+                    "clock_title": {
+                        "color": self.text_edit_color
+                    },
+                    "TitleBar": {
+                        "background": "transparent",
+                        "border-bottom": f"1px solid {self.get_gradient_css('borders')}" if
+                        self.gradient_settings['borders']['enabled'] else f"1px solid {self.border_color}",
+                        "border-bottom-left-radius": "0px",
+                        "border-bottom-right-radius": "0px"
+                    },
+                    "TrayButton": {
+                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
+                            'enabled'] else self.btn_color,
+                        "color": self.text_color,
+                        "height": "30px",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_btn_radius}px",
+                        "font-size": "13px"
+                    },
+                    "TrayButton:hover": {
+                        "color": "#ffffff",
+                        "background-color": "#0790EC",
+                        "border": "1px solid #0790EC"
+                    },
+                    "CloseButton": {
+                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
+                            'enabled'] else self.btn_color,
+                        "color": self.text_color,
+                        "height": "30px",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_btn_radius}px",
+                        "font-size": "13px"
+                    },
+                    "CloseButton:hover": {
+                        "color": "#ffffff",
+                        "background-color": "#E04F4F",
+                        "border": "1px solid #E04F4F"
+                    },
+                    "MessageContainer": {
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_main_radius}px"
+                    },
+                    "WindowContainer": {
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_main_radius}px"
+                    },
+                    "MainWindowWidget": {
+                        "border": (
+                            f"1px solid {self.get_gradient_css('borders')}" 
+                            if self.gradient_settings['borders']['enabled'] else 
+                            f"1px solid {self.border_color}"
+                        ) if self.border_in_main_window else "none",
+                        "border-radius": f"{self.border_main_radius}px"
+                    },
+                    "SettingsWidget": {
+                        "border": "none",
+                        "border-radius": "10px"
+                    },
+                    "ContentWidget": {
+                        "background-color": "transparent"
+                    },
+                    "QMainWindow": {
+                        "background-color": "transparent",
+                        "border": "none"
+                    },
+                    "QMenu": {
+                        "background-color": self.get_gradient_css('background') if self.gradient_settings['background'][
+                            'enabled'] else self.bg_color,
+                        "color": "#ffffff",
+                        "font-size": "13px",
+                        "padding": "5px",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "margin": "0px"
+                    },
+                    "QMenu::item": {
+                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
+                            'enabled'] else self.btn_color,
+                        "padding": "8px 30px",
+                        "margin": "1px",
+                        "border-radius": f"{self.border_btn_radius}px",
+                        "border-left": f"1px solid {self.get_pressed_gradient_css('borders', 50)}",
+                        "border-right": f"1px solid {self.get_pressed_gradient_css('borders', 50)}"
+                    },
+                    "QMenu::item:selected": {
+                        "border-radius": f"{self.border_btn_radius}px",
+                        "background-color": f"{self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"{self.border_color}",
+                        "color": "#ffffff"
+                    },
+                    "QColorDialog QPushButton": {
+                        "padding-left": "5px",
+                        "padding-right": "5px"
+                    },
+                    "UserProfileWidget": {
+                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
+                            'enabled'] else self.btn_color,
+                        "color": self.text_color,
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_btn_radius}px",
+                    },
+                    "UserProfileWidget::hover": {
+                        "background-color": self.get_hover_gradient_css('buttons'),
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_btn_radius}px",
+                    },
+                    "QSlider::handle:horizontal": {
+                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
+                            'enabled'] else self.btn_color,
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": "3px",
+                        "width": "12px",
+                        "height": "18px",
+                        "margin": "-7px 0"
+                    },
+                    "QSlider::groove:horizontal": {
+                        "background": f"{self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "height": "8px",
+                        "border-radius": "4px",
+                        "margin": "0"
+                    },
+                    "LabelSliderValue": {
+                        "background": "transparent",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": "3px"
+                    }
+        }
+       
+    def update_style_file(self, file_path: str = None):
+        """
+        Обновляет структуру одного файла стиля.
+        Если file_path не указан — обновляется основной файл (self.color_settings_path).
+        """
+        if file_path is None:
+            load_settings = False
+            file_path = self.color_settings_path
+        else:
+            load_settings = True
+
+        # Загружаем текущий стиль из файла
+        if os.path.exists(file_path):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    current = json.load(f)
+                self.styles = current
+                if load_settings:
+                    self.load_color_settings()
+                debug_logger.info(f"Стиль загружен из: {file_path}")
+            except Exception as e:
+                debug_logger.warning(f"Не удалось загрузить {file_path}: {e}")
+                current = {}
+        else:
+            current = {}
+
+        # Генерируем эталонный стиль
+        reference = self.reference_style()
+
+        # Сливаем с сохранением порядка
+        merged = self.merge_with_reference(current, reference)
+
+        # Сохраняем обратно
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(merged, f, indent=4, ensure_ascii=False)
+            debug_logger.info(f"✅ Обновлён файл: {file_path}")
+            return True
+        except Exception as e:
+            debug_logger.error(f"❌ Ошибка записи в {file_path}: {e}")
+            return False
+        
+    def update_all_styles(self, extension: str = ".json"):
+        """
+        Обновляет все файлы с заданным расширением в обеих папках пресетов:
+        - bin/color_presets
+        - user_settings/presets
+        """
+        folders = [
+            get_path("bin", "color_presets"),
+            get_path("user_settings", "presets")
+        ]
+
+        updated_files = []
+
+        for folder_path in folders:
+            if not os.path.exists(folder_path):
+                debug_logger.warning(f"Папка не найдена: {folder_path}")
+                continue
+
+            filenames = [f for f in os.listdir(folder_path) if f.endswith(extension)]
+            for filename in filenames:
+                full_path = os.path.join(folder_path, filename)
+                if self.update_style_file(full_path):
+                    updated_files.append(full_path)  # или filename, если хочешь только имена
+
+        debug_logger.info(f"✅ Обновлено файлов: {len(updated_files)} в папках: {folders}")
+        return updated_files
+    
+    def merge_with_reference(self, current_style, reference_style):
+        """
+        Сливает current_style и reference_style, сохраняя:
+        - Порядок селекторов как в reference_style
+        - Текущие значения из current_style (если есть)
+        - Все селекторы из reference_style (гарантированно)
+        """
+        merged = {}
+
+        for selector in reference_style:
+            ref_props = reference_style[selector]
+            cur_props = current_style.get(selector, {})
+
+            # Начинаем с эталонных свойств (гарантируем наличие всех ключей)
+            merged_props = dict(ref_props)  # копируем структуру
+
+            # Перезаписываем только те свойства, которые уже есть в current
+            for prop, value in cur_props.items():
+                merged_props[prop] = value
+
+            merged[selector] = merged_props
+
+        # (Опционально) добавить "лишние" селекторы из current, которых нет в reference
+        # Обычно не нужно, но на всякий случай:
+        for selector in current_style:
+            if selector not in reference_style:
+                merged[selector] = current_style[selector]
+
+        return merged
 
 
 class GradientPreview(QLabel):
