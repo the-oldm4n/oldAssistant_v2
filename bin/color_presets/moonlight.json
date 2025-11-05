@@ -238,5 +238,36 @@
         "background": "transparent",
         "border": "1px solid qlineargradient(x1:0.85, y1:0.14, x2:0.15, y2:0.86, stop:0 #a08ddf, stop:1 #3b4deb)",
         "border-radius": "3px"
+    },
+    "QScrollBar:vertical": {
+        "border": "none",
+        "background": "qlineargradient(x1:0.85, y1:0.14, x2:0.15, y2:0.86, stop:0 #554294, stop:1 #0002a0)",
+        "width": "8px",
+        "border-radius": "4px",
+        "margin": "0px"
+    },
+    "QScrollBar::handle:vertical": {
+        "background": "qlineargradient(x1:0.85, y1:0.14, x2:0.15, y2:0.86, stop:0 #a08ddf, stop:1 #3b4deb)",
+        "border-radius": "4px",
+        "min-height": "20px",
+        "margin": "0px"
+    },
+    "QScrollBar::add-line:vertical": {
+        "border": "none",
+        "background": "none",
+        "height": "0px",
+        "width": "0px"
+    },
+    "QScrollBar::sub-line:vertical": {
+        "border": "none",
+        "background": "none",
+        "height": "0px",
+        "width": "0px"
+    },
+    "QScrollBar::add-page:vertical": {
+        "background": "none"
+    },
+    "QScrollBar::sub-page:vertical": {
+        "background": "none"
     }
 }

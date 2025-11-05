@@ -13,21 +13,15 @@ import jellyfish
 import numpy as np
 import pyaudio
 import requests
-import win32clipboard
 from bin.choose_color_window import ColorSettingsWindow
 from bin.custom_svg_widget import CustomSvgWidget
-
-import io
 import logging
-import os.path
 from pathlib import Path
 import sys
 import time
 import traceback
 import zipfile
 import markdown2
-import win32con
-import win32gui
 from packaging import version
 import psutil
 import threading
@@ -37,6 +31,7 @@ from vosk import Model, KaldiRecognizer
 from PySide6.QtGui import (QIcon, QCursor, QFont, QColor, QDesktopServices, QAction, QPixmap, QFontDatabase,
 QPen, QPainter, QBrush, QPainterPath)
 from PySide6.QtGui import QImage
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (QApplication, QWidget, QLineEdit, QVBoxLayout, QHBoxLayout, QWidgetAction, \
                                QPushButton, QSystemTrayIcon, QMenu, QMessageBox, QToolButton, \
                                QTextEdit, QDialog, QLabel, QTextBrowser, QMainWindow, QSizePolicy,
@@ -45,7 +40,8 @@ from PySide6.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, Signal, QProp
     QEasingCurve, Slot, QUrl, QThread
 from bin.apply_color_methods import ApplyColor
 from bin.check_update import load_changelog, VersionCheckThread
-from bin.download_thread import DownloadThread, SliderProgressBar
+from bin.download_thread import DownloadThread
+from bin.frosted_widget import GarlandDecorator, SnowOverlay
 from bin.progress_bar_widget import CustomProgressBar, SVGProgressBar
 from bin.register_module import AuthManager
 from bin.screenshot_tool import SystemScreenshot
@@ -65,37 +61,36 @@ from bin.speak_functions import thread_play_sound, thread_react_detail, thread_r
 from logging_config import logger, debug_logger
 from bin.lists import get_audio_paths, censored_list, commands_list
 
-MUTEX_NAME = "Assistant_238586019"
 build_ini = get_config_value("app", "build")
-version_file = "2.0.0"
+version_file = "2.0.1"
 update_version(version_file)
 domain = "https://owl-app.ru"
 
-
 def activate_existing_window():
-    hwnd = win32gui.FindWindow(None, "Ассистент")
-    if not hwnd:
+    """Пытается отправить команду существующему приложению"""
+    try:
+        socket = QLocalSocket()
+        socket.connectToServer("assistant_app")
+
+        if socket.waitForConnected(2000):
+            from PySide6.QtCore import QThread
+            QThread.msleep(50)
+
+            socket.write(b'show_window')
+
+            if socket.waitForBytesWritten(1000):
+                debug_logger.info("Команда отправлена существующему приложению")
+            else:
+                debug_logger.error("Данные не были отправлены")
+                
+            socket.disconnectFromServer()
+            return True
+        else:
+            debug_logger.error("Не удалось подключиться к IPC серверу")
+            return False
+    except Exception as e:
+        debug_logger.error(f"IPC client error: {e}")
         return False
-
-    # Получаем информацию об окне
-    placement = win32gui.GetWindowPlacement(hwnd)
-
-    # Если окно свёрнуто в трей (SW_SHOWMINIMIZED)
-    if placement[1] == win32con.SW_SHOWMINIMIZED:
-        # Восстанавливаем и активируем
-        win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        win32gui.SetForegroundWindow(hwnd)
-    else:
-        # Если окно просто неактивно - активируем
-        win32gui.SetForegroundWindow(hwnd)
-
-    # Дополнительные меры для надёжности
-    win32gui.BringWindowToTop(hwnd)
-    win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, 0, 0, 0, 0,
-                          win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-    win32gui.SetWindowPos(hwnd, win32con.HWND_NOTOPMOST, 0, 0, 0, 0,
-                          win32con.SWP_NOMOVE | win32con.SWP_NOSIZE)
-    return True
 
 
 class Assistant(QMainWindow):
@@ -134,6 +129,7 @@ class Assistant(QMainWindow):
 
     def __init__(self):
         super().__init__()
+        self.start_ipc_server()
         self.version = self.get_version()
         self.ps = "Powered by theoldman"
         self.label_version = QLabel(f"Версия: {self.version} {self.ps}", self)
@@ -152,9 +148,12 @@ class Assistant(QMainWindow):
         self.censored_thread = None
         self._current_panel = None
         self.widget_window = None
+        self.snow_on_background = None
+        self.garland_decorator = None
         self.is_manual_check = False
         self.stop_checking = False
         self.is_force_close = False
+        self.count = 0
         gui_signals.open_widget_signal.connect(self.open_widget)
         gui_signals.close_widget_signal.connect(self.close_widget)
         color_signal.color_changed.connect(self.update_colors)
@@ -192,6 +191,8 @@ class Assistant(QMainWindow):
         self.is_keep_watch = None
         self.input_device_id = None
         self.input_device_name = None
+        self.is_snow = None
+        self.is_garland = None
         self.install_settings()
         self.commands_manager = CommandsManager()
         self.audio_stream = None
@@ -286,6 +287,8 @@ class Assistant(QMainWindow):
         self.is_keep_watch = self.settings.get("is_keep_watch", False)
         self.input_device_id = self.settings.get("input_device_id", None)
         self.input_device_name = self.settings.get("input_device_name", None)
+        self.is_snow = self.settings.get("is_snow", False)
+        self.is_garland = self.settings.get("is_garland", False)
 
     def install_icons(self):
         self.icon_start_win = get_path("bin", "icons", "start-win.svg")
@@ -333,8 +336,10 @@ class Assistant(QMainWindow):
 
             # Главный контейнер
             self.central_widget = QWidget()
-            self.central_widget.setObjectName("MainWindowWidget")
+            self.central_widget.setObjectName("MainWindowWidget") 
             self.setCentralWidget(self.central_widget)
+            
+            self.update_snow_state()
 
             # Главный layout
             root_layout = QVBoxLayout(self.central_widget)
@@ -400,7 +405,9 @@ class Assistant(QMainWindow):
             self.content_widget = QWidget()
             self.content_widget.setObjectName("ContentWidget")
             main_layout = QHBoxLayout(self.content_widget)
-            main_layout.setContentsMargins(5, 5, 5, 5)    
+            main_layout.setContentsMargins(5, 5, 5, 5)
+            
+            self.update_garland_state()
 
             # === ЛЕВАЯ ЧАСТЬ: Контейнер с динамической шириной ===
             self.left_container = QWidget()
@@ -700,6 +707,156 @@ class Assistant(QMainWindow):
         change_color = ColorSettingsWindow(self)
         change_color.update_all_styles()
         self.apply_styles()
+        
+    def start_ipc_server(self):
+        """Настраивает IPC сервер используя Qt (без потоков)"""
+        self.ipc_server = QLocalServer()
+        self.ipc_server.newConnection.connect(self.handle_ipc_connection)
+        
+        # Удаляем старый сервер если есть (на случай краша)
+        QLocalServer.removeServer("assistant_app")
+        
+        # Запускаем сервер
+        if not self.ipc_server.listen("assistant_app"):
+            debug_logger.error(f"IPC server error: {self.ipc_server.errorString()}")
+        else:
+            debug_logger.info("IPC server started")
+
+    def handle_ipc_connection(self):
+        """Обрабатывает входящие соединения"""
+        socket = self.ipc_server.nextPendingConnection()
+        debug_logger.info(f"New connection: {socket}")
+        
+        if socket:
+            # Многократные попытки чтения
+            for attempt in range(5):
+                if socket.waitForReadyRead(100):  # Короткие интервалы
+                    if socket.bytesAvailable() > 0:
+                        data = socket.readAll().data()
+                        debug_logger.info(f"IPC data received (attempt {attempt+1}): {data}")
+                        if data == b'show_window':
+                            debug_logger.info("Activating window...")
+                            self.force_show_window()
+                        break
+                else:
+                    debug_logger.warning(f"Attempt {attempt+1}: No data yet")
+            
+            socket.disconnectFromServer()
+            socket.deleteLater()
+            debug_logger.info("Connection closed")
+            
+    def read_ipc_data(self, socket):
+        """Читает данные из IPC соединения"""
+        try:
+            if socket.bytesAvailable() > 0:
+                data = socket.readAll().data()
+                debug_logger.debug(f"IPC data received: {data}")
+                if data == b'show_window':
+                    self.force_show_window()
+            
+            # Всегда закрываем соединение после чтения
+            socket.disconnectFromServer()
+            socket.deleteLater()
+            
+        except Exception as e:
+            debug_logger.error(f"Error reading IPC data: {e}")
+        
+    def force_show_window(self):
+        """Принудительное открытие окна из любого состояния"""
+        debug_logger.debug(f"force_show_window called. isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}, isHidden: {self.isHidden()}")
+        
+        # Всегда показываем окно
+        self.show()
+        self.showNormal()  # Сбрасываем minimized/maximized состояние
+        
+        # Активация и фокус
+        self.activateWindow()
+        self.raise_()
+        self.setFocus()
+        
+        # Центрирование
+        screen_geometry = self.screen().availableGeometry()
+        self.move(
+            (screen_geometry.width() - self.width()) // 2,
+            (screen_geometry.height() - self.height()) // 2
+        )
+        
+        # Принудительная перерисовка
+        self.update()
+        self.repaint()
+        
+        debug_logger.debug(f"After force_show: isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}")
+        
+    def update_garland_state(self):
+        if self.is_garland:
+            if self.garland_decorator is None:
+                self.create_garland()
+            else:
+                self.garland_decorator.show()
+        else:
+            if self.garland_decorator is not None:
+                self.garland_decorator.hide()
+                
+    def create_garland(self):
+        if self.garland_decorator is not None:
+            return
+        
+        self.garland_decorator = GarlandDecorator(self.content_widget, light_count=104, light_size=10)
+        
+        if self.is_garland:
+            self.garland_decorator.show()
+        else:
+            self.garland_decorator.hide()
+
+    def update_snow_state(self):
+        """Обновляет состояние снега через show/hide"""
+        if self.is_snow:
+            if self.snow_on_background is None:
+                self.create_snow()
+            else:
+                self.snow_on_background.show()
+        else:
+            if self.snow_on_background is not None:
+                self.snow_on_background.hide()
+
+    def create_snow(self):
+        """Создает снежный эффект (только один раз)"""
+        if self.snow_on_background is not None:
+            return  # Уже создан
+        
+        self.snow_on_background = SnowOverlay(
+                parent=self.central_widget,
+                snowflake_count=300,
+                fall_speed=0.9,
+                flake_size_min=1,
+                flake_size_max=5
+            )
+        self.snow_on_background.resize(800, 700)
+        self.snow_on_background.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.snow_on_background.raise_()
+        self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=50)
+        
+        # Изначально показываем или скрываем в зависимости от состояния
+        if self.is_snow:
+            self.snow_on_background.show()
+        else:
+            self.snow_on_background.hide()
+
+    # def toggle_snow(self):
+    #     """Переключает состояние снега"""
+    #     self.is_snow = not self.is_snow
+    #     self.update_snow_state()
+
+    # Упрощенная версия без лишних проверок
+    def set_snow_enabled(self, enabled):
+        """Включает/выключает снег"""
+        self.is_snow = enabled
+        
+        if self.snow_on_background is not None:
+            if enabled:
+                self.snow_on_background.show()
+            else:
+                self.snow_on_background.hide()
 
     def hide_layout(self, layout):
         """Скрывает все виджеты в layout"""
@@ -986,8 +1143,8 @@ class Assistant(QMainWindow):
             
 
             # Применение общего стиля окна
-            # if hasattr(self, 'central_widget'):
-            #     self.central_widget.setObjectName("MainWindowWidget")
+            if hasattr(self, 'central_widget'):
+                self.central_widget.setObjectName("MainWindowWidget")
             if hasattr(self, 'title_bar_widget'):
                 self.title_bar_widget.setObjectName("TitleBar")
             if hasattr(self, 'container'):
@@ -1008,6 +1165,9 @@ class Assistant(QMainWindow):
             # Устанавливаем стиль для текущего окна
             self.setStyleSheet(style_sheet)
             self.apply_menu_styles(self.menu_tray)
+            if hasattr(self, "snow_on_background"):
+                self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=60)
+                
         except Exception as e:
             debug_logger.error(f"Ошибка в методе apply_styles: {e}")
 
@@ -1226,7 +1386,6 @@ class Assistant(QMainWindow):
 
         load_changelog()
 
-
         if latest_version > current_ver:
             self.download_thread = DownloadThread(type_version)
             self.download_thread.download_complete.connect(self.handle_download_complete)
@@ -1244,10 +1403,14 @@ class Assistant(QMainWindow):
             QTimer.singleShot(2000, lambda: self.update_complete())
 
     def handle_check_failed(self):
+        self.count += 1
         self.animation_stop_load()
         self.update_label.show()
         self.update_label.setText("Ошибка соединения")
-        QTimer.singleShot(2000, self.check_update_app)
+        if self.count == 3:
+            self.update_label.setText("Сервер не доступен")  
+        if self.count <= 2: # 3 попытки на запрос версии в случае неудачи
+            QTimer.singleShot(2000, self.check_update_app)
 
     def handle_download_complete(self, file_path, success=True, skipped=False, error=None):
         self.animation_stop_load()
@@ -1445,7 +1608,9 @@ class Assistant(QMainWindow):
             "is_widget": self.is_widget,
             "is_keep_watch": self.is_keep_watch,
             "input_device_id": self.input_device_id,
-            "input_device_name": self.input_device_name
+            "input_device_name": self.input_device_name,
+            "is_snow": self.is_snow,
+            "is_garland": self.is_garland
         }
         try:
             # Проверяем, существует ли папка user_settings
@@ -1490,7 +1655,9 @@ class Assistant(QMainWindow):
                 "is_widget": True,
                 "is_keep_watch": False,
                 "input_device_id": None,
-                "input_device_name": None
+                "input_device_name": None,
+                "is_snow": False,
+                "is_garland": False
             }
 
         # Загружаем текущие настройки
@@ -3991,13 +4158,11 @@ class ChangelogWindow(QDialog):
                 font-size: 16px;
             }
             code {
-                background: #f5f5f5;
                 padding: 2px 5px;
                 border-radius: 3px;
                 font-family: "Courier New", monospace;
             }
             pre {
-                background: #f5f5f5;
                 padding: 10px;
                 border-radius: 5px;
                 overflow-x: auto;

@@ -1,15 +1,16 @@
 {
     "window_position": {
-        "x": 1818,
-        "y": 394
+        "x": 1809,
+        "y": 357
     },
     "window_size": {
         "width": 90,
-        "height": 397
+        "height": 388
     },
     "is_compact": true,
     "is_pinned": true,
-    "is_locked": false,
+    "is_locked": 0,
+    "is_snow": true,
     "buttons": {
         "turnoff_check": true,
         "settings_check": true,
@@ -19,5 +20,5 @@
         "links_check": true,
         "resize_check": true
     },
-    "font_family": "metamorphous"
+    "font_family": "digital"
 }

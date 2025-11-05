@@ -8,10 +8,11 @@ from bin.lists import fonts_list
 from bin.signals import color_signal, widget_btns_signal, update_presets_signal
 from bin.speak_functions import thread_react
 from bin.choose_color_window import ColorSettingsWindow
+from bin.widget_window import WindowStateManager
 from path_builder import get_path
 from logging_config import logger, debug_logger
 from PySide6.QtCore import Signal, QTimer, QEvent
-from PySide6.QtWidgets import QFileDialog, QLineEdit, QSlider, QComboBox, QWidget, QHBoxLayout
+from PySide6.QtWidgets import QFileDialog, QLineEdit, QSlider, QComboBox, QWidget, QHBoxLayout, QScrollArea
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QCheckBox, QApplication, QFrame, QPushButton)
 from PySide6.QtCore import Qt
 
@@ -65,7 +66,7 @@ class InterfaceWidget(QWidget):
 
         btn_dark_red = QPushButton("Красный неон")
         btn_dark_red.clicked.connect(lambda: self.apply_style_file("red_neon.json"))
-        # left_col.addWidget(btn_dark_red)
+        left_col.addWidget(btn_dark_red)
 
         btn_dark_blue = QPushButton("Голубой неон")
         btn_dark_blue.clicked.connect(lambda: self.apply_style_file("dark_blue.json"))
@@ -74,10 +75,6 @@ class InterfaceWidget(QWidget):
         btn_purple_neon = QPushButton("Фиолетовый неон")
         btn_purple_neon.clicked.connect(lambda: self.apply_style_file("purple_neon.json"))
         left_col.addWidget(btn_purple_neon)
-
-        btn_ice_flame = QPushButton("Ice&Flame")
-        btn_ice_flame.clicked.connect(lambda: self.apply_style_file("ice_and_flame.json"))
-        # left_col.addWidget(btn_ice_flame)
 
         # Правая колонка
         btn_dark = QPushButton("Dark")
@@ -111,6 +108,10 @@ class InterfaceWidget(QWidget):
         btn_mint = QPushButton("Mint")
         btn_mint.clicked.connect(lambda: self.apply_style_file("mint.json"))
         right_col.addWidget(btn_mint)
+        
+        btn_snow_night = QPushButton("Night Snow")
+        btn_snow_night.clicked.connect(lambda: self.apply_style_file("snow_night.json"))
+        right_col.addWidget(btn_snow_night)
 
         cols.addLayout(left_col)
         cols.addLayout(right_col)
@@ -512,6 +513,20 @@ class OtherSettingsWidget(QWidget):
         self.keep_watch_check.setChecked(self.assistant.is_keep_watch)
         self.keep_watch_check.stateChanged.connect(self.toggle_keep_watch)
         layout.addWidget(self.keep_watch_check)
+        
+        self.snow_check = QCheckBox("Снег на главном окне", self)
+        self.snow_check.setStyleSheet("background: transparent;")
+        self.snow_check.setToolTip("Показывать снег на главном окне")
+        self.snow_check.setChecked(self.assistant.is_snow)
+        self.snow_check.stateChanged.connect(self.toggle_snow_main)
+        layout.addWidget(self.snow_check)
+        
+        self.garland_check = QCheckBox("Гирлянда на главном окне", self)
+        self.garland_check.setStyleSheet("background: transparent;")
+        self.garland_check.setToolTip("Показывать гирлянду")
+        self.garland_check.setChecked(self.assistant.is_garland)
+        self.garland_check.stateChanged.connect(self.toggle_garland_main)
+        layout.addWidget(self.garland_check)
 
         self.add_link_btn = QPushButton("Добавить ярлык на Рабочий стол", self)
         self.add_link_btn.clicked.connect(self.add_link_desktop)
@@ -526,6 +541,16 @@ class OtherSettingsWidget(QWidget):
         layout.addStretch()
 
         self.device_list.activated.connect(self.on_microphone_selected)
+        
+    def toggle_snow_main(self):
+        self.assistant.is_snow = self.snow_check.isChecked()
+        self.assistant.save_settings()
+        self.assistant.update_snow_state()
+        
+    def toggle_garland_main(self):
+        self.assistant.is_garland = self.garland_check.isChecked()
+        self.assistant.save_settings()
+        self.assistant.update_garland_state()
 
     def toggle_censor(self):
         self.assistant.is_censored = self.censor_check.isChecked()
@@ -1016,6 +1041,9 @@ class SettingsWidgetPanel(QWidget):
         self.checkboxes = {}
         self.assistant = parent
         self.widget_state = get_path("user_settings", "widget_state.json")
+        self.state_manager = WindowStateManager()
+        self.loaded_state = self.state_manager.load_state()
+        self.is_snow = self.loaded_state["is_snow"]
         self.drag_mode = False
         self.fonts_list = fonts_list
         self.init_ui()
@@ -1023,20 +1051,33 @@ class SettingsWidgetPanel(QWidget):
         self.load_buttons_settings()
 
     def init_ui(self):
+        # Создаем основной layout для самого SettingsWidgetPanel
+        main_layout = QVBoxLayout(self)  # ← передаем self в конструктор
+        main_layout.setContentsMargins(0, 0, 0, 0)  # Убираем отступы
+        
+        # Создаем скроллируемую область
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        
+        # Создаем виджет для контента
         content_widget = QWidget()
-        self.setLayout(QVBoxLayout())
-        self.layout().addWidget(content_widget)
-
+        scroll_area.setWidget(content_widget)  # ← Устанавливаем контент в скролл
+        
+        # Создаем layout для контента
         layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
+        # Дальше весь ваш существующий код...
         self.get_widget_btn = QPushButton("Открыть виджет", self)
         self.get_widget_btn.clicked.connect(self.get_widget)
         layout.addWidget(self.get_widget_btn)
 
         self.title = QLabel("Настройка кнопок на виджет-панели")
-        self.title.setStyleSheet("font-size: 16px; background: transparent")
+        self.title.setStyleSheet("background: transparent; font-weight: bold; font-size: 15px")
         layout.addWidget(self.title)
 
         # Кнопка для включения/выключения режима перетаскивания
@@ -1051,7 +1092,7 @@ class SettingsWidgetPanel(QWidget):
         self.drag_container.setMinimumHeight(300)
         self.drag_container.setStyleSheet("background: transparent")
         self.drag_container.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.drag_container.layout.setSpacing(10)  # Добавляем отступы между чекбоксами
+        self.drag_container.layout.setSpacing(10)
         self.drag_container.layout.setContentsMargins(5, 5, 5, 5)
 
         drag_layout.addWidget(self.drag_container)
@@ -1059,7 +1100,7 @@ class SettingsWidgetPanel(QWidget):
         # Создаем чекбоксы
         self.create_checkboxes()
         layout.addLayout(drag_layout)
-
+        
         # Создание виджетов
         font_layout = QHBoxLayout()
 
@@ -1075,9 +1116,20 @@ class SettingsWidgetPanel(QWidget):
         font_layout.addWidget(self.font_preview_label)
         layout.addLayout(font_layout)
         self.setup_font_selector()
-
+        
+        self.toggles_label = QLabel("Прочие параметры")
+        self.toggles_label.setStyleSheet("background: transparent; font-weight: bold; font-size: 15px")
+        layout.addWidget(self.toggles_label)
+        
+        self.snow_panel_checkbox = QCheckBox("Частицы снега на панели")
+        self.snow_panel_checkbox.setStyleSheet("background: transparent;")
+        self.snow_panel_checkbox.setToolTip("Показывать снег на панели")
+        self.snow_panel_checkbox.setChecked(self.is_snow)
+        self.snow_panel_checkbox.stateChanged.connect(self.toggle_snow)
+        layout.addWidget(self.snow_panel_checkbox)
+        
         layout.addStretch()
-
+        
         self.default_btn = QPushButton("По умолчанию")
         self.default_btn.setStyleSheet("padding-left: 10px; padding-right: 10px")
         self.default_btn.clicked.connect(self.set_default_buttons_settings)
@@ -1086,9 +1138,16 @@ class SettingsWidgetPanel(QWidget):
         self.save_btn = QPushButton("Применить")
         self.save_btn.clicked.connect(self.save_order)
         layout.addWidget(self.save_btn)
+        
+        # Добавляем скролл в основной layout
+        main_layout.addWidget(scroll_area)
 
     def get_widget(self):
         self.assistant.open_widget()
+        
+    def toggle_snow(self):
+        self.is_snow = self.snow_panel_checkbox.isChecked()
+        self.state_manager.update_value("is_snow", self.is_snow)
 
     def setup_font_selector(self):
         """Настройка выбора шрифта"""

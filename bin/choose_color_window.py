@@ -1159,6 +1159,38 @@ class ColorSettingsWindow(QDialog):
                         "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
                             'enabled'] else f"1px solid {self.border_color}",
                         "border-radius": "3px"
+                    },
+                    "QScrollBar:vertical": {
+                        "border": "none",
+                        "background": self.get_pressed_gradient_css('borders', darken_amount=75),
+                        "width": "8px",
+                        "border-radius": "4px",
+                        "margin": "0px"
+                    },
+                    "QScrollBar::handle:vertical": {
+                        "background": f"{self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"{self.border_color}",
+                        "border-radius": "4px",
+                        "min-height": "20px",
+                        "margin": "0px"
+                    },
+                    "QScrollBar::add-line:vertical": {
+                        "border": "none",
+                        "background": "none",
+                        "height": "0px",
+                        "width": "0px"
+                    },
+                    "QScrollBar::sub-line:vertical": {
+                        "border": "none",
+                        "background": "none",
+                        "height": "0px",
+                        "width": "0px"
+                    },
+                    "QScrollBar::add-page:vertical": {
+                        "background": "none"
+                    },
+                    "QScrollBar::sub-page:vertical": {
+                        "background": "none"
                     }
         }
        

@@ -2,7 +2,6 @@ import os
 import re
 from typing import Tuple, Optional, Dict
 import requests
-# from PyQt5.QtCore import QThread, pyqtSignal
 from PySide6.QtCore import QThread, Signal
 
 from logging_config import debug_logger

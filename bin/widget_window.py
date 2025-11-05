@@ -10,6 +10,7 @@ from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer,
 from bin.apply_color_methods import ApplyColor
 from bin.audio_control import controller
 from bin.custom_svg_widget import CustomSvgWidget
+from bin.frosted_widget import SnowOverlay
 from bin.function_list_main import shutdown_windows
 from bin.lists import fonts_list
 from bin.signals import color_signal, widget_btns_signal
@@ -26,7 +27,8 @@ class WindowStateManager:
             "window_size": {"width": 300, "height": 350},
             "is_compact": False,
             "is_pinned": False,
-            "is_locked": False
+            "is_locked": False, 
+            "is_snow": True
         }
 
         # Создаем файл при инициализации, если его нет
@@ -108,6 +110,21 @@ class WindowStateManager:
         window.is_locked = state["is_locked"]
 
         return state
+    
+    def update_value(self, key, value):
+        """Универсальный метод для обновления любого значения"""
+        state = self.load_state()
+        state[key] = value
+        self.save_state(state)
+        
+    def set_is_snow(self, value):
+        """Устанавливает новое значение для is_snow"""
+        # Загружаем текущее состояние
+        state = self.load_state()
+        # Обновляем значение
+        state["is_snow"] = bool(value)
+        # Сохраняем обратно
+        self.save_state(state)
 
 
 class SmartWidget(QWidget):
@@ -119,6 +136,8 @@ class SmartWidget(QWidget):
         self.player_buttons = {}
         self.is_paused = False
         self.is_muted = False
+        self.snow_on_label = None
+
         color_signal.color_changed.connect(self.update_colors)
         self.notes_file = get_path("user_settings", "notes.txt")
         self.widget_state = get_path("user_settings", "widget_state.json")
@@ -161,6 +180,7 @@ class SmartWidget(QWidget):
         saved_state = self.state_manager.apply_state(self)
         self.is_compact = saved_state["is_compact"]
         self.is_pinned = saved_state["is_pinned"]
+        self.is_snow = saved_state["is_snow"]
         self.is_locked = 0
         self.check_widget_pos()
 
@@ -194,6 +214,67 @@ class SmartWidget(QWidget):
         # Обновляем время
         self.update_time()
         self.update_ui_for_mode()
+        self.update_snow_state()
+        
+    def update_snow_state(self):
+        """Обновляет состояние снега через show/hide"""
+        if self.is_snow:
+            if self.snow_on_label is None:
+                self.create_snow()
+            else:
+                self.snow_on_label.show()
+        else:
+            if self.snow_on_label is not None:
+                self.snow_on_label.hide()
+
+    def create_snow(self):
+        """Создает снежный эффект (только один раз)"""
+        if self.snow_on_label is not None:
+            return  # Уже создан
+        
+        self.snow_on_label = SnowOverlay(
+            parent=self.main_container,
+            snowflake_count=20,
+            fall_speed=0.4,
+            flake_size_min=1,
+            flake_size_max=3,
+            change_interval_sec=60,
+            change_probability=0.5,
+            preset_type="panel"
+        )
+        self.snow_on_label.resize(self.main_container.size())
+        self.snow_on_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.snow_on_label.raise_()
+        self.snow_on_label.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=40)
+        
+        # Изначально показываем или скрываем в зависимости от состояния
+        if self.is_snow:
+            self.snow_on_label.show()
+        else:
+            self.snow_on_label.hide()
+
+    def remove_snow(self):
+        """Теперь просто скрываем снег"""
+        if self.snow_on_label is not None:
+            self.snow_on_label.hide()
+
+    def toggle_snow(self):
+        """Переключает состояние снега"""
+        self.is_snow = not self.is_snow
+        self.state_manager.set_is_snow(self.is_snow)
+        self.update_snow_state()
+
+    # Упрощенная версия без лишних проверок
+    def set_snow_enabled(self, enabled):
+        """Включает/выключает снег"""
+        self.is_snow = enabled
+        self.state_manager.set_is_snow(self.is_snow)
+        
+        if self.snow_on_label is not None:
+            if enabled:
+                self.snow_on_label.show()
+            else:
+                self.snow_on_label.hide()
 
     def init_ui(self):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -958,6 +1039,7 @@ class SmartWidget(QWidget):
         self.recreate_buttons()
         self.load_font_clock()
         self.hide_main_btns()
+        self.toggle_snow()
 
     def recreate_buttons(self):
         """Пересоздает блок с кнопками"""
@@ -1336,6 +1418,9 @@ class SmartWidget(QWidget):
 
         self.style_manager.apply_color_svg(self.pin_svg, strength=0.95)
         self.style_manager.apply_color_svg(self.lock_svg, strength=0.95)
+        
+        if hasattr(self, "snow_on_label"):
+            self.snow_on_label.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=40)
 
     def set_default_sensor_values(self):
         """Устанавливает значения по умолчанию для всех датчиков"""
