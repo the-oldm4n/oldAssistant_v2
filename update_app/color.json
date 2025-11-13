@@ -61,5 +61,9 @@
     "MessageContainer": {
         "border": "1px solid #9198c1",
         "border-radius": "25px"
+    },
+    "WindowContainer": {
+        "border": "1px solid #9198c1",
+        "border-radius": "20px"
     }
 }

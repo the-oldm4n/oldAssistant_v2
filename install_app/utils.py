@@ -1,6 +1,7 @@
 import logging
 import sys
 from pathlib import Path
+import requests
 
 logger = logging.getLogger("install")
 logger.setLevel(logging.DEBUG)  # Уровень логирования
@@ -61,3 +62,11 @@ def get_base_directory():
         return Path(sys.executable).parent
     # Режим разработки
     return Path(__file__).parent
+
+USER_AGENT = f"OWLAPP/Updater/-Setup-/"
+
+# Создаем сессию с кастомным User-Agent
+session = requests.Session()
+session.headers.update({
+    'User-Agent': USER_AGENT
+})

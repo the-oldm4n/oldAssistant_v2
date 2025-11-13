@@ -1,5 +1,6 @@
 import configparser
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -68,8 +69,14 @@ def get_config_value(section, key, default=None):
     """Получение конкретного значения из конфига"""
     config = configparser.ConfigParser()
     root = get_base_directory()
-    config_path = root / "config.ini"
+    # root = os.path.dirname(get_directory())
+    config_path = os.path.join(root, "config.ini")
+    if not os.path.exists(config_path):
+        logger.info(f"File is not found")
+        return default
     config.read(config_path, encoding='utf-8')
+    if not config.has_section(section) or not config.has_option(section, key):
+        return default
     return config.get(section, key, fallback=default)
 
 class UpdateStatusSignal(QObject):

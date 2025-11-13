@@ -14,9 +14,66 @@ from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, \
                                QGraphicsColorizeEffect, QSpacerItem, QProgressBar)
 import sys
 from packaging import version
-from check_and_download import DownloadThread, VersionCheckThread
+import requests
+from check_and_download import DeltaDownloadThread, DownloadThread, GetManifestThread, VersionCheckThread, get_update_strategy
 from utils import get_path, logger, get_base_directory, update_signal, run_app_signal, get_config_value
 
+
+domain = "https://owl-app.ru"
+# domain = "http://127.0.0.1:5000"
+
+# Получаем версию из конфига
+APP_VERSION = get_config_value("app", "version", "1.0.0")
+USER_AGENT = f"OWLAPP/Updater/v.{APP_VERSION}/"
+
+# Создаем сессию с кастомным User-Agent
+session = requests.Session()
+session.headers.update({
+    'User-Agent': USER_AGENT
+})
+
+class UpdateAuthManager:
+    def __init__(self):
+        self.token = None
+        self.base_url = domain
+        
+    def get_update_token(self):
+        """Получить временный токен для обновлений"""
+        try:
+            response = session.post(
+                f"{self.base_url}/api/updates/token",
+                json={
+                    'app_id': 'assistant_updater',
+                },
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                self.token = response.json()['token']
+                return True
+            return False
+        except:
+            return False
+    
+    def make_update_request(self, endpoint, data=None):
+        """Выполнить запрос с токеном обновлений"""
+        if not self.token:
+            if not self.get_update_token():
+                return None
+        
+        # Формируем данные с токеном
+        request_data = data or {}
+        request_data['token'] = self.token
+        
+        try:
+            response = session.post(
+                f"{self.base_url}{endpoint}",
+                json=request_data,
+                timeout=30
+            )
+            return response.json() if response.status_code == 200 else None
+        except:
+            return None
 
 class CustomProgressBar(QWidget):
     def __init__(self, parent=None, style="default", circle_size=100, line_width=2):
@@ -454,7 +511,7 @@ class UnpackAppThread(QThread):
     def run(self):
         if not self.update_file_path:
             logger.error("Не найден файл обновления (*.zip)")
-            update_signal.status_update.emit("Не найден файл обновления (*.zip)")
+            update_signal.status_update.emit("Не найден файл обновления (*.zip)", 60)
             self.unpack_complete.emit(False)
             return
 
@@ -465,7 +522,7 @@ class UnpackAppThread(QThread):
             return
 
         if not self.extract_archive(self.update_file_path):
-            update_signal.status_update.emit("Не удалось распаковать архив с новой версией")
+            update_signal.status_update.emit("Не удалось распаковать архив с новой версией", 60)
             self.unpack_complete.emit(False)
             return
         logger.info(f"Архив с новой версией распакован по пути {self.update_pack_dir}")
@@ -548,7 +605,7 @@ class UnpackAppThread(QThread):
 
         except Exception as e:
             logger.error(f"Ошибка распаковки: {str(e)}", exc_info=True)
-            update_signal.status_update.emit(f"Ошибка распаковки: {str(e)}")
+            update_signal.status_update.emit(f"Ошибка распаковки: {str(e)}", 60)
             return False
 
     def _safe_decode_filename(self, filename):
@@ -592,10 +649,13 @@ class UpdateWindow(QWidget):
         self.check_thread = None
         self.download_thread = None
         self.unpack_thread = None
+        self.update_completed = False
         self.root_dir = get_base_directory()
         self.update_pack_dir = self.root_dir / "update_pack"
+        self.old_files_dir = self.root_dir / "old_files_backup"  # Папка для резервных копий
         self.no_check_mode = "--no-checked" in sys.argv
         self.install_mode = "--install-mode" in sys.argv
+        self.batch_update = "--batch-update" in sys.argv
         run_app_signal.run_main_app.connect(self.run_main_app)
         self.setWindowIcon(QIcon(get_path('icon.ico')))
         self.parent_style = self.root_dir / "user_settings" / "color_settings.json"
@@ -614,7 +674,6 @@ class UpdateWindow(QWidget):
 
     def init_ui(self):
         try:
-            
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
             self.setFixedSize(250, 250)
@@ -628,7 +687,7 @@ class UpdateWindow(QWidget):
             layout.setContentsMargins(0, 0, 0, 0)
 
             self.main_widget = QWidget()
-            self.main_widget.setStyleSheet("""border-radius:20px""")
+            self.main_widget.setObjectName("WindowContainer")
             content_layout = QVBoxLayout(self.main_widget)
             content_layout.setContentsMargins(15, 0, 15, 10)
             content_layout.addStretch()
@@ -652,7 +711,6 @@ class UpdateWindow(QWidget):
                 circle_size=180,
                 show_text=False,
                 line_width=3)
-            # self.progress = QProgressBar()
             self.progress.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
             content_layout.addWidget(self.progress, alignment=Qt.AlignmentFlag.AlignCenter)
 
@@ -705,7 +763,7 @@ class UpdateWindow(QWidget):
                 style_sheet += "}\n"
 
             self.setStyleSheet(style_sheet)
-
+            self.main_widget.setStyleSheet("""border-radius:20px""")
         except Exception as e:
             logger.error(f"Ошибка в методе apply_styles: {e}")
 
@@ -720,8 +778,13 @@ class UpdateWindow(QWidget):
             self.set_status("Закрытие Assistant.exe...", 0)
             self.kill_main_app()
             time.sleep(2)  # Даем время на закрытие
-
-        # 2. Проверяем режим no-check
+        
+        # 2. Проверяем режим batch_update
+        if self.batch_update:
+            self.set_status("Пропуск проверки обновлений...", 30)
+            QTimer.singleShot(1000, self.start_install_batch)
+            
+        # 3. Проверяем режим no-check
         if self.no_check_mode:
             self.set_status("Пропуск проверки обновлений...", 30)
             QTimer.singleShot(1000, self.start_install_from_existing)  # Прямо к установке
@@ -732,6 +795,10 @@ class UpdateWindow(QWidget):
     def start_check_update(self):
         """Запуск проверки обновлений из UI потока"""
         self.set_status("Поиск обновлений...", 10)
+        import traceback
+        logger.info("=== ВТОРАЯ ПРОВЕРКА ВЕРСИИ! Стек вызовов: ===")
+        logger.info(traceback.format_stack())
+        logger.info("=============================================")
 
         self.check_thread = VersionCheckThread()
         self.check_thread.version_checked.connect(self.on_version_checked)
@@ -744,7 +811,7 @@ class UpdateWindow(QWidget):
             delattr(self, 'check_attempts')
         try:
             # Получаем текущую версию с обработкой ошибок
-            current_version_str = get_config_value("app", "version")
+            current_version_str = self.version
             if not current_version_str:
                 logger.warning("Не удалось получить текущую версию из конфига, используем '0.0.0'")
                 current_version_str = "0.0.0"
@@ -761,19 +828,209 @@ class UpdateWindow(QWidget):
 
             if stable_ver > current_version:
                 self.set_status("Скачивание обновления...", 30)
-                self.start_download(stable_version)
+                self.get_update_manifest(current_version, stable_version)
             else:
                 self.set_status("Установлена последняя версия", 100)
                 QTimer.singleShot(200, self.run_main_app)
 
         except Exception as e:
             logger.error(f"Ошибка при обработке версий: {e}")
-            # В случае любой ошибки пытаемся скачать обновление
-            if stable_version:
-                self.set_status("Скачивание обновления...", 30)
-                self.start_download(stable_version)
+            self.retry_version_check()
+            
+    def get_update_manifest(self, current_version, target_version, attempt=1, max_attempts=3):
+        """Получение манифеста обновлений с повторными попытками"""
+        try:
+            update_auth = UpdateAuthManager()
+            self.manifest_thread = GetManifestThread(current_version, update_auth)
+            
+            # Используем лямбду для передачи attempt и max_attempts
+            self.manifest_thread.check_success.connect(
+                lambda manifest: self.on_manifest_ready(manifest, target_version)
+            )
+            self.manifest_thread.check_failed.connect(
+                lambda: self.on_manifest_failed(current_version, target_version, attempt, max_attempts)
+            )
+            self.manifest_thread.start()
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения манифеста: {e}")
+            self.on_manifest_failed(current_version, target_version, attempt, max_attempts)
+            
+    def on_manifest_failed(self, current_version, target_version, attempt=1, max_attempts=3):
+        """Обработка ошибки получения манифеста с повторными попытками"""
+        if attempt <= max_attempts:
+            logger.warning(f"❌ Попытка {attempt}/{max_attempts} получить манифест не удалась")
+            self.set_status(f"Повторная попытка получить обновление ({attempt}/{max_attempts})...", 30)
+            
+            # Повторная попытка через 2 секунды
+            QTimer.singleShot(2000, lambda: self.retry_get_manifest(current_version, target_version, attempt, max_attempts))
+        else:
+            logger.error("❌ Не удалось получить манифест после всех попыток, запускаем приложение без обновления")
+            self.set_status("Не удалось проверить обновления", 0)
+            # Запускаем основное приложение без обновления
+            QTimer.singleShot(2000, self.run_main_app)
+
+    def retry_get_manifest(self, current_version, target_version, attempt, max_attempts):
+        """Повторная попытка получить манифест"""
+        self.get_update_manifest(current_version, target_version, attempt + 1, max_attempts)
+
+    def on_manifest_ready(self, manifest, target_version):
+        """Обработка готового манифеста и запуск соответствующей загрузки"""
+        try:
+            # Получаем текущую версию
+            current_version_str = get_config_value("app", "version")
+            if not current_version_str:
+                current_version_str = "0.0.0"
+            
+            current_ver = version.parse(current_version_str)
+            latest_ver = version.parse(target_version)
+            
+            if current_ver == latest_ver:
+                logger.info("Установлена последняя версия, запускаем приложение")
+                self.set_status("Установлена последняя версия", 100)
+                QTimer.singleShot(1000, self.run_main_app)
+                return
+            
+            # Определяем стратегию обновления
+            strategy = self.get_update_strategy(current_ver, latest_ver, manifest)
+            logger.info(f"Стратегия обновления: {strategy}")
+            
+            if strategy == "full":
+                logger.info("Требуется полная установка (было критическое обновление)")
+                self.start_download(target_version)
             else:
-                self.retry_version_check()
+                logger.info("Дельта-обновление доступно")
+                # Собираем все файлы из всех версий между current и latest
+                files_to_update = self.collect_all_changed_files(current_ver, latest_ver, manifest)
+                
+                if self.batch_update:
+                    # В batch-режиме проверяем существующие файлы
+                    self.process_batch_delta(files_to_update, manifest, target_version)
+                else:
+                    self.start_delta_download(files_to_update, manifest, target_version)
+                    
+        except Exception as e:
+            logger.error(f"Ошибка обработки манифеста: {e}")
+            
+    def process_batch_delta(self, files_to_update, manifest, target_version):
+        """Обработка дельта-обновления в batch-режиме"""
+        try:
+            root_dir = get_base_directory()
+            temp_dir = root_dir / "update" / f'{target_version}_temp'
+            
+            # Проверяем существование папки
+            if not os.path.exists(temp_dir):
+                logger.info(f"Папка обновления не найдена, начинаем полную загрузку: {temp_dir}")
+                self.start_delta_download(files_to_update, manifest, target_version, skip_existing=False)
+                return
+            
+            # Проверяем наличие файлов
+            missing_files = []
+            for file_path in files_to_update:
+                local_path = temp_dir / file_path
+                if not os.path.exists(local_path):
+                    missing_files.append(file_path)
+            
+            if missing_files:
+                logger.info(f"Найдено {len(missing_files)} отсутствующих файлов, докачиваем...")
+                self.start_delta_download(missing_files, manifest, target_version, skip_existing=True)
+            else:
+                logger.info("Все файлы присутствуют, начинаем установку")
+                self.install_delta_update(temp_dir)
+                
+        except Exception as e:
+            logger.error(f"Ошибка обработки batch-дельта: {e}")
+            self.show_error("Ошибка обработки обновления")
+
+    def get_update_strategy(self, current_ver, target_ver, manifest):
+        """Определяет стратегию обновления: full или delta"""
+        try:
+            # Преобразуем версии из манифеста в объекты Version для сравнения
+            version_objects = []
+            version_to_str_map = {}
+            
+            for ver_str in manifest.keys():
+                try:
+                    if any(marker in ver_str.lower() for marker in ['-beta', '-alpha', '-exp', '-rc', '-dev']):
+                        continue
+                    ver_obj = version.parse(ver_str)
+                    version_objects.append(ver_obj)
+                    version_to_str_map[ver_obj] = ver_str
+                except:
+                    continue
+            
+            # Сортируем объекты Version
+            version_objects.sort()
+            
+            logger.info(f"🔎 Доступные версии в манифесте: {[str(v) for v in version_objects]}")
+            logger.info(f"🔎 Текущая версия: {current_ver}, Целевая версия: {target_ver}")
+            
+            # Находим индексы в отсортированном списке
+            current_idx = version_objects.index(current_ver)
+            target_idx = version_objects.index(target_ver)
+            
+            logger.info(f"🔎 Индексы: current_idx={current_idx}, target_idx={target_idx}")
+            
+            # ИСПРАВЛЕНИЕ: проверяем ВСЕ версии от текущей до целевой включительно
+            # если в текущей версии full_update=true, то нужна полная установка
+            for i in range(current_idx, target_idx + 1):  # ← изменил current_idx + 1 на current_idx
+                version_obj = version_objects[i]
+                version_str = version_to_str_map[version_obj]
+                full_update = manifest[version_str].get('full_update', False)
+                
+                logger.info(f"🔎 Проверка версии {version_str}: full_update={full_update}")
+                
+                if full_update:
+                    logger.info(f"🚨 Найдено полное обновление в версии {version_str}")
+                    return "full"
+            
+            logger.info("✅ Дельта-обновление доступно")
+            return "delta"
+            
+        except (ValueError, Exception) as e:
+            logger.error(f"❌ Ошибка определения стратегии обновления: {e}")
+            return "full"
+
+    def collect_all_changed_files(self, current_ver, target_ver, manifest):
+        """Собирает все измененные файлы между версиями"""
+        try:
+            # Преобразуем версии из манифеста в объекты Version для сравнения
+            version_objects = []
+            version_to_str_map = {}  # Сопоставление Version -> строковый ключ
+            
+            for ver_str in manifest.keys():
+                try:
+                    ver_obj = version.parse(ver_str)
+                    version_objects.append(ver_obj)
+                    version_to_str_map[ver_obj] = ver_str
+                except:
+                    continue
+            
+            # Сортируем объекты Version
+            version_objects.sort()
+            
+            # Находим индексы в отсортированном списке объектов Version
+            current_idx = version_objects.index(current_ver)
+            target_idx = version_objects.index(target_ver)
+            
+            all_files = set()
+            for i in range(current_idx + 1, target_idx + 1):
+                version_obj = version_objects[i]
+                version_str = version_to_str_map[version_obj]  # Получаем строковый ключ
+                files = manifest[version_str].get('changed_files', [])  # Используем changed_files
+                all_files.update(files)
+            
+            logger.info(f"Собрано {len(all_files)} файлов для дельта-обновления")
+            return list(all_files)
+            
+        except ValueError as e:
+            logger.error(f"❌ Версия не найдена в collect_all_changed_files: {e}")
+            logger.error(f"❌ Текущая: {current_ver}, Целевая: {target_ver}")
+            logger.error(f"❌ Доступные: {[str(v) for v in version_objects]}")
+            return []
+        except Exception as e:
+            logger.error(f"Ошибка сбора файлов: {e}")
+            return []
 
     def retry_version_check(self, attempt=1, max_attempts=3):
         """Повторная попытка проверки версии"""
@@ -804,6 +1061,199 @@ class UpdateWindow(QWidget):
             self.set_status("Не удалось проверить обновления", 0)
             # Запускаем основную программу
             QTimer.singleShot(2000, self.run_main_app)
+            
+    def start_delta_download(self, files_to_update, manifest, target_version, skip_existing=False):
+        """Запуск загрузки дельта-обновления"""
+        if not files_to_update:
+            logger.warning("Нет файлов для дельта-обновления")
+            return
+            
+        self.set_status("Загрузка обновления...", 30)
+        update_auth = UpdateAuthManager()
+        self.download_thread = DeltaDownloadThread(files_to_update,
+                                                   manifest,
+                                                   target_version,
+                                                   update_auth,
+                                                   skip_existing)
+        self.download_thread.download_complete.connect(self.on_delta_download_complete)
+        self.download_thread.download_progress.connect(self.on_download_progress)
+        self.download_thread.start()
+
+    def on_delta_download_complete(self, temp_dir, success, skipped, error):
+        """Обработка завершения дельта-загрузки"""
+        logger.info(f"🎯 on_delta_download_complete ВЫЗВАН!")
+        logger.info(f"📊 Параметры: temp_dir={temp_dir}, success={success}, skipped={skipped}, error={error}")
+        
+        if success:
+            self.set_status("Установка обновления...", 80)
+            self.install_delta_update(temp_dir)
+        else:
+            logger.error(f"❌ Ошибка загрузки: {error}")
+            self.show_error("Ошибка загрузки обновления")
+
+    def install_delta_update(self, temp_dir):
+        """Установка дельта-обновления с резервным копированием"""
+        try:
+            # Очищаем старую папку бэкапа ПЕРЕД созданием новых бэкапов
+            if os.path.exists(self.old_files_dir):
+                shutil.rmtree(self.old_files_dir)
+                logger.info("Удалена старая папка бэкапа")
+            
+            # Создаем папку для резервных копий
+            os.makedirs(self.old_files_dir, exist_ok=True)
+            
+            self.set_status("Создание резервных копий...", 85)
+            
+            # Создаем резервные копии файлов, которые будут обновлены
+            backup_success = self.create_backup_files(temp_dir)
+            
+            if not backup_success:
+                logger.error("Ошибка создания резервных копий")
+                self.show_error("Ошибка создания резервных копий")
+                return
+            
+            self.set_status("Копирование новых файлов...", 90)
+            
+            # Копируем новые файлы из временной папки
+            copy_success = self.copy_delta_files(temp_dir)
+            
+            if copy_success:
+                self.update_completed = True
+                self.set_status("Обновление завершено", 100)
+                QTimer.singleShot(1000, self.run_main_app)
+            else:
+                # Восстанавливаем из резервной копии при ошибке
+                self.restore_from_backup()
+                self.show_error("Ошибка установки обновления")
+                
+        except Exception as e:
+            logger.error(f"Ошибка установки дельта-обновления: {e}")
+            self.restore_from_backup()
+            self.show_error("Ошибка установки обновления")
+
+    def create_backup_files(self, temp_dir):
+        """Создает резервные копии файлов, которые будут обновлены"""
+        try:
+            backup_count = 0
+            
+            # Получаем список файлов для обновления из временной папки
+            for root, dirs, files in os.walk(temp_dir):
+                for onefile in files:
+                    
+                    # ИСКЛЮЧАЕМ Update.exe из бэкапа
+                    if onefile in ["Update.exe", "Assistant.exe"]:
+                        logger.info(f"Пропускаем бэкап {onefile}")
+                        continue
+                    
+                    relative_path = os.path.relpath(os.path.join(root, onefile), temp_dir)
+                    source_file = os.path.join(self.root_dir, relative_path)
+                    
+                    # Если файл существует в основном приложении, создаем резервную копию
+                    if os.path.exists(source_file):
+                        backup_file = os.path.join(self.old_files_dir, relative_path)
+                        os.makedirs(os.path.dirname(backup_file), exist_ok=True)
+                        shutil.copy2(source_file, backup_file)
+                        backup_count += 1
+                        logger.info(f"Создана резервная копия: {backup_file}")
+            
+            # ОСОБАЯ ОБРАБОТКА ДЛЯ Assistant.exe
+            assistant_temp_path = os.path.join(temp_dir, "Assistant.exe")
+            if os.path.exists(assistant_temp_path):
+                parent_dir = os.path.dirname(self.root_dir)
+                assistant_source = os.path.join(parent_dir, "Assistant.exe")
+                
+                if os.path.exists(assistant_source):
+                    backup_file = os.path.join(self.old_files_dir, "Assistant.exe")
+                    os.makedirs(os.path.dirname(backup_file), exist_ok=True)
+                    shutil.copy2(assistant_source, backup_file)
+                    backup_count += 1
+                    logger.info(f"Создана резервная копия Assistant.exe: {backup_file}")
+            
+            logger.info(f"Создано резервных копий: {backup_count} файлов")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка создания резервных копий: {e}")
+            return False
+
+    def copy_delta_files(self, temp_dir):
+        """Копирует новые файлы из временной папки в основное приложение"""
+        try:
+            logger.info(f"=== НАЧАЛО КОПИРОВАНИЯ ===")
+            logger.info(f"Источник: {temp_dir}")
+            logger.info(f"Назначение: {self.root_dir}")
+            logger.info(f"Папка бэкапа: {self.old_files_dir}")
+            
+            copy_count = 0
+            for root, dirs, files in os.walk(temp_dir):
+                for onefile in files:
+                    # ИСКЛЮЧАЕМ Update.exe из копирования
+                    if onefile == "Update.exe":
+                        logger.info(f"Пропускаем копирование Update.exe - будет обработан отдельно через swap-updater")
+                        continue
+                    
+                    # ИСКЛЮЧАЕМ Assistant.exe из копирования в основную папку
+                    if onefile == "Assistant.exe":
+                        logger.info(f"Пропускаем копирование Assistant.exe - будет обработан отдельно")
+                        continue
+                    
+                    relative_path = os.path.relpath(os.path.join(root, onefile), temp_dir)
+                    source_file = os.path.join(root, onefile)
+                    dest_file = os.path.join(self.root_dir, relative_path)
+                    
+                    # Логируем КАЖДЫЙ файл перед копированием
+                    logger.info(f"Копируем: {source_file} -> {dest_file}")
+                    
+                    # Создаем директории если нужно
+                    os.makedirs(os.path.dirname(dest_file), exist_ok=True)
+                    
+                    # Копируем файл
+                    shutil.copy2(source_file, dest_file)
+                    copy_count += 1
+                    logger.info(f"Обновлен файл: {dest_file}")
+            
+            # ОСОБАЯ ОБРАБОТКА ДЛЯ Assistant.exe - копируем на уровень выше
+            assistant_source = os.path.join(temp_dir, "Assistant.exe")
+            if os.path.exists(assistant_source):
+                parent_dir = os.path.dirname(self.root_dir)
+                assistant_dest = os.path.join(parent_dir, "Assistant.exe")
+                shutil.copy2(assistant_source, assistant_dest)
+                logger.info(f"Обновлен Assistant.exe: {assistant_dest}")
+            
+            logger.info(f"=== КОПИРОВАНИЕ ЗАВЕРШЕНО: {copy_count} файлов ===")
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка копирования дельта-файлов: {e}")
+            return False
+
+    def restore_from_backup(self):
+        """Восстанавливает файлы из резервной копии"""
+        try:
+            if os.path.exists(self.old_files_dir):
+                for root, dirs, files in os.walk(self.old_files_dir):
+                    for file in files:
+                        
+                        if file == "Update.exe":
+                            continue
+                        
+                        relative_path = os.path.relpath(os.path.join(root, file), self.old_files_dir)
+                        backup_file = os.path.join(root, file)
+                        dest_file = os.path.join(self.root_dir, relative_path)
+                        
+                        # Восстанавливаем файл
+                        os.makedirs(os.path.dirname(dest_file), exist_ok=True)
+                        shutil.copy2(backup_file, dest_file)
+                        logger.info(f"Восстановлен файл из резервной копии: {dest_file}")
+                
+                # Восстанавливаем Assistant.exe если есть резервная копия
+                assistant_backup = os.path.join(self.old_files_dir, "Assistant.exe")
+                if os.path.exists(assistant_backup):
+                    parent_dir = os.path.dirname(self.root_dir)
+                    assistant_dest = os.path.join(parent_dir, "Assistant.exe")
+                    shutil.copy2(assistant_backup, assistant_dest)
+                    logger.info(f"Восстановлен Assistant.exe из резервной копии: {assistant_dest}")
+        except Exception as e:
+            logger.error(f"Ошибка восстановления из резервной копии: {e}")
 
     def start_download(self, version):
         """Запуск загрузки из UI потока"""
@@ -861,6 +1311,19 @@ class UpdateWindow(QWidget):
 
         except Exception as e:
             logger.error(f"Ошибка установки: {e}")
+            self.show_error("Ошибка установки")
+            
+    def start_install_batch(self):
+        """Запуск установки из уже скачанных файлов (batch режим)"""
+        try:
+            if hasattr(self, 'update_completed') and self.update_completed:
+                logger.info("Обновление уже завершено, пропускаем проверку")
+                return
+        
+            self.start_check_update()
+                
+        except Exception as e:
+            logger.error(f"❌ Ошибка запуска batch установки: {e}")
             self.show_error("Ошибка установки")
 
     def start_install_from_existing(self):

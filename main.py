@@ -39,8 +39,8 @@ from PySide6.QtWidgets import (QApplication, QWidget, QLineEdit, QVBoxLayout, QH
 from PySide6.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, Signal, QPropertyAnimation, QPoint, \
     QEasingCurve, Slot, QUrl, QThread
 from bin.apply_color_methods import ApplyColor
-from bin.check_update import load_changelog, VersionCheckThread
-from bin.download_thread import DownloadThread
+from bin.check_update import GetManifestThread, get_update_strategy, load_changelog, VersionCheckThread
+from bin.download_thread import DeltaDownloadThread, DownloadThread
 from bin.frosted_widget import GarlandDecorator, SnowOverlay
 from bin.progress_bar_widget import CustomProgressBar, SVGProgressBar
 from bin.register_module import AuthManager
@@ -62,9 +62,10 @@ from logging_config import logger, debug_logger
 from bin.lists import get_audio_paths, censored_list, commands_list
 
 build_ini = get_config_value("app", "build")
-version_file = "2.0.1"
+version_file = "2.1.0"
 update_version(version_file)
 domain = "https://owl-app.ru"
+# domain = "https://127.0.0.1:5000"
 
 def activate_existing_window():
     """Пытается отправить команду существующему приложению"""
@@ -134,9 +135,12 @@ class Assistant(QMainWindow):
         self.ps = "Powered by theoldman"
         self.label_version = QLabel(f"Версия: {self.version} {self.ps}", self)
         self.latest_version_url = None
+        self.latest_version = None
+        self.current_ver = None
         self.relax_button = None
         self.drag_pos = None
         self.beta_version = False
+        self.is_batch_update = False
         self.tray_icon = None
         self.toggle_start = None
         self.start_button = None
@@ -1263,7 +1267,7 @@ class Assistant(QMainWindow):
     def open_update_app(self, event):
         """Запускает скрипт для установки обновления при клике на текст."""
         try:
-            self.update_app(type_version=self.type_version)
+            self.update_app(type_version=self.type_version, batch_update=self.is_batch_update)
         except Exception as e:
             debug_logger.error(f"Ошибка при запуске программы обновления: {e}")
 
@@ -1300,41 +1304,52 @@ class Assistant(QMainWindow):
             self.update_btn.show()
             self.style_manager.apply_color_svg(self.update_svg, strength=0.90, specified_color="#44D14F")
         else:
-            self.update_btn.hide()   
-
+            self.update_btn.hide()
+            
     def update_complete(self):
+        from send2trash import send2trash
+        
         download_dir = get_path("update")
         temp_dir = get_path("update_pack")
+        backup_dir = get_path("old_files_backup")
+        
+        current_version = self.get_version()
+        batch_dir = get_path("update", f"{current_version}_temp")
 
-        # Создаём папки, если их нет
-        os.makedirs(download_dir, exist_ok=True)
-        os.makedirs(temp_dir, exist_ok=True)
-
-        # Удаление всех .zip файлов в папке update
-        for old_file in os.listdir(download_dir):
-            old_path = os.path.join(download_dir, old_file)
-            if os.path.isfile(old_path) and old_file.endswith('.zip'):
-                try:
-                    os.remove(old_path)
-                    debug_logger.info(f"Удалён старый .zip файл: {old_path}")
-                except Exception as e:
-                    debug_logger.error(f"Не удалось удалить файл {old_path}: {e}")
-
-        # Очистка папки update_pack (рекурсивно)
+        # Удаление в корзину папки update_pack
         if os.path.exists(temp_dir):
-            for item in os.listdir(temp_dir):
-                item_path = os.path.join(temp_dir, item)
-                try:
-                    if os.path.isfile(item_path) or os.path.islink(item_path):
-                        os.unlink(item_path)
-                        debug_logger.info(f"Файл удален: {item_path}")
-                    elif os.path.isdir(item_path):
-                        shutil.rmtree(item_path)
-                        debug_logger.info(f"Папка удалена рекурсивно: {item_path}")
-                except Exception as e:
-                    debug_logger.error(f"Не удалось удалить {item_path}. Ошибка: {e}")
-        else:
-            debug_logger.info(f"Папка не существует: {temp_dir}")
+            try:
+                send2trash(temp_dir)
+                debug_logger.info(f"Папка update_pack отправлена в корзину: {temp_dir}")
+            except Exception as e:
+                debug_logger.error(f"Не удалось удалить {temp_dir}: {e}")
+
+        # Удаление в корзину папки бэкапа
+        if os.path.exists(backup_dir):
+            try:
+                send2trash(backup_dir)
+                debug_logger.info(f"Папка бэкапа отправлена в корзину: {backup_dir}")
+            except Exception as e:
+                debug_logger.error(f"Не удалось удалить {backup_dir}: {e}")
+                
+        # Удаление в корзину batch_dir
+        if os.path.exists(batch_dir):
+            try:
+                send2trash(batch_dir)
+                debug_logger.info(f"Папка batch_dir отправлена в корзину: {batch_dir}")
+            except Exception as e:
+                debug_logger.error(f"Не удалось удалить {batch_dir}: {e}")
+
+        # Удаление .zip файлов в корзину
+        if os.path.exists(download_dir):
+            for old_file in os.listdir(download_dir):
+                old_path = os.path.join(download_dir, old_file)
+                if os.path.isfile(old_path) and old_file.endswith('.zip'):
+                    try:
+                        send2trash(old_path)
+                        debug_logger.info(f"Файл отправлен в корзину: {old_path}")
+                    except Exception as e:
+                        debug_logger.error(f"Не удалось удалить {old_path}: {e}")
 
     def animation_start_load(self):
         progress_signal.start_progress.emit()
@@ -1346,10 +1361,18 @@ class Assistant(QMainWindow):
         self.progress_load.hide()
         self.progress_load.stopAnimation()
 
-    def swap_update_file(self):
+    def swap_update_file(self, current_version):
         try:
-            subprocess.Popen([get_path("swap-updater.exe")], shell=True)
-            debug_logger.info("swap-updater.exe успешно запущен")
+            temp_folder_name = f"update/{current_version}_temp"
+            temp_dir = get_path(temp_folder_name)
+            debug_logger.info(f"Path update temp: {temp_dir}")
+            if os.path.exists(temp_dir):
+                subprocess.Popen([get_path("swap-updater.exe"), "--update-dir", str(temp_dir)], shell=True)
+                debug_logger.info("swap-updater.exe успешно запущен")
+            else:
+                subprocess.Popen([get_path("swap-updater.exe")], shell=True)
+                debug_logger.info(f"Папка обновления не найдена: {temp_dir}\n"
+                                  "Запуск swap-updater.exe без параметров")
         except Exception as e:
             debug_logger.error(f"Ошибка при запуске swap-updater.exe: {e}")
 
@@ -1379,28 +1402,112 @@ class Assistant(QMainWindow):
     def handle_version_check(self, stable_version, exp_version):
         # Обработка полученных версий
         new_version = exp_version if self.beta_version else stable_version
-        latest_version = version.parse(new_version)
-        current_ver = version.parse(self.version)
+        self.latest_version = version.parse(new_version)
+        self.current_ver = version.parse(self.version)
 
         type_version = "exp" if self.beta_version else "stable"
 
         load_changelog()
 
-        if latest_version > current_ver:
-            self.download_thread = DownloadThread(type_version)
-            self.download_thread.download_complete.connect(self.handle_download_complete)
-            self.download_thread.finished.connect(self.animation_stop_load)
-            self.download_thread.start()
-            self.toggle_update_button()
+        if self.latest_version > self.current_ver:
+            # Запускаем проверку манифеста
+            self.get_changes_manifest_thread = GetManifestThread(self.current_ver, self.auth)
+            self.get_changes_manifest_thread.check_success.connect(self.on_manifest_ready)
+            self.get_changes_manifest_thread.check_failed.connect(self.handle_failed_manifest)
+            self.get_changes_manifest_thread.start()
         else:
             self.animation_stop_load()
             self.update_label.show()
             self.update_label.setText("Установлена последняя версия")
             self.toggle_update_button()
             self.update_checked.emit(True, "Установлена последняя версия")
-            self.swap_update_file()
+            self.swap_update_file(self.current_ver)
             self.stop_checking = False
-            QTimer.singleShot(2000, lambda: self.update_complete())
+            QTimer.singleShot(4000, lambda: self.update_complete())
+            
+    def on_manifest_ready(self, manifest):
+        """Обработка готового манифеста и запуск соответствующей загрузки"""
+        strategy = get_update_strategy(self.current_ver, self.latest_version, manifest)
+        
+        if strategy == "full":
+            print("Требуется полная установка (было критическое обновление)")
+            self.start_full_download()
+        else:
+            print("Дельта-обновление доступно")
+            # Собираем все файлы из всех версий между current и latest
+            files_to_update = self.collect_all_changed_files(
+                self.current_ver, self.latest_version, manifest
+            )
+            # Передаем manifest в start_delta_download
+            self.start_delta_download(files_to_update, manifest)  # ← добавил manifest
+
+    def start_full_download(self):
+        """Запуск загрузки полной версии"""
+        type_version = "exp" if self.beta_version else "stable"
+        self.download_thread = DownloadThread(type_version)
+        self.download_thread.download_complete.connect(self.handle_download_complete)
+        self.download_thread.finished.connect(self.animation_stop_load)
+        self.download_thread.start()
+        self.toggle_update_button()
+
+    def start_delta_download(self, files_to_update, manifest):  # ← добавил параметр manifest
+        """Запуск загрузки дельта-обновления"""
+        self.download_thread = DeltaDownloadThread(
+            files_to_update, 
+            manifest,  # ← передаем manifest в поток
+            self.auth
+        )
+        self.download_thread.download_complete.connect(self.handle_download_complete)
+        self.download_thread.finished.connect(self.animation_stop_load)
+        self.download_thread.start()
+        self.toggle_update_button()
+        
+    def collect_all_changed_files(self, current_ver, target_ver, manifest):
+        """Собирает все измененные файлы между версиями"""
+        # Преобразуем версии из манифеста в объекты Version для сравнения
+        version_objects = []
+        version_to_str_map = {}  # Сопоставление Version -> строковый ключ
+        
+        for ver_str in manifest.keys():
+            try:
+                ver_obj = version.parse(ver_str)
+                version_objects.append(ver_obj)
+                version_to_str_map[ver_obj] = ver_str
+            except:
+                continue
+        
+        # Сортируем объекты Version
+        version_objects.sort()
+        
+        try:
+            # Находим индексы в отсортированном списке объектов Version
+            current_idx = version_objects.index(current_ver)
+            target_idx = version_objects.index(target_ver)
+            
+            all_files = set()
+            for i in range(current_idx + 1, target_idx + 1):
+                version_obj = version_objects[i]
+                version_str = version_to_str_map[version_obj]  # Получаем строковый ключ
+                files = manifest[version_str].get('changed_files', [])  # Используем changed_files
+                all_files.update(files)
+            
+            return list(all_files)
+            
+        except ValueError as e:
+            debug_logger.error(f"❌ Версия не найдена в collect_all_changed_files: {e}")
+            debug_logger.error(f"❌ Текущая: {current_ver}, Целевая: {target_ver}")
+            debug_logger.error(f"❌ Доступные: {[str(v) for v in version_objects]}")
+            return []
+            
+    def handle_failed_manifest(self):
+        self.count += 1
+        self.animation_stop_load()
+        self.update_label.show()
+        self.update_label.setText("Ошибка соединения")
+        if self.count == 3:
+            self.update_label.setText("Не удалось получить обновление")
+        if self.count <= 2: # 3 попытки на запрос версии в случае неудачи
+            QTimer.singleShot(2000, self.check_update_app)
 
     def handle_check_failed(self):
         self.count += 1
@@ -1411,34 +1518,64 @@ class Assistant(QMainWindow):
             self.update_label.setText("Сервер не доступен")  
         if self.count <= 2: # 3 попытки на запрос версии в случае неудачи
             QTimer.singleShot(2000, self.check_update_app)
-
-    def handle_download_complete(self, file_path, success=True, skipped=False, error=None):
+    
+    def handle_download_complete(self, file_path, success=True, skipped=False, error=None, batch=False):
         self.animation_stop_load()
         self.update_label.show()
-        self.update_label.setText("Доступно обновление")
-        self.toggle_update_button()
-        try:
+        print(f"Values:", file_path, success, skipped, error, "batch:", batch)
+        self.is_batch_update = batch
+        if self.is_batch_update:
+            # Обработка дельта-обновления
+            if success:
+                self.update_label.setText(f"Доступно обновление")
+                self.show_notification_message(f"Обновление готово к установке")
+                debug_logger.info(f"Файлы обновления по пути: {file_path}")
+                self.stop_checking = True
+                if skipped:
+                    self.show_notification_message("Подготовка к процедуре обновления...\n Не выключайте приложение")
+                    debug_logger.info(f"[SKIP] Файлы уже существуют")
+                    # self.open_window_and_update()
+                else:
+                    debug_logger.info(f"[OK] Новый файл загружен")
+            else:
+                self.update_label.setText(f"Ошибка обновления: {error}")
+        else:
+            # Обработка полного обновления (старая логика)
+            self.update_label.setText("Доступно обновление")
             if success:
                 self.type_version = "exp" if "exp_" in os.path.basename(file_path).lower() else "stable"
                 version = self.extract_version_simple(file_path)
                 self.show_notification_message(f"Доступно обновление (v.{version})")
                 self.stop_checking = True
                 if skipped:
-                    self.show_notification_message("Сейчас будет установлена новая версия")
+                    self.show_notification_message("Подготовка к процедуре обновления...\n Не выключайте приложение")
                     debug_logger.info(f"[SKIP] Файл уже существует")
                     self.open_window_and_update()
                 else:
                     debug_logger.info(f"[OK] Новый файл загружен")
             else:
                 debug_logger.error(f"[ERROR] Не удалось скачать: {error}")
-        except Exception as e:
-            debug_logger.error(f"Ошибка handle_download_complete: {str(e)}", exc_info=True)
+        
+        self.toggle_update_button()
 
-    def extract_version_simple(self, filename):
+    def extract_version_simple(self, file_path):
+        """Извлекает версию из пути (работает с обоими форматами)"""
+        filename = os.path.basename(file_path)
+        
+        # Формат 1: "2.1.0_temp" (дельта-обновление)
+        if filename.endswith('_temp'):
+            return filename.replace('_temp', '')
+        
+        # Формат 2: "stable_2.1.0.zip" или "exp_2.1.0.zip" (полное обновление)
         parts = filename.split('_')
-        if len(parts) >= 3:
-            return parts[-1].replace('.zip', '')
-        return "-.-.-"
+        if len(parts) >= 2:
+            # Ищем часть с версией (содержит точки)
+            for part in parts:
+                if '.' in part:
+                    return part.replace('.zip', '')
+        
+        # Если не нашли - возвращаем как есть
+        return filename.split('_')[0] if '_' in filename else filename
 
     def open_window_and_update(self):
         """Обработка действия, если апдейт уже был скачан (активация окна)"""
@@ -1449,7 +1586,8 @@ class Assistant(QMainWindow):
         self.raise_()
         self.activateWindow()
         QApplication.processEvents()
-        QTimer.singleShot(500, lambda: self.update_app(type_version=self.type_version))
+        QTimer.singleShot(500, lambda: self.update_app(type_version=self.type_version,
+                                                       batch_update=self.is_batch_update))
 
     def init_logger(self):
         """Инициализация логгера."""
@@ -1656,8 +1794,8 @@ class Assistant(QMainWindow):
                 "is_keep_watch": False,
                 "input_device_id": None,
                 "input_device_name": None,
-                "is_snow": False,
-                "is_garland": False
+                "is_snow": True,
+                "is_garland": True
             }
 
         # Загружаем текущие настройки
@@ -3675,9 +3813,10 @@ class Assistant(QMainWindow):
         dialog = ChangelogWindow(self)
         dialog.exec()
 
-    def update_app(self, type_version=None):
+    def update_app(self, type_version=None, batch_update=False):
         """Обработка нажатия кнопки 'Установить обновление'"""
-        dialog = UpdateApp(self, type_version)
+        debug_logger.info(f"Вызвано создание update_app c флагами type_version {type_version}, batch_update {batch_update}")
+        dialog = UpdateApp(self, type_version, batch_update)
         dialog.main()
 
     def update_voice(self, new_voice):
@@ -3960,31 +4099,38 @@ class Assistant(QMainWindow):
 
 
 class UpdateApp(QDialog):
-    def __init__(self, parent=None, type_version="stable"):
+    def __init__(self, parent=None, type_version="stable", batch_update=False):
         super().__init__(parent)
         self.assistant = parent
+        self.batch = batch_update
         self.type_version = type_version
-        self.update_file_path = self.find_update_file()
         self.extract_dir = get_path("update_pack")
         os.makedirs(self.extract_dir, exist_ok=True)
 
     def main(self):
-        if not self.update_file_path:
-            debug_logger.error("Не найден файл обновления (*.zip)")
-            return
+        if not self.batch:
+            self.update_file_path = self.find_update_file()
+            if not self.update_file_path:
+                debug_logger.error("Не найден файл обновления (*.zip)")
+                return
 
-        if not self.extract_archive(self.update_file_path):
-            self.assistant.show_notification_message("Не удалось распаковать архив с новой версией")
-            return
-        debug_logger.info(f"Архив с новой версией распакован по пути {self.extract_dir}")
+            if not self.extract_archive(self.update_file_path):
+                self.assistant.show_notification_message("Не удалось распаковать архив с новой версией")
+                return
+            debug_logger.info(f"Архив с новой версией распакован по пути {self.extract_dir}")
         self.assistant.show_notification_message("Начинаю установку...")
         QTimer.singleShot(800, lambda: self.start_update())
 
     def start_update(self):
         try:
-            # флаг no-checked для пропуска проверки новой версии в апдейте
-            subprocess.Popen([get_path("Update.exe"), "--no-checked"], shell=True)
-            debug_logger.info("Update.exe успешно запущен")
+            if not self.batch:
+                # флаг no-checked для пропуска проверки новой версии в апдейте
+                subprocess.Popen([get_path("Update.exe"), "--no-checked"], shell=True)
+                debug_logger.info("Update.exe успешно запущен с флагом --no-checked")
+            else:
+                # flag --batch-update for package update
+                subprocess.Popen([get_path("Update.exe"), "--batch-update"], shell=True)
+                debug_logger.info("Update.exe успешно запущен с флагом --batch-update")
         except Exception as e:
             debug_logger.error(f"Ошибка при запуске Update.exe: {e}")
 
@@ -4294,8 +4440,6 @@ class InitScreen(QWidget):
         content_layout.addWidget(self.svg_image, alignment=Qt.AlignmentFlag.AlignCenter)
 
         content_layout.addStretch()
-
-        
 
         self.progress = SVGProgressBar(
             svg_widget=self.svg_image,

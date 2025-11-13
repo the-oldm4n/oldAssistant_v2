@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+import argparse
 
 def get_directory():
     """Автоматически определяет корневую директорию для всех режимов"""
@@ -68,17 +69,60 @@ file_handler.setLevel(logging.INFO)
 if not logger.handlers:
     logger.addHandler(file_handler)
 
-
 def main():
-    root_dir = get_base_directory()  # Корень (Assistant/)
+    # Парсим аргументы командной строки
+    parser = argparse.ArgumentParser(description='Replace Update.exe')
+    parser.add_argument('--update-dir', type=str, help='Absolute path to update directory')
+    args = parser.parse_args()
+    
+    root_dir = get_base_directory()
+    
+    # Определяем все возможные места поиска
+    possible_locations = []
+    
+    # 1. Новый вариант: дельта-обновление через --update-dir
+    if args.update_dir:
+        update_dir = Path(args.update_dir)
+        if os.path.exists(update_dir):
+            logger.info(f"Поиск в дельта-папке: {update_dir}")
+            possible_locations.extend([
+                update_dir / "Update.exe",
+                update_dir / "_internal" / "Update.exe",
+            ])
+            # Рекурсивный поиск в подпапках
+            for root, dirs, files in os.walk(update_dir):
+                for file in files:
+                    if file == "Update.exe":
+                        possible_locations.append(Path(root) / file)
+    
+    # 2. Старый вариант: полное обновление через update_pack
     update_pack_dir = root_dir / "update_pack"
-    new_updater = os.path.join(update_pack_dir, "_internal", "Update.exe")
-    old_updater = os.path.join(root_dir, "Update.exe")
-    logger.info(f"old_file:{old_updater},\n new_file:{new_updater}")
-
-    # Проверяем, существует ли новый файл
-    if not os.path.exists(new_updater):
-        logger.info("❌ Новый Update.exe не найден в update_pack")
+    if os.path.exists(update_pack_dir):
+        logger.info(f"Поиск в update_pack: {update_pack_dir}")
+        possible_locations.extend([
+            update_pack_dir / "_internal" / "Update.exe",
+            update_pack_dir / "Update.exe",
+        ])
+        # Рекурсивный поиск в update_pack
+        for root, dirs, files in os.walk(update_pack_dir):
+            for file in files:
+                if file == "Update.exe":
+                    possible_locations.append(Path(root) / file)
+    
+    old_updater = root_dir / "Update.exe"
+    logger.info(f"Старый файл: {old_updater}")
+    logger.info(f"Все места поиска: {possible_locations}")
+    
+    # Ищем существующий новый файл
+    new_updater = None
+    for path in possible_locations:
+        if os.path.exists(path):
+            new_updater = path
+            logger.info(f"✅ Найден новый Update.exe: {path}")
+            break
+    
+    if not new_updater:
+        logger.error("❌ Update.exe не найден ни в одном из мест")
         return
 
     # Удаляем старый (если существует)
