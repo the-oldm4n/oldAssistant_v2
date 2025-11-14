@@ -15,7 +15,8 @@ from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, \
 import sys
 from packaging import version
 import requests
-from check_and_download import DeltaDownloadThread, DownloadThread, GetManifestThread, VersionCheckThread, get_update_strategy
+import send2trash
+from check_and_download import DeltaDownloadThread, DownloadThread, GetManifestThread, VersionCheckThread
 from utils import get_path, logger, get_base_directory, update_signal, run_app_signal, get_config_value
 
 
@@ -891,6 +892,12 @@ class UpdateWindow(QWidget):
                 QTimer.singleShot(1000, self.run_main_app)
                 return
             
+            # Удаление файлов (если таковые есть в манифесте)
+            files_to_delete = self.collect_files_for_deletion(current_ver, latest_ver, manifest)
+            if files_to_delete:
+                self.set_status("Очистка устаревших файлов...", 75)
+                self.delete_files_safely(files_to_delete)
+            
             # Определяем стратегию обновления
             strategy = self.get_update_strategy(current_ver, latest_ver, manifest)
             logger.info(f"Стратегия обновления: {strategy}")
@@ -904,7 +911,7 @@ class UpdateWindow(QWidget):
                 files_to_update = self.collect_all_changed_files(current_ver, latest_ver, manifest)
                 
                 if self.batch_update:
-                    # В batch-режиме проверяем существующие файлы
+                    # В batch-режиме проверяем есть ли уже скачанные файлы
                     self.process_batch_delta(files_to_update, manifest, target_version)
                 else:
                     self.start_delta_download(files_to_update, manifest, target_version)
@@ -972,8 +979,8 @@ class UpdateWindow(QWidget):
             logger.info(f"🔎 Индексы: current_idx={current_idx}, target_idx={target_idx}")
             
             # ИСПРАВЛЕНИЕ: проверяем ВСЕ версии от текущей до целевой включительно
-            # если в текущей версии full_update=true, то нужна полная установка
-            for i in range(current_idx, target_idx + 1):  # ← изменил current_idx + 1 на current_idx
+            # если в текущей версии full_update=true, то не нужна полная установка
+            for i in range(current_idx + 1, target_idx + 1):  # ← current_idx + 1
                 version_obj = version_objects[i]
                 version_str = version_to_str_map[version_obj]
                 full_update = manifest[version_str].get('full_update', False)
@@ -1061,6 +1068,90 @@ class UpdateWindow(QWidget):
             self.set_status("Не удалось проверить обновления", 0)
             # Запускаем основную программу
             QTimer.singleShot(2000, self.run_main_app)
+
+    def delete_files_safely(self, files_to_delete):
+        """Безопасное удаление файлов в корзину с бэкапом в old_files_backup"""
+        deleted_count = 0
+        os.makedirs(self.old_files_dir, exist_ok=True)
+        backup_dir = self.old_files_dir / "deletion_backup"
+        logger.info(f"Бэкап папка для удаленных файлов: {backup_dir}")
+        
+        try:
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            for file_path in files_to_delete:
+                full_path = self.root_dir / file_path
+                
+                if not os.path.exists(full_path):
+                    logger.warning(f"Файл для удаления не существует: {file_path}")
+                    continue
+                    
+                try:
+                    # 1. Создаем резервную копию в old_files_backup/deletion_backup/
+                    backup_path = backup_dir / file_path
+                    os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+                    
+                    if os.path.isfile(full_path):
+                        shutil.copy2(full_path, backup_path)
+                        logger.info(f"Создан бэкап файла: {backup_path}")
+                    elif os.path.isdir(full_path):
+                        shutil.copytree(full_path, backup_path)
+                        logger.info(f"Создан бэкап файла: {backup_path}")
+                    
+                    # 2. Отправляем в корзину (а не удаляем навсегда)
+                    send2trash.send2trash(str(full_path))
+                    logger.info(f"Файл перемещен в корзину: {file_path}")
+                    deleted_count += 1
+                    
+                except Exception as e:
+                    logger.error(f"Ошибка удаления {file_path}: {e}")
+                    
+            logger.info(f"Перемещено в корзину {deleted_count} файлов/папок")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка в процессе удаления: {e}")
+            return False
+
+    def collect_files_for_deletion(self, current_ver, target_ver, manifest):
+        """Собирает все файлы для удаления между версиями"""
+        try:
+            version_objects = []
+            version_to_str_map = {}
+            
+            for ver_str in manifest.keys():
+                try:
+                    ver_obj = version.parse(ver_str)
+                    version_objects.append(ver_obj)
+                    version_to_str_map[ver_obj] = ver_str
+                except:
+                    continue
+            
+            version_objects.sort()
+            current_idx = version_objects.index(current_ver)
+            target_idx = version_objects.index(target_ver)
+            
+            all_deletions = set()
+            
+            for i in range(current_idx + 1, target_idx + 1):
+                version_obj = version_objects[i]
+                version_str = version_to_str_map[version_obj]
+                
+                deletions = manifest[version_str].get('deleted_files', [])
+                if deletions:
+                    if isinstance(deletions, str):
+                        if deletions.strip():
+                            deletion_list = [d.strip() for d in deletions.split(',') if d.strip()]
+                            all_deletions.update(deletion_list)
+                    elif isinstance(deletions, list):
+                        all_deletions.update(deletions)
+            
+            logger.info(f"Найдено {len(all_deletions)} файлов для удаления")
+            return list(all_deletions)
+            
+        except Exception as e:
+            logger.error(f"Ошибка сбора файлов для удаления: {e}")
+            return []
             
     def start_delta_download(self, files_to_update, manifest, target_version, skip_existing=False):
         """Запуск загрузки дельта-обновления"""
@@ -1094,12 +1185,56 @@ class UpdateWindow(QWidget):
     def install_delta_update(self, temp_dir):
         """Установка дельта-обновления с резервным копированием"""
         try:
-            # Очищаем старую папку бэкапа ПЕРЕД созданием новых бэкапов
+            # Очищаем старую папку бэкапа, но сохраняем deletion_backup
             if os.path.exists(self.old_files_dir):
-                shutil.rmtree(self.old_files_dir)
-                logger.info("Удалена старая папка бэкапа")
+                # Сохраняем папку deletion_backup если она есть
+                deletion_backup_path = self.old_files_dir / "deletion_backup"
+                
+                # Временная папка для сохранения deletion_backup
+                temp_backup_dir = None
+                
+                if os.path.exists(deletion_backup_path):
+                    # Сохраняем deletion_backup во временную папку
+                    temp_backup_dir = self.root_dir / "temp_deletion_backup"
+                    if os.path.exists(temp_backup_dir):
+                        shutil.rmtree(temp_backup_dir)
+                    shutil.copytree(deletion_backup_path, temp_backup_dir)
+                    logger.info("Сохранена папка deletion_backup")
+                
+                # Отправляем ВСЁ содержимое old_files_backup в корзину, кроме deletion_backup
+                for item in os.listdir(self.old_files_dir):
+                    item_path = os.path.join(self.old_files_dir, item)
+                    
+                    # Пропускаем папку deletion_backup (мы её уже сохранили)
+                    if item == "deletion_backup":
+                        continue
+                        
+                    try:
+                        if os.path.isfile(item_path):
+                            send2trash.send2trash(item_path)
+                            logger.info(f"Файл отправлен в корзину: {item}")
+                        elif os.path.isdir(item_path):
+                            send2trash.send2trash(item_path)
+                            logger.info(f"Папка отправлена в корзину: {item}")
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки в корзину {item}: {e}")
+                        # Если не получилось в корзину, удаляем обычным способом
+                        if os.path.isfile(item_path):
+                            os.remove(item_path)
+                        elif os.path.isdir(item_path):
+                            shutil.rmtree(item_path)
+                
+                # Восстанавливаем deletion_backup из временной папки
+                if temp_backup_dir and os.path.exists(temp_backup_dir):
+                    if os.path.exists(deletion_backup_path):
+                        shutil.rmtree(deletion_backup_path)
+                    shutil.copytree(temp_backup_dir, deletion_backup_path)
+                    shutil.rmtree(temp_backup_dir)
+                    logger.info("Восстановлена папка deletion_backup")
+                
+                logger.info("Очищена старая папка бэкапа (содержимое отправлено в корзину)")
             
-            # Создаем папку для резервных копий
+            # Создаем папку для резервных копий (она уже должна существовать)
             os.makedirs(self.old_files_dir, exist_ok=True)
             
             self.set_status("Создание резервных копий...", 85)
@@ -1226,34 +1361,154 @@ class UpdateWindow(QWidget):
             logger.error(f"Ошибка копирования дельта-файлов: {e}")
             return False
 
-    def restore_from_backup(self):
-        """Восстанавливает файлы из резервной копии"""
-        try:
-            if os.path.exists(self.old_files_dir):
-                for root, dirs, files in os.walk(self.old_files_dir):
-                    for file in files:
+    # def restore_from_backup(self):
+    #     """Восстанавливает файлы из резервной копии"""
+    #     try:
+    #         if os.path.exists(self.old_files_dir):
+    #             for root, dirs, files in os.walk(self.old_files_dir):
+    #                 for file in files:
                         
-                        if file == "Update.exe":
-                            continue
+    #                     if file == "Update.exe":
+    #                         continue
                         
-                        relative_path = os.path.relpath(os.path.join(root, file), self.old_files_dir)
-                        backup_file = os.path.join(root, file)
-                        dest_file = os.path.join(self.root_dir, relative_path)
+    #                     relative_path = os.path.relpath(os.path.join(root, file), self.old_files_dir)
+    #                     backup_file = os.path.join(root, file)
+    #                     dest_file = os.path.join(self.root_dir, relative_path)
                         
-                        # Восстанавливаем файл
-                        os.makedirs(os.path.dirname(dest_file), exist_ok=True)
-                        shutil.copy2(backup_file, dest_file)
-                        logger.info(f"Восстановлен файл из резервной копии: {dest_file}")
+    #                     # Восстанавливаем файл
+    #                     os.makedirs(os.path.dirname(dest_file), exist_ok=True)
+    #                     shutil.copy2(backup_file, dest_file)
+    #                     logger.info(f"Восстановлен файл из резервной копии: {dest_file}")
                 
-                # Восстанавливаем Assistant.exe если есть резервная копия
-                assistant_backup = os.path.join(self.old_files_dir, "Assistant.exe")
-                if os.path.exists(assistant_backup):
-                    parent_dir = os.path.dirname(self.root_dir)
-                    assistant_dest = os.path.join(parent_dir, "Assistant.exe")
-                    shutil.copy2(assistant_backup, assistant_dest)
-                    logger.info(f"Восстановлен Assistant.exe из резервной копии: {assistant_dest}")
+    #             # Восстанавливаем Assistant.exe если есть резервная копия
+    #             assistant_backup = os.path.join(self.old_files_dir, "Assistant.exe")
+    #             if os.path.exists(assistant_backup):
+    #                 parent_dir = os.path.dirname(self.root_dir)
+    #                 assistant_dest = os.path.join(parent_dir, "Assistant.exe")
+    #                 shutil.copy2(assistant_backup, assistant_dest)
+    #                 logger.info(f"Восстановлен Assistant.exe из резервной копии: {assistant_dest}")
+    #     except Exception as e:
+    #         logger.error(f"Ошибка восстановления из резервной копии: {e}")
+    
+    def restore_from_backup(self):
+        """Восстанавливает файлы из резервной копии, включая deletion_backup"""
+        try:
+            if not os.path.exists(self.old_files_dir):
+                logger.info("Нет папки бэкапа для восстановления")
+                return
+
+            # 1. Восстанавливаем обычные бэкапы (из корня old_files_backup)
+            regular_backup_restored = self._restore_regular_backups()
+            
+            # 2. Восстанавливаем удаленные файлы из deletion_backup
+            deletion_backup_restored = self._restore_deletion_backup()
+            
+            # 3. Восстанавливаем Assistant.exe если есть
+            assistant_restored = self._restore_assistant_exe()
+            
+            logger.info(f"Восстановление завершено: обычные={regular_backup_restored}, удаленные={deletion_backup_restored}, Assistant={assistant_restored}")
+            
         except Exception as e:
             logger.error(f"Ошибка восстановления из резервной копии: {e}")
+
+    def _restore_regular_backups(self):
+        """Восстанавливает обычные бэкапы файлов"""
+        try:
+            restored_count = 0
+            for root, dirs, files in os.walk(self.old_files_dir):
+                # Пропускаем папку deletion_backup - её восстанавливаем отдельно
+                if "deletion_backup" in root:
+                    continue
+                    
+                for file in files:
+                    if file == "Update.exe":
+                        continue
+                    
+                    relative_path = os.path.relpath(os.path.join(root, file), self.old_files_dir)
+                    backup_file = os.path.join(root, file)
+                    dest_file = os.path.join(self.root_dir, relative_path)
+                    
+                    # Восстанавливаем файл
+                    os.makedirs(os.path.dirname(dest_file), exist_ok=True)
+                    shutil.copy2(backup_file, dest_file)
+                    logger.info(f"Восстановлен файл из резервной копии: {dest_file}")
+                    restored_count += 1
+            
+            logger.info(f"Восстановлено {restored_count} обычных файлов")
+            return restored_count > 0
+            
+        except Exception as e:
+            logger.error(f"Ошибка восстановления обычных бэкапов: {e}")
+            return False
+
+    def _restore_deletion_backup(self):
+        """Восстанавливает файлы, которые были удалены в процессе обновления"""
+        try:
+            deletion_backup_path = self.old_files_dir / "deletion_backup"
+            
+            if not os.path.exists(deletion_backup_path):
+                logger.info("Нет папки deletion_backup для восстановления")
+                return False
+            
+            restored_count = 0
+            for root, dirs, files in os.walk(deletion_backup_path):
+                for file in files:
+                    # Получаем относительный путь от deletion_backup
+                    relative_to_deletion = os.path.relpath(os.path.join(root, file), deletion_backup_path)
+                    backup_file = os.path.join(root, file)
+                    dest_file = os.path.join(self.root_dir, relative_to_deletion)
+                    
+                    # Проверяем, существует ли уже файл в назначении
+                    if os.path.exists(dest_file):
+                        logger.warning(f"Файл уже существует, пропускаем восстановление: {dest_file}")
+                        continue
+                    
+                    # Восстанавливаем файл
+                    os.makedirs(os.path.dirname(dest_file), exist_ok=True)
+                    shutil.copy2(backup_file, dest_file)
+                    logger.info(f"Восстановлен удаленный файл: {dest_file}")
+                    restored_count += 1
+            
+            # Восстанавливаем папки (если они пустые после восстановления файлов)
+            for root, dirs, files in os.walk(deletion_backup_path):
+                for dir_name in dirs:
+                    dir_relative = os.path.relpath(os.path.join(root, dir_name), deletion_backup_path)
+                    dest_dir = os.path.join(self.root_dir, dir_relative)
+                    
+                    # Создаем папку если её нет
+                    if not os.path.exists(dest_dir):
+                        os.makedirs(dest_dir, exist_ok=True)
+                        logger.info(f"Создана папка: {dest_dir}")
+            
+            logger.info(f"Восстановлено {restored_count} удаленных файлов из deletion_backup")
+            return restored_count > 0
+            
+        except Exception as e:
+            logger.error(f"Ошибка восстановления из deletion_backup: {e}")
+            return False
+
+    def _restore_assistant_exe(self):
+        """Восстанавливает Assistant.exe"""
+        try:
+            assistant_backup = os.path.join(self.old_files_dir, "Assistant.exe")
+            if os.path.exists(assistant_backup):
+                parent_dir = os.path.dirname(self.root_dir)
+                assistant_dest = os.path.join(parent_dir, "Assistant.exe")
+                
+                # Проверяем, существует ли уже Assistant.exe
+                if os.path.exists(assistant_dest):
+                    # Создаем резервную копию текущего перед восстановлением
+                    current_backup = assistant_dest + ".current_backup"
+                    shutil.copy2(assistant_dest, current_backup)
+                    logger.info(f"Создана резервная копия текущего Assistant.exe: {current_backup}")
+                
+                shutil.copy2(assistant_backup, assistant_dest)
+                logger.info(f"Восстановлен Assistant.exe из резервной копии: {assistant_dest}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Ошибка восстановления Assistant.exe: {e}")
+            return False
 
     def start_download(self, version):
         """Запуск загрузки из UI потока"""

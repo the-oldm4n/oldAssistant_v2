@@ -3,7 +3,7 @@ import re
 import requests
 from PySide6.QtCore import QThread, Signal
 from packaging import version
-from utils import get_config_value, get_path, logger, get_base_directory
+from utils import get_config_value, logger, get_base_directory
 
 domain = "https://owl-app.ru"
 # domain = "http://127.0.0.1:5000"

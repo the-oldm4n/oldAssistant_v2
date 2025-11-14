@@ -361,8 +361,8 @@ class SnowOverlay(QWidget):
             self.presets = [
                 {"count": 20, "speed": 0.4, "size_min": 1.0, "size_max": 3.0, "weight": 70},
                 {"count": 50, "speed": 0.3, "size_min": 1.0, "size_max": 4.0, "weight": 30},
-                {"count": 10, "speed": 0.4, "size_min": 1.0, "size_max": 3.5, "weight": 100},
-                {"count": 200, "speed": 4.4, "size_min": 1.0, "size_max": 4.0, "weight": 10},
+                {"count": 10, "speed": 0.4, "size_min": 1.0, "size_max": 3.5, "weight": 150},
+                {"count": 200, "speed": 4.4, "size_min": 1.0, "size_max": 4.0, "weight": 1},
             ]
         
         self.change_interval_ms = int(change_interval_sec * 1000)
@@ -639,31 +639,58 @@ class SnowOverlay(QWidget):
 
 
 class GarlandDecorator:
-    def __init__(self, target_widget, light_count=15, light_size=8, width=850):
+    def __init__(self, target_widget, light_count=15, light_size=8, width=820):
         self.target_widget = target_widget
         self.light_count = light_count
         self.light_size = light_size
         self.width = width
         self.lights = []
         self.visible = True
+        self.color_offset = 0
+        self.available_modes = ["wave", "breathing", "chase", "smash", "snake"]
+        self.random_mode_timer = 0
+        self.random_mode_interval = 60000  # 60 секунд в миллисекундах
+        
+        # Настройки анимации
+        self.animation_mode = "random"
+        self.animation_speed = 50  # ms
+        self.animation_time = 0
+        
+        # Цветовые схемы
+        self.color_palettes = {
+            "classic": ['#ff0000', '#00ff00', "#0151ff", "#ff00f2", "#fbff00", "#01ffd5"],
+            "warm": ['#ff6b6b', '#ffa726', '#ffca28', '#ffee58', '#fff176'],
+            "cool": ['#42a5f5', '#5c6bc0', '#7e57c2', '#ab47bc', '#ec407a'],
+            "rainbow": ['#ff0000', '#ff7f00', '#ffff00', '#00ff00', "#00d9ff", "#0548FF", '#9400d3']
+        }
+        self.current_palette = "rainbow"
+        
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_animation)
-        self.timer.start(500)
+        self.timer.start(self.animation_speed)
         
         self.original_paint_event = target_widget.paintEvent
         target_widget.paintEvent = self.custom_paint_event
         self.generate_lights()
-        
+    
+    def set_color_palette(self, palette_name):
+        """Смена цветовой палитры"""
+        if palette_name in self.color_palettes:
+            self.current_palette = palette_name
+            colors = self.color_palettes[palette_name]
+            for i, light in enumerate(self.lights):
+                light['base_color'] = QColor(random.choice(colors))
+    
     def show(self):
         """Показывает гирлянду"""
         self.visible = True
-        self.timer.start(500)  # Запускаем анимацию
+        self.timer.start(self.animation_speed)
         self.target_widget.update()
     
     def hide(self):
         """Скрывает гирлянду"""
         self.visible = False
-        self.timer.stop()  # Останавливаем анимацию
+        self.timer.stop()
         self.target_widget.update()
     
     def isVisible(self):
@@ -679,73 +706,390 @@ class GarlandDecorator:
     
     def generate_lights(self):
         self.lights = []
-        width = self.target_widget.width()
-        colors = ['#ff0000', '#00ff00', "#0151ff", "#ff00f2", "#fbff00", "#01ffd5"]
+        colors = self.color_palettes[self.current_palette]
+
+        padding = 10
         
         for i in range(self.light_count):
-            x = (self.width * i) / max(1, self.light_count - 1)
+            # Расчет позиции с учетом отступов
+            available_width = self.width - (2 * padding)
+            x = padding + (available_width * i) / max(1, self.light_count - 1)
             
             wave_height = 15
-            # СИНУСОИДА ОТ -1 ДО 0 (только отрицательные значения)
-            y_offset = (math.sin(i * 0.8) - 1) * (wave_height / 2)  # ← От -wave_height до 0
+            y_offset = (math.sin(i * 0.8) - 1) * (wave_height / 2)
             
-            color = QColor(random.choice(colors))
+            base_color = QColor(random.choice(colors))
             self.lights.append({
                 'x': x, 
-                'y_offset': y_offset,  # Всегда отрицательное или 0
-                'color': color, 
-                'brightness': random.randint(150, 250),
-                'size': self.light_size
+                'y_offset': y_offset,
+                'base_color': base_color, 
+                'brightness': 0,
+                'size': self.light_size,
+                'phase': random.uniform(0, 2 * math.pi)
             })
     
     def update_animation(self):
-        """Обновляет анимацию мерцания"""
-        for light in self.lights:
-            light['brightness'] += random.randint(-15, 15)
-            light['brightness'] = max(150, min(250, light['brightness']))
+        """Обновляет анимацию с учетом случайного режима"""
+        self.animation_time += self.animation_speed / 1000.0
+        
+        # Обновляем таймер случайного режима
+        if self.animation_mode == "random":
+            self.random_mode_timer += self.animation_speed
+            if self.random_mode_timer >= self.random_mode_interval:
+                self._switch_random_mode()
+                self.random_mode_timer = 0
+        
+        # Выполняем текущую анимацию
+        if self.animation_mode == "snake":
+            self._snake_animation()
+        elif self.animation_mode == "wave":
+            self._wave_animation()
+        elif self.animation_mode == "breathing":
+            self._breathing_animation()
+        elif self.animation_mode == "random":
+            # Для random выполняем текущий выбранный режим
+            current_mode = getattr(self, '_current_random_mode', 'wave')
+            if current_mode == "snake":
+                self._snake_animation()
+            elif current_mode == "wave":
+                self._wave_animation()
+            elif current_mode == "breathing":
+                self._breathing_animation()
+            elif current_mode == "chase":
+                self._chase_animation()
+            elif current_mode == "smash":
+                self._smash_animation()
+        elif self.animation_mode == "chase":
+            self._chase_animation()
+        elif self.animation_mode == "smash":
+            self._smash_animation()
+        
         self.target_widget.update()
+        
+    def _switch_random_mode(self):
+        """Переключает на случайный режим"""
+        # Исключаем текущий режим чтобы не повторяться подряд
+        current_mode = getattr(self, '_current_random_mode', None)
+        available_modes = [mode for mode in self.available_modes if mode != current_mode]
+        
+        if not available_modes:  # Если все режимы исключены, используем все
+            available_modes = self.available_modes
+        
+        new_mode = random.choice(available_modes)
+        self._current_random_mode = new_mode
+        
+        # Сбрасываем состояние анимации для нового режима
+        if hasattr(self, 'color_offset'):
+            self.color_offset = random.random()
+        if hasattr(self, '_chase_active'):
+            self._chase_active = False
+        if hasattr(self, '_breath_initialized'):
+            self._breath_initialized = False
+            
+    def next_animation(self):
+        """Переключает на следующую анимацию вручную"""
+        # Если сейчас режим random, переключаем внутри random
+        if self.animation_mode == "random":
+            self._switch_random_mode()
+            self.random_mode_timer = 0  # Сбрасываем таймер
+            return self._current_random_mode
+        else:
+            # Если не random, переключаем основной режим
+            modes_cycle = ["snake", "wave", "breathing", "chase", "smash", "random"]
+            
+            if not hasattr(self, '_current_mode_index'):
+                self._current_mode_index = modes_cycle.index(self.animation_mode)
+            
+            self._current_mode_index = (self._current_mode_index + 1) % len(modes_cycle)
+            next_mode = modes_cycle[self._current_mode_index]
+            
+            self.set_animation_mode(next_mode)
+            return next_mode
+
+    def _switch_random_mode(self):
+        """Переключает на следующий режим в random (по порядку)"""
+        if not hasattr(self, '_random_mode_index'):
+            self._random_mode_index = 0
+        
+        # Переходим к следующему режиму по порядку
+        self._random_mode_index = (self._random_mode_index + 1) % len(self.available_modes)
+        self._current_random_mode = self.available_modes[self._random_mode_index]
+        
+        # Сбрасываем состояние анимации для нового режима
+        if hasattr(self, 'color_offset'):
+            self.color_offset = random.random()
+        if hasattr(self, '_chase_active'):
+            self._chase_active = False
+        if hasattr(self, '_breath_initialized'):
+            self._breath_initialized = False
+
+    def set_animation_mode(self, mode):
+        """Установка режима анимации"""
+        if mode in ["snake", "wave", "breathing", "random", "chase", "smash"]:
+            self.animation_mode = mode
+            self.animation_time = 0
+            self.random_mode_timer = 0  # Всегда сбрасываем таймер при смене режима
+            
+            # Обновляем индекс для ручного переключения
+            modes_cycle = ["snake", "wave", "breathing", "chase", "smash", "random"]
+            if mode in modes_cycle:
+                self._current_mode_index = modes_cycle.index(mode)
+            
+            # При переключении на random инициализируем первый режим
+            if mode == "random":
+                if not hasattr(self, '_random_mode_index'):
+                    self._random_mode_index = 0
+                self._current_random_mode = self.available_modes[self._random_mode_index]
     
+    def _snake_animation(self):
+        """Змейка - цвета бегут по гирлянде"""
+        self.color_offset = (self.color_offset + 0.6) % self.light_count  # ← 0.2 вместо 1
+        
+        colors = self.color_palettes[self.current_palette]
+        
+        for i, light in enumerate(self.lights):
+            # Вычисляем позицию цвета в змейке
+            color_index = (i - int(self.color_offset)) % len(colors)  # ← округляем до целого
+            light['base_color'] = QColor(colors[color_index])
+            light['brightness'] = 255
+            
+    def _smash_animation(self):
+        """Smash - две волны сталкиваются в центре"""
+        self.color_offset = (self.color_offset + 0.009) % 1
+        
+        colors = self.color_palettes[self.current_palette]
+        
+        for i, light in enumerate(self.lights):
+            # Нормализованная позиция лампочки (0-1)
+            pos = i / max(1, self.light_count - 1)
+            
+            # Левая волна (от 0 до 1, где 1 - фронт волны)
+            left_wave = (pos - self.color_offset) % 1
+            # Правая волна (от 1 до 0, где 0 - фронт волны)  
+            right_wave = (1 - pos - self.color_offset) % 1
+            
+            # Определяем какая волна активна для этой лампочки
+            # Берем ту, что ближе к своему фронту
+            left_strength = 1.0 - left_wave  # Сильнее ближе к фронту
+            right_strength = 1.0 - right_wave  # Сильнее ближе к фронту
+            
+            if left_strength > right_strength:
+                # Доминирует левая волна
+                wave_pos = left_wave
+            else:
+                # Доминирует правая волна
+                wave_pos = right_wave
+            
+            # Получаем цвет из волны
+            segment = wave_pos * len(colors)
+            color_index = int(segment) % len(colors)
+            next_color_index = (color_index + 1) % len(colors)
+            
+            blend = segment - int(segment)
+            current_color = QColor(colors[color_index])
+            next_color = QColor(colors[next_color_index])
+            
+            mixed_color = QColor(
+                int(current_color.red() * (1 - blend) + next_color.red() * blend),
+                int(current_color.green() * (1 - blend) + next_color.green() * blend),
+                int(current_color.blue() * (1 - blend) + next_color.blue() * blend)
+            )
+            
+            light['base_color'] = mixed_color
+            light['brightness'] = 255
+
+    def _breathing_animation(self):
+        """Пульсация - градиент меняется при каждом цикле"""
+        breath_speed = 1
+        breath = (math.sin(self.animation_time * breath_speed) + 1) / 2
+        
+        # Инициализация при первом запуске
+        if not hasattr(self, '_breath_initialized'):
+            self._generate_breath_gradient()
+            self._apply_breath_gradient()
+            self._breath_initialized = True
+        
+        # Генерируем новый градиент при начале цикла (минимальная яркость)
+        if breath < 0.05:
+            if not hasattr(self, '_last_breath_low') or not self._last_breath_low:
+                self._generate_breath_gradient()
+                self._apply_breath_gradient()
+                self._last_breath_low = True
+        else:
+            self._last_breath_low = False
+        
+        # Применяем яркость
+        for light in self.lights:
+            light['brightness'] = int(breath * 200 + 55)
+
+    def _generate_breath_gradient(self):
+        """Генерирует случайный градиент"""
+        colors = self.color_palettes[self.current_palette]
+        
+        self.breath_color_start = QColor(random.choice(colors))
+        self.breath_color_end = QColor(random.choice(colors))
+        
+        # Убедимся что цвета разные
+        while self.breath_color_end == self.breath_color_start:
+            self.breath_color_end = QColor(random.choice(colors))
+
+    def _apply_breath_gradient(self):
+        """Применяет градиент ко всем лампочкам"""
+        if hasattr(self, 'breath_color_start') and hasattr(self, 'breath_color_end'):
+            for i, light in enumerate(self.lights):
+                # Простой градиент от начала к концу
+                blend = i / max(1, self.light_count - 1)
+                mixed_color = QColor(
+                    int(self.breath_color_start.red() * (1 - blend) + self.breath_color_end.red() * blend),
+                    int(self.breath_color_start.green() * (1 - blend) + self.breath_color_end.green() * blend),
+                    int(self.breath_color_start.blue() * (1 - blend) + self.breath_color_end.blue() * blend)
+                )
+                light['base_color'] = mixed_color
+
+    def _wave_animation(self):
+        """Волна - плавный градиент через все цвета палитры с зацикленностью"""
+        self.color_offset = (self.color_offset + 0.008) % 1
+        
+        colors = self.color_palettes[self.current_palette]
+        
+        for i, light in enumerate(self.lights):
+            # Позиция в полном цикле градиента
+            pos = (i / self.light_count - self.color_offset) % 1
+            
+            # Находим между какими цветами находимся (с зацикленностью)
+            segment = pos * len(colors)  # Умножаем на длину, а не на (len-1)
+            color_index = int(segment) % len(colors)
+            next_color_index = (color_index + 1) % len(colors)  # Зацикливаем
+            
+            blend = segment - int(segment)
+            current_color = QColor(colors[color_index])
+            next_color = QColor(colors[next_color_index])
+            
+            mixed_color = QColor(
+                int(current_color.red() * (1 - blend) + next_color.red() * blend),
+                int(current_color.green() * (1 - blend) + next_color.green() * blend),
+                int(current_color.blue() * (1 - blend) + next_color.blue() * blend)
+            )
+            
+            light['base_color'] = mixed_color
+            light['brightness'] = 255
+
+    def _chase_animation(self):
+        """Chase - с улучшенным избеганием повторяющихся зон"""
+        if not hasattr(self, '_chase_active'):
+            self._chase_active = False
+            self._chase_progress = 0
+            self._chase_speed = 0.02
+            self._chase_cooldown_zones = []  # Зоны в коуддауне
+            self._chase_frame_counter = 0
+        
+        segment_length = 25
+        
+        # Сбрасываем лампочки
+        for light in self.lights:
+            light['brightness'] = 0
+        
+        self._chase_frame_counter += 1
+        
+        # Обновляем коуддаун зон
+        self._chase_cooldown_zones = [zone for zone in self._chase_cooldown_zones 
+                                    if zone['frames_left'] > 0]
+        for zone in self._chase_cooldown_zones:
+            zone['frames_left'] -= 1
+        
+        # Запуск нового сегмента
+        if not self._chase_active and self._chase_frame_counter % 20 == 0:
+            available_zones = []
+            
+            # Ищем все доступные зоны
+            for pos in range(0, self.light_count - segment_length, segment_length // 2):
+                zone_available = True
+                for cooldown_zone in self._chase_cooldown_zones:
+                    if abs(pos - cooldown_zone['position']) < segment_length * 2:
+                        zone_available = False
+                        break
+                
+                if zone_available:
+                    available_zones.append(pos)
+            
+            if available_zones:
+                self._chase_position = random.choice(available_zones)
+                
+                # Добавляем в коуддаун
+                self._chase_cooldown_zones.append({
+                    'position': self._chase_position,
+                    'frames_left': 180  # ~3 секунды коуддауна
+                })
+                
+                self._chase_active = True
+                self._chase_progress = 0
+                
+                # Градиент
+                colors = self.color_palettes[self.current_palette]
+                self._chase_start_color = QColor(random.choice(colors))
+                self._chase_end_color = QColor(random.choice(colors))
+                while self._chase_end_color == self._chase_start_color:
+                    self._chase_end_color = QColor(random.choice(colors))
+        
+        # Анимация (остается такой же как выше)
+        if self._chase_active:
+            self._chase_progress += self._chase_speed
+            
+            if self._chase_progress <= 1.0:
+                alpha = self._ease_in_out(self._chase_progress)
+            else:
+                alpha = self._ease_in_out(2.0 - self._chase_progress)
+            
+            if self._chase_progress >= 2.0:
+                self._chase_active = False
+                return
+            
+            brightness = int(alpha * 255)
+            
+            for i in range(segment_length):
+                lamp_index = self._chase_position + i
+                if 0 <= lamp_index < len(self.lights):
+                    blend = i / max(1, segment_length - 1)
+                    mixed_color = QColor(
+                        int(self._chase_start_color.red() * (1 - blend) + self._chase_end_color.red() * blend),
+                        int(self._chase_start_color.green() * (1 - blend) + self._chase_end_color.green() * blend),
+                        int(self._chase_start_color.blue() * (1 - blend) + self._chase_end_color.blue() * blend)
+                    )
+                    self.lights[lamp_index]['base_color'] = mixed_color
+                    self.lights[lamp_index]['brightness'] = brightness
+                    
+    def _ease_in_out(self, t):
+        """Плавная функция easing для естественных переходов"""
+        return t * t * (3 - 2 * t)  # Кубический easing
+
     def custom_paint_event(self, event):
-        """Отрисовывает гирлянду вдоль верхнего края"""
-        # Сначала оригинальная отрисовка
+        """Отрисовывает гирлянду - упрощенная версия без бликов"""
         self.original_paint_event(event)
         
-        # Если гирлянда не видима - выходим
         if not self.visible:
             return
         
         painter = QPainter(self.target_widget)
         painter.setRenderHint(QPainter.Antialiasing)
         
-        width = self.target_widget.width()
-        height = self.target_widget.height()
-        
-        # ОСНОВНОЙ ПРОВОД ВДОЛЬ ВЕРХНЕГО КРАЯ
-        wire_y = 10  # ↓ 10px от верхнего края
-        painter.setPen(Qt.NoPen)
-        painter.drawLine(0, wire_y, width, wire_y)
-        
-        # ЛАМПОЧКИ С ВОЛНООБРАЗНЫМ РАСПРЕДЕЛЕНИЕМ
+        wire_y = 10
+
+        # Лампочки
         for light in self.lights:
             x = light['x']
-            y = wire_y + light['y_offset']  # Волна относительно провода
+            y = wire_y + light['y_offset']
             
-            color = light['color']
-            bright_color = color.lighter(100)
-            bright_color.setAlpha(light['brightness'])
+            base_color = light['base_color']
+            # Применяем яркость к цвету
+            final_color = QColor(
+                min(255, base_color.red() * light['brightness'] // 255),
+                min(255, base_color.green() * light['brightness'] // 255),
+                min(255, base_color.blue() * light['brightness'] // 255)
+            )
             
             radius = light['size'] / 2
-            
-            # # Провод к лампочке (если она не на основном проводе)
-            # if abs(light['y_offset']) > 2:
-            #     painter.setPen(QPen(QColor(60, 60, 60), 1))
-            #     painter.drawLine(x, wire_y, x, y)
-            
+
             # Лампочка
-            painter.setBrush(QBrush(bright_color))
             painter.setPen(Qt.NoPen)
+            painter.setBrush(QBrush(final_color))
             painter.drawEllipse(QPointF(x, y), radius, radius)
-            
-            # Блик
-            painter.setBrush(QBrush(QColor(255, 255, 255, 180)))
-            painter.drawEllipse(QPointF(x - radius/3, y - radius/3), radius/3, radius/3)

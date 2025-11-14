@@ -32,10 +32,10 @@ from PySide6.QtGui import (QIcon, QCursor, QFont, QColor, QDesktopServices, QAct
 QPen, QPainter, QBrush, QPainterPath)
 from PySide6.QtGui import QImage
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtWidgets import (QApplication, QWidget, QLineEdit, QVBoxLayout, QHBoxLayout, QWidgetAction, \
-                               QPushButton, QSystemTrayIcon, QMenu, QMessageBox, QToolButton, \
+from PySide6.QtWidgets import (QApplication, QWidget, QLineEdit, QVBoxLayout, QHBoxLayout, \
+                               QPushButton, QSystemTrayIcon, QMenu, QMessageBox, \
                                QTextEdit, QDialog, QLabel, QTextBrowser, QMainWindow, QSizePolicy,
-                               QGraphicsColorizeEffect, QTabWidget, QSpacerItem, QTabBar, QProgressBar)
+                               QGraphicsColorizeEffect, QTabWidget, QSpacerItem, QTabBar)
 from PySide6.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, Signal, QPropertyAnimation, QPoint, \
     QEasingCurve, Slot, QUrl, QThread
 from bin.apply_color_methods import ApplyColor
@@ -57,12 +57,12 @@ from bin.function_list_main import *
 from path_builder import get_path
 from bin.audio_control import controller
 from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel
-from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react, play_sound
+from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react
 from logging_config import logger, debug_logger
 from bin.lists import get_audio_paths, censored_list, commands_list
 
 build_ini = get_config_value("app", "build")
-version_file = "2.1.0"
+version_file = "2.1.1"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -318,6 +318,7 @@ class Assistant(QMainWindow):
         self.icon_added_commands_path = get_path("bin", "icons", "commands_list.svg")
         self.icon_process_link_path = get_path("bin", "icons", "process_link.svg")
         self.default_avatar_path = get_path("bin", "icons", "default_avatar.svg")
+        self.update_light_path = get_path("bin", "icons", "update_light.svg")
 
     def init_ui(self):
         """Инициализация пользовательского интерфейса."""
@@ -327,7 +328,7 @@ class Assistant(QMainWindow):
             self.setWindowIcon(QIcon(get_path('icon_assist.ico')))
             self.setWindowTitle("Ассистент")
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-            self.resize(800, 700)
+            self.setFixedSize(820, 700)
 
             # Центрирование окна
             screen_geometry = self.screen().availableGeometry()
@@ -381,6 +382,21 @@ class Assistant(QMainWindow):
             self.update_svg.move(3, 3)
             self.update_svg.setStyleSheet("background: transparent;")
             self.title_bar_layout.addWidget(self.update_btn)
+            
+            self.update_light_btn = QPushButton()
+            self.update_light_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.update_light_btn.setToolTip("Сменить анимацию гирлянды")
+            self.update_light_btn.setFixedSize(30, 30)
+            self.update_light_btn.clicked.connect(self.update_light_garland)
+            self.update_light_svg = CustomSvgWidget(self.update_light_path, self.update_light_btn)
+            self.update_light_svg.setFixedSize(24, 24)
+            self.update_light_svg.move(3, 3)
+            self.update_light_svg.setStyleSheet("background: transparent;")
+            self.title_bar_layout.addWidget(self.update_light_btn)
+            if self.is_garland:
+                self.update_light_btn.show()
+            else:
+                self.update_light_btn.hide()
 
             self.start_win_btn = QPushButton()
             self.start_win_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -797,20 +813,37 @@ class Assistant(QMainWindow):
                 self.create_garland()
             else:
                 self.garland_decorator.show()
+                self.update_light_btn.show()
         else:
             if self.garland_decorator is not None:
                 self.garland_decorator.hide()
+                self.update_light_btn.hide()
                 
     def create_garland(self):
         if self.garland_decorator is not None:
             return
         
-        self.garland_decorator = GarlandDecorator(self.content_widget, light_count=104, light_size=10)
+        self.garland_decorator = GarlandDecorator(self.content_widget, light_count=104, light_size=12)
+        self.garland_decorator.set_animation_mode("random")
         
         if self.is_garland:
             self.garland_decorator.show()
         else:
             self.garland_decorator.hide()
+            
+    def update_light_garland(self):
+        try:
+            # Создаем гирлянду если ее нет
+            if not hasattr(self, "garland_decorator") or self.garland_decorator is None:
+                self.create_garland()
+                
+            if self.garland_decorator is not None:
+                self.garland_decorator.next_animation()
+            else:
+                debug_logger.error("Не удалось создать гирлянду")
+                
+        except Exception as e:
+            debug_logger.error(f"Ошибка при смене анимации гирлянды: {e}")    
 
     def update_snow_state(self):
         """Обновляет состояние снега через show/hide"""
@@ -1142,6 +1175,8 @@ class Assistant(QMainWindow):
                 self.style_manager.apply_color_svg(self.widget_svg, strength=0.90)
             if hasattr(self, 'icon_svg'):
                 self.style_manager.apply_color_svg(self.icon_svg, strength=0.95)
+            if hasattr(self, 'update_light_svg'):
+                self.style_manager.apply_color_svg(self.update_light_svg, strength=0.95)
             if hasattr(self, 'close_svg'):
                 self.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#ff0000")
             
@@ -2144,7 +2179,7 @@ class Assistant(QMainWindow):
                 # Проверка цензуры
                 words = text.split()
 
-                if any(self.find_closest_command(word, censored_list, threshold=70) for word in words):
+                if any(self.find_closest_command(word, censored_list, threshold=80) for word in words):
                     self.censor_counter()
                     if self.is_censored:
                         self.get_reaction(name="censored_folder")
