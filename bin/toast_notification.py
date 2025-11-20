@@ -52,18 +52,30 @@ class ToastNotification(QDialog):
         # Настройки окна
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedSize(300, 100)
+
+        # Получаем полупрозрачный цвет на основе стиля TitleBar
+        background_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=320)
 
         # Основной layout
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-
-        # --- Заголовок (TitleBar) ---
-        self.title_bar = QWidget()
-        self.title_bar.setObjectName("TitleBar")
-        self.title_bar.setFixedHeight(1)
-        main_layout.addWidget(self.title_bar)
+        
+        main_container = QWidget()
+        main_container.setObjectName("MainContainer")
+        main_container.setStyleSheet(f"""
+            #MainContainer {{
+                background: {background_color};
+                border-radius: 10px;
+            }}
+        """)
+        
+         # Layout для основного контейнера
+        container_layout = QVBoxLayout(main_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
 
         # --- Контент: иконка + текст ---
         content_widget = QWidget()
@@ -106,7 +118,11 @@ class ToastNotification(QDialog):
                 }
                 """)
 
-        main_layout.addWidget(content_widget)
+        # Добавляем content_widget в container_layout
+        container_layout.addWidget(content_widget)
+
+        # Добавляем main_container в main_layout
+        main_layout.addWidget(main_container)
 
         self.setLayout(main_layout)
 
@@ -209,53 +225,40 @@ class ToastNotification(QDialog):
                 end_x = start_x
                 end_y = parent_geo.top() + 100
             else:
-                start_x = screen_geo.width() - self.width()
-                start_y = -self.height()
-                end_x = start_x
-                end_y = 35
+                start_x = screen_geo.width() + self.width()
+                start_y = screen_geo.height() - self.height() - 70
+                end_x = screen_geo.width() - self.width()
+                end_y = start_y
 
             self.move(start_x, start_y)
             
             super().showEvent(event)
 
-            # Настраиваем анимацию позиции
+            # Настраиваем анимацию позиции  
             self.animation.setStartValue(QPoint(start_x, start_y))
             self.animation.setEndValue(QPoint(end_x, end_y))
+            self.animation.setEasingCurve(QEasingCurve.Type.OutBack)
 
             # Запускаем обе анимации параллельно
             self.animation.start()
             self.opacity_animation.start()
 
             # Таймер для автоматического скрытия
-            self.timer.start(self.timeout)      
+            self.timer.start(self.timeout) 
         except Exception as e:
             debug_logger.error(f"showEvent FAILED: {e}", exc_info=True)
             raise
 
     def hide_animated(self):
         """Анимация скрытия с изменением прозрачности"""
-        # Создаем анимацию для исчезновения
-        hide_opacity_animation = QPropertyAnimation(self, b"windowOpacity")
-        hide_opacity_animation.setDuration(500)
-        hide_opacity_animation.setKeyValueAt(0.0, 1.0)
-        hide_opacity_animation.setKeyValueAt(0.1, 0.8)
-        hide_opacity_animation.setKeyValueAt(0.4, 0.0)
-        hide_opacity_animation.setKeyValueAt(1.0, 0.0)
-
-        current_pos = self.pos()
-        end_pos = QPoint(current_pos.x(), -self.height())
-
-        # Настраиваем анимацию движения вверх
-        move_animation = QPropertyAnimation(self, b"pos")
-        move_animation.setDuration(500)
-        move_animation.setStartValue(current_pos)
-        move_animation.setEndValue(end_pos)
-        move_animation.setEasingCurve(QEasingCurve.Type.InQuad)
-
-        # Группируем анимации
+        # Создаем анимацию для исчезновения     
+        opacity_animation = QPropertyAnimation(self, b"windowOpacity")
+        opacity_animation.setDuration(400)
+        opacity_animation.setStartValue(1.0)
+        opacity_animation.setEndValue(0.0)
+        
         self.animation_group = QParallelAnimationGroup()
-        self.animation_group.addAnimation(hide_opacity_animation)
-        self.animation_group.addAnimation(move_animation)
+        self.animation_group.addAnimation(opacity_animation)
         self.animation_group.finished.connect(self.close_immediately)
         self.animation_group.start()
 
@@ -300,9 +303,31 @@ class SimpleNotice():
         self.styles = self.style_manager.load_styles()
         self.result = None
         self.main = None
+        self.drag_pos = None
         self.container = None
         self.init_ui()
         self.apply_styles()
+        
+    def title_bar_mouse_press(self, event):
+        """Обработка нажатия мыши на заголовок"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Запоминаем позицию относительно главного окна
+            self.drag_pos = event.globalPosition().toPoint()
+            event.accept()
+
+    def title_bar_mouse_move(self, event):
+        """Обработка перемещения мыши при удерживании на заголовке"""
+        if self.drag_pos is not None and event.buttons() == Qt.MouseButton.LeftButton:
+            # Вычисляем смещение и перемещаем главное окно
+            delta = event.globalPosition().toPoint() - self.drag_pos
+            self.main.move(self.main.pos() + delta)
+            self.drag_pos = event.globalPosition().toPoint()
+            event.accept()
+
+    def title_bar_mouse_release(self, event):
+        """Обработка отпускания кнопки мыши"""
+        self.drag_pos = None
+        event.accept()
 
     def init_ui(self):
         sound = {
@@ -340,7 +365,10 @@ class SimpleNotice():
         title_bar = QWidget()
         title_bar.setObjectName("TitleBar")
         title_bar.setFixedHeight(40)
-        # title_bar.setGeometry(1, 1, self.main.width() - 2, 34)
+        
+        title_bar.mousePressEvent = self.title_bar_mouse_press
+        title_bar.mouseMoveEvent = self.title_bar_mouse_move
+        title_bar.mouseReleaseEvent = self.title_bar_mouse_release
 
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(10, 5, 10, 5)
@@ -368,12 +396,6 @@ class SimpleNotice():
         # Область содержимого (сообщение + кнопки)
         content_widget = QWidget()
         content_widget.setObjectName("ContentWidget")
-        # content_widget.setGeometry(
-        #     1,
-        #     36,
-        #     self.main.width() - 2,
-        #     self.main.height() - 36 - 45
-        # )
         content_layout = QVBoxLayout(content_widget)
 
         # Текст сообщения
@@ -386,7 +408,7 @@ class SimpleNotice():
 
         # --- Добавление кнопок ---
         if not hasattr(self, 'button_layout'):
-            self.button_layout = QHBoxLayout()  # Убедиться, что атрибут существует
+            self.button_layout = QHBoxLayout()
         self.button_layout.setContentsMargins(0, 0, 0, 10)
         self.button_layout.setSpacing(10)
 
@@ -523,18 +545,30 @@ class SupplyNotice(QDialog):
         # Настройки окна
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedSize(300, 100)
+
+        # Получаем полупрозрачный цвет на основе стиля TitleBar
+        background_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=320)
 
         # Основной layout
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-
-        # --- Заголовок (TitleBar) ---
-        self.title_bar = QWidget()
-        self.title_bar.setObjectName("TitleBar")
-        self.title_bar.setFixedHeight(1)
-        main_layout.addWidget(self.title_bar)
+        
+        main_container = QWidget()
+        main_container.setObjectName("MainContainer")
+        main_container.setStyleSheet(f"""
+            #MainContainer {{
+                background: {background_color};
+                border-radius: 10px;
+            }}
+        """)
+        
+         # Layout для основного контейнера
+        container_layout = QVBoxLayout(main_container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
 
         # --- Контент: иконка + текст ---
         content_widget = QWidget()
@@ -577,7 +611,11 @@ class SupplyNotice(QDialog):
                 }
                 """)
 
-        main_layout.addWidget(content_widget)
+        # Добавляем content_widget в container_layout
+        container_layout.addWidget(content_widget)
+
+        # Добавляем main_container в main_layout
+        main_layout.addWidget(main_container)
 
         self.setLayout(main_layout)
 
@@ -680,18 +718,19 @@ class SupplyNotice(QDialog):
                 end_x = start_x
                 end_y = parent_geo.top() + 90
             else:
-                start_x = screen_geo.width() - self.width()
-                start_y = -self.height()
-                end_x = start_x
-                end_y = 21
+                start_x = screen_geo.width() + self.width()
+                start_y = screen_geo.height() - self.height() - 70
+                end_x = screen_geo.width() - self.width()
+                end_y = start_y
 
             self.move(start_x, start_y)
             
             super().showEvent(event)
 
-            # Настраиваем анимацию позиции
+            # Настраиваем анимацию позиции           
             self.animation.setStartValue(QPoint(start_x, start_y))
             self.animation.setEndValue(QPoint(end_x, end_y))
+            self.animation.setEasingCurve(QEasingCurve.Type.OutBack)
 
             # Запускаем обе анимации параллельно
             self.animation.start()
@@ -705,28 +744,14 @@ class SupplyNotice(QDialog):
 
     def hide_animated(self):
         """Анимация скрытия с изменением прозрачности"""
-        # Создаем анимацию для исчезновения
-        hide_opacity_animation = QPropertyAnimation(self, b"windowOpacity")
-        hide_opacity_animation.setDuration(500)
-        hide_opacity_animation.setKeyValueAt(0.0, 1.0)
-        hide_opacity_animation.setKeyValueAt(0.1, 0.8)
-        hide_opacity_animation.setKeyValueAt(0.4, 0.0)
-        hide_opacity_animation.setKeyValueAt(1.0, 0.0)
-
-        current_pos = self.pos()
-        end_pos = QPoint(current_pos.x(), -self.height())
-
-        # Настраиваем анимацию движения вверх
-        move_animation = QPropertyAnimation(self, b"pos")
-        move_animation.setDuration(500)
-        move_animation.setStartValue(current_pos)
-        move_animation.setEndValue(end_pos)
-        move_animation.setEasingCurve(QEasingCurve.Type.InQuad)
-
-        # Группируем анимации
+        # Создаем анимацию для исчезновения     
+        opacity_animation = QPropertyAnimation(self, b"windowOpacity")
+        opacity_animation.setDuration(400)
+        opacity_animation.setStartValue(1.0)
+        opacity_animation.setEndValue(0.0)
+        
         self.animation_group = QParallelAnimationGroup()
-        self.animation_group.addAnimation(hide_opacity_animation)
-        self.animation_group.addAnimation(move_animation)
+        self.animation_group.addAnimation(opacity_animation)
         self.animation_group.finished.connect(self.close_immediately)
         self.animation_group.start()
 

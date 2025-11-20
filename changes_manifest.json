@@ -1,12 +1,44 @@
 {
+  "2.1.2": {
+    "full_update": false,
+    "changed_files": [
+      "bin/apply_color_methods.py",
+      "bin/__pycache__/apply_color_methods.cpython-311.pyc",
+      "bin/settings_widgets.py",
+      "bin/__pycache__/settings_widgets.cpython-311.pyc",
+      "bin/toast_notification.py",
+      "bin/__pycache__/toast_notification.cpython-311.pyc",
+      "bin/widget_window.py",
+      "bin/__pycache__/widget_window.cpython-311.pyc",
+      "bin/icons/speech_hook.svg",
+      "config.ini",
+      "Assistant.exe",
+      "version.txt"
+    ],
+    "deleted_files": []
+  },
+  "2.1.1": {
+    "full_update": false,
+    "changed_files": [
+      "bin/icons/update_light.svg",
+      "Update.exe",
+      "bin/color_presets/snow_night.json",
+      "bin/frosted_widget.py",
+      "bin/__pycache__/frosted_widget.cpython-311.pyc",
+      "config.ini",
+      "Assistant.exe",
+      "version.txt"
+    ],
+    "deleted_files": []
+  },
   "2.1.0": {
     "full_update": true,
-    "changed_files": [
-    ]
+    "changed_files": [],
+    "deleted_files": []
   },
   "2.0.1": {
     "full_update": true,
-    "changed_files": [
-    ]
+    "changed_files": [],
+    "deleted_files": []
   }
 }

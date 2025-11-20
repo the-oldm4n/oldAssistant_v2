@@ -355,3 +355,70 @@ class ApplyColor():
                 if hex_match:
                     color = QColor(hex_match.group(0))
         return color
+    
+    def get_transparent_background_from_border(self, opacity=180, darken_factor=130):
+        """
+        Расширенная версия с затемнением градиента
+        :param opacity: прозрачность 0-255
+        :param darken_factor: коэффициент затемнения (100 - без изменений, >100 - темнее)
+        """
+        try:
+            if "TitleBar" in self.styles and "border-bottom" in self.styles["TitleBar"]:
+                border_value = self.styles["TitleBar"]["border-bottom"]
+                
+                gradient_match = re.search(r"qlineargradient\([^)]+\)", border_value)
+                if gradient_match:
+                    gradient_str = gradient_match.group(0)
+                    return self._create_transparent_darkened_gradient(gradient_str, opacity, darken_factor)
+                else:
+                    hex_match = re.search(r"#[0-9a-fA-F]{3,6}", border_value)
+                    if hex_match:
+                        base_color = QColor(hex_match.group(0))
+                        darker_color = base_color.darker(darken_factor)
+                        return f"rgba({darker_color.red()}, {darker_color.green()}, {darker_color.blue()}, {opacity})"
+                
+        except Exception as e:
+            debug_logger.error(f"Ошибка получения цвета для фона: {e}")
+        
+        return f"rgba(30, 30, 30, {opacity})"
+
+    def _create_transparent_darkened_gradient(self, gradient_str, opacity, darken_factor):
+        """
+        Создает полупрозрачный и затемненный градиент
+        """
+        try:
+            import re
+            stops = re.findall(r"stop:([\d.]+)\s+([^,)]+)", gradient_str)
+            
+            if not stops:
+                return f"rgba(30, 30, 30, {opacity})"
+            
+            new_gradient = "qlineargradient("
+            
+            # Добавляем координаты градиента
+            coords = re.findall(r"(x\d|y\d):([\d.]+)", gradient_str)
+            for coord, value in coords:
+                new_gradient += f"{coord}:{value}, "
+            
+            # Добавляем полупрозрачные и затемненные цвета
+            for i, (position, color_hex) in enumerate(stops):
+                color = QColor(color_hex.strip())
+                # Затемняем цвет
+                darkened_color = color.darker(darken_factor)
+                # Создаем полупрозрачный вариант
+                transparent_color = f"rgba({darkened_color.red()}, {darkened_color.green()}, {darkened_color.blue()}, {opacity/255:.2f})"
+                new_gradient += f"stop:{position} {transparent_color}"
+                if i < len(stops) - 1:
+                    new_gradient += ", "
+            
+            new_gradient += ")"
+            return new_gradient
+            
+        except Exception as e:
+            debug_logger.error(f"Ошибка создания прозрачного градиента: {e}")
+            first_color_match = re.search(r"stop:[\d.]+\s+([^,)]+)", gradient_str)
+            if first_color_match:
+                base_color = QColor(first_color_match.group(1).strip())
+                darkened_color = base_color.darker(darken_factor)
+                return f"rgba({darkened_color.red()}, {darkened_color.green()}, {darkened_color.blue()}, {opacity})"
+            return f"rgba(30, 30, 30, {opacity})"

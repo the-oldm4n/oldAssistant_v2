@@ -56,13 +56,13 @@ from bin.utils import get_config_value, set_config_value, update_version, Comman
 from bin.function_list_main import *
 from path_builder import get_path
 from bin.audio_control import controller
-from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel
+from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel, SpeechHookManagerWidget
 from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react
 from logging_config import logger, debug_logger
 from bin.lists import get_audio_paths, censored_list, commands_list
 
 build_ini = get_config_value("app", "build")
-version_file = "2.1.1"
+version_file = "2.1.2"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -190,6 +190,7 @@ class Assistant(QMainWindow):
         self.steam_path = None
         self.is_censored = None
         self.run_updater = None
+        self.is_corrected_command = None
         self.is_min_tray = None
         self.is_widget = None
         self.is_keep_watch = None
@@ -286,6 +287,7 @@ class Assistant(QMainWindow):
         self.steam_path = self.settings.get('steam_path', '')
         self.is_censored = self.settings.get('is_censored', False)
         self.run_updater = self.settings.get("run_updater", True)
+        self.is_corrected_command = self.settings.get("is_corrected_command", False)
         self.is_min_tray = self.settings.get("minimize_to_tray", False)
         self.is_widget = self.settings.get("is_widget", True)
         self.is_keep_watch = self.settings.get("is_keep_watch", False)
@@ -309,6 +311,7 @@ class Assistant(QMainWindow):
         self.icon_tray_path = get_path("bin", "icons", "tray_icon.png")
         self.icon_updates_path = get_path("bin", "icons", "updates.svg")
         self.icon_advance_settings_path = get_path("bin", "icons", "settings+.svg")
+        self.icon_speech_hook_path = get_path("bin", "icons", "speech_hook.svg")
         self.icon_styles_path = get_path("bin", "icons", "styles.svg")
         self.icon_panel_path = get_path("bin", "icons", "panel.svg")
         self.icon_logs_path = get_path("bin", "icons", "logs.svg")
@@ -1776,6 +1779,7 @@ class Assistant(QMainWindow):
             "is_censored": self.is_censored,
             "volume_assist": self.volume_assist,
             "run_updater": self.run_updater,
+            "is_corrected_command": self.is_corrected_command,
             "minimize_to_tray": self.is_min_tray,
             "start_win": self.toggle_start,
             "is_widget": self.is_widget,
@@ -1821,8 +1825,9 @@ class Assistant(QMainWindow):
                 "assist_name3": "джон",
                 "steam_path": "",
                 "is_censored": True,
-                "volume_assist": 0.2,
+                "volume_assist": 0.15,
                 "run_updater": True,
+                "is_corrected_command": False,
                 "minimize_to_tray": True,
                 "start_win": True,
                 "is_widget": True,
@@ -2138,6 +2143,8 @@ class Assistant(QMainWindow):
                     break
                 debug_logger.info(f"[last_unrecognized_command]---> {self.last_unrecognized_command}")
                 current_time = time.time()
+                
+                words = text.split()
 
                 all_commands = self.get_command_names()
                 all_names = [self.assistant_name, self.assist_name2, self.assist_name3]
@@ -2153,6 +2160,9 @@ class Assistant(QMainWindow):
                     has_action_words = True
                 else:
                     has_action_words = False
+                
+                # Проверка на наличие команд для управления    
+                self.is_keyword_player = any(self.find_closest_command(word, keywords_player, threshold=80) for word in words)
 
                 debug_logger.info(f"[has_action_words] {has_action_words}")
 
@@ -2169,16 +2179,14 @@ class Assistant(QMainWindow):
                 # Обновляем время последней активности при получении текста
                 last_activity_time = current_time
 
-                # Сбрасываем флаг упоминания имени, если прошло более 60 секунд
+                # Сбрасываем флаг упоминания имени, если прошло более n секунд
                 if name_mentioned and (current_time - name_mentioned_time) > 20:
                     name_mentioned = False
                     name_mentioned_time = None
-                    logger.info("Сброс флага упоминания имени (20 секунд)")
-                    debug_logger.info("Сброс флага упоминания имени (20 секунд)")
+                    logger.info("Сброс флага упоминания имени")
+                    debug_logger.info("Сброс флага упоминания имени")
 
                 # Проверка цензуры
-                words = text.split()
-
                 if any(self.find_closest_command(word, censored_list, threshold=80) for word in words):
                     self.censor_counter()
                     if self.is_censored:
@@ -2323,82 +2331,82 @@ class Assistant(QMainWindow):
                                       name_mentioned)
 
                 # Режим уточнения команды (если предыдущая попытка не удалась)
-                if self.last_unrecognized_command and self.last_unrecognized_command.get('mode') == 'correction':
-                    if text:
-                        # Обновляем время последней активности при обработке команды
-                        last_activity_time = current_time
+                if self.is_corrected_command:
+                    if self.last_unrecognized_command and self.last_unrecognized_command.get('mode') == 'correction':
+                        if text:
+                            # Обновляем время последней активности при обработке команды
+                            last_activity_time = current_time
 
-                        _, new_action_type = self.find_action(text, action_up, action_down, all_actions)
+                            _, new_action_type = self.find_action(text, action_up, action_down, all_actions)
 
-                        current_action_type = self.last_unrecognized_command['pending_commands'][0].get('action_type')
+                            current_action_type = self.last_unrecognized_command['pending_commands'][0].get('action_type')
 
-                        # Если действие изменилось — обновляем контекст
-                        if new_action_type and new_action_type != current_action_type:
-                            self.last_unrecognized_command['pending_commands'][0]['action_type'] = new_action_type
-                            debug_logger.info(f"Действие обновлено на: {new_action_type}")
+                            # Если действие изменилось — обновляем контекст
+                            if new_action_type and new_action_type != current_action_type:
+                                self.last_unrecognized_command['pending_commands'][0]['action_type'] = new_action_type
+                                debug_logger.info(f"Действие обновлено на: {new_action_type}")
 
-                        # Блок А. Для поиска совпадений и запуска методов в соответствии с действием
-                        default_list = self.find_closest_command(clean_target, default_commands_keys)
+                            # Блок А. Для поиска совпадений и запуска методов в соответствии с действием
+                            default_list = self.find_closest_command(clean_target, default_commands_keys)
 
-                        if default_list:
-                            action_to_use = self.last_unrecognized_command['pending_commands'][0].get('action_type')
+                            if default_list:
+                                action_to_use = self.last_unrecognized_command['pending_commands'][0].get('action_type')
 
-                            if action_to_use == 'open':
-                                default_commands[default_list][0]()
-                            elif action_to_use == 'close':
-                                if default_commands[default_list][1]:
-                                    default_commands[default_list][1]()
-                            self.last_unrecognized_command = None
-                            continue
-                        # Конец блока А.
-
-                        # Блок В. Для поиска совпадений из кастомного списка команд и их активация
-                        file_commands = list(self.commands.keys()) if hasattr(self, 'commands') and isinstance(
-                            self.commands, dict) else []
-                        custom_list = self.find_closest_command(clean_target, file_commands)
-
-                        if custom_list:
-                            action_type = self.last_unrecognized_command['pending_commands'][0].get('action_type')
-
-                            # Восстанавливаем полную команду
-                            restored_command = f"{action_type} {custom_list}"
-                            debug_logger.info(f"Восстановленная команда: {restored_command}")
-
-                            # Пытаемся обработать как приложение и как папку
-                            app_processed = self.handle_app_command(restored_command, action_type)
-                            folder_processed = self.handle_folder_command(restored_command, action_type)
-
-                            if not folder_processed and not app_processed:
-                                logger.warning(f"Команда не обработана: {restored_command}")
-                                debug_logger.warning(f"Команда не обработана: {restored_command}")
-                                self.get_reaction(name="what_folder",
-                                                  trace="Реакция в блоке, где режим корректировки команды")
-
-                                self.last_unrecognized_command['pending_commands'][0][
-                                    'suggested_command'] = clean_target
-
-                                debug_logger.info(f"Обновлена цель для уточнения: {clean_target}")
-                                self.show_supply_notice(text)
-                                debug_logger.info(f"Отправлено уведомление ---> {text}")
+                                if action_to_use == 'open':
+                                    default_commands[default_list][0]()
+                                elif action_to_use == 'close':
+                                    if default_commands[default_list][1]:
+                                        default_commands[default_list][1]()
                                 self.last_unrecognized_command = None
                                 continue
-                        # Конец блока В.
+                            # Конец блока А.
 
-                        if any(word in text for word in keywords_reject):
-                            debug_logger.info("Пользователь отменил команду(ы).")
-                            self.get_reaction(name="confirm_folder")
-                            self.last_unrecognized_command = None
-                            message = "Хорошо, отменяю."
-                            self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"Отправлено уведомление ---> {message}")
-                            continue
+                            # Блок В. Для поиска совпадений из кастомного списка команд и их активация
+                            file_commands = list(self.commands.keys()) if hasattr(self, 'commands') and isinstance(
+                                self.commands, dict) else []
+                            custom_list = self.find_closest_command(clean_target, file_commands)
 
-                            self.last_unrecognized_command = None
-                        if not default_list and not custom_list:
-                            self.get_reaction(name="what_folder",
-                                              trace="Реакция в блоке, где режим корректировки команды")
-                            self.show_supply_notice(text)
-                            debug_logger.info(f"Отправлено уведомление ---> {text}")
+                            if custom_list:
+                                action_type = self.last_unrecognized_command['pending_commands'][0].get('action_type')
+
+                                # Восстанавливаем полную команду
+                                restored_command = f"{action_type} {custom_list}"
+                                debug_logger.info(f"Восстановленная команда: {restored_command}")
+
+                                # Пытаемся обработать как приложение и как папку
+                                app_processed = self.handle_app_command(restored_command, action_type)
+                                folder_processed = self.handle_folder_command(restored_command, action_type)
+
+                                if not folder_processed and not app_processed:
+                                    logger.warning(f"Команда не обработана: {restored_command}")
+                                    debug_logger.warning(f"Команда не обработана: {restored_command}")
+                                    self.get_reaction(name="what_folder",
+                                                    trace="Реакция в блоке, где режим корректировки команды")
+
+                                    self.last_unrecognized_command['pending_commands'][0][
+                                        'suggested_command'] = clean_target
+
+                                    debug_logger.info(f"Обновлена цель для уточнения: {clean_target}")
+                                    self.show_supply_notice(text)
+                                    debug_logger.info(f"Отправлено уведомление ---> {text}")
+                                    self.last_unrecognized_command = None
+                                    continue
+                            # Конец блока В.
+
+                            if any(word in text for word in keywords_reject):
+                                debug_logger.info("Пользователь отменил команду(ы).")
+                                self.get_reaction(name="confirm_folder")
+                                self.last_unrecognized_command = None
+                                message = "Хорошо, отменяю."
+                                self.show_supply_notice(message, is_confirm=True)
+                                debug_logger.info(f"Отправлено уведомление ---> {message}")
+                                continue
+
+                            if not default_list and not custom_list:
+                                self.get_reaction(name="what_folder",
+                                                trace="Реакция в блоке, где режим корректировки команды")
+                                self.show_supply_notice(text)
+                                debug_logger.info(f"Отправлено уведомление ---> {text}")
 
                 if has_assistant_name:
                     debug_logger.info("<<< Условие, где есть Имя ассистента >>>")
@@ -2425,8 +2433,9 @@ class Assistant(QMainWindow):
 
                     if len(words) <= 4 and has_name:
                         if not has_action_words:
-                            # Если нет слов-действий — воспроизводим эхо
-                            self.get_reaction(name="echo_folder")
+                            if not self.is_keyword_player:
+                                # Если нет слов-действий и в тексте нет команд для управления плеером — воспроизводим эхо
+                                self.get_reaction(name="echo_folder")
 
                     final_commands = self.handle_text_smart(text, all_actions)
                     debug_logger.info(f"[handle_text_smart]---> {final_commands}")
@@ -2560,7 +2569,7 @@ class Assistant(QMainWindow):
                             continue
 
                 # Обработка плеера
-                if any(self.find_closest_command(word, keywords_player, threshold=80) for word in words):
+                if self.is_keyword_player or has_assistant_name:
 
                     # Ищем первое подходящее действие (в порядке приоритета: пауза, след, пред)
                     for word in words:
@@ -3550,11 +3559,13 @@ class Assistant(QMainWindow):
         # Создаем виджеты для содержимого вкладок
         main_widget = SettingsWidget(self)
         other_widget = OtherSettingsWidget(self)
+        speech_hook_widget = SpeechHookManagerWidget(self)
         interface_widget = InterfaceWidget(self)
         settings_panel = SettingsWidgetPanel(self)
 
         self.tabs.addTab(main_widget, "")
         self.tabs.addTab(other_widget, "")
+        self.tabs.addTab(speech_hook_widget, "")
         self.tabs.addTab(interface_widget, "")
         self.tabs.addTab(settings_panel, "")
 
@@ -3580,14 +3591,17 @@ class Assistant(QMainWindow):
         tab_bar.setTabButton(1, QTabBar.ButtonPosition.LeftSide,
                              create_centered_svg_tab(self.icon_advance_settings_path))
         tab_bar.setTabButton(2, QTabBar.ButtonPosition.LeftSide,
-                             create_centered_svg_tab(self.icon_styles_path))
+                             create_centered_svg_tab(self.icon_speech_hook_path))
         tab_bar.setTabButton(3, QTabBar.ButtonPosition.LeftSide,
+                             create_centered_svg_tab(self.icon_styles_path))
+        tab_bar.setTabButton(4, QTabBar.ButtonPosition.LeftSide,
                              create_centered_svg_tab(self.icon_panel_path))
 
         self.tabs.setTabToolTip(0, "Основные настройки")
         self.tabs.setTabToolTip(1, "Дополнительные настройки")
-        self.tabs.setTabToolTip(2, "Настройки интерфейса")
-        self.tabs.setTabToolTip(3, "Настройки виджет-панели")
+        self.tabs.setTabToolTip(2, "Менеджер управления хук-словами")
+        self.tabs.setTabToolTip(3, "Настройки интерфейса")
+        self.tabs.setTabToolTip(4, "Настройки виджет-панели")
 
         self.mutable_layout.addWidget(self.tabs)
         self.mutable_layout.addSpacerItem(QSpacerItem(self._get_panel_width(), 1,

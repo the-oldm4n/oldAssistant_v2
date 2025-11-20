@@ -5,7 +5,7 @@ import wmi
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, \
     QDialog, QLabel, QGridLayout, QStackedWidget, QSizePolicy, QTextEdit, QApplication, QGraphicsBlurEffect
-from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve
+from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve, QEvent
 
 from bin.apply_color_methods import ApplyColor
 from bin.audio_control import controller
@@ -287,12 +287,14 @@ class SmartWidget(QWidget):
         # Основной контент
         self.main_container = QWidget()
         self.main_container.setObjectName("MainContainer")
-        self.main_container.setStyleSheet("""
-                    #MainContainer {
-                        background: rgba(30, 30, 30, 180);
-                        border-radius: 10px;
-                    }
-                """)
+        self.background_color = self.style_manager.get_transparent_background_from_border(opacity=180, darken_factor=600)
+        self.main_container.setStyleSheet(f"""
+                #MainContainer {{
+                    background: {self.background_color};
+                    border-radius: 10px;
+                }}
+            """)
+
         self.content_layout = QVBoxLayout(self.main_container)
         self.content_layout.setContentsMargins(5, 5, 5, 5)
         self.content_layout.setSpacing(5)
@@ -529,17 +531,19 @@ class SmartWidget(QWidget):
         for btn_name in ordered_buttons:
             config = buttons_config[btn_name]
             btn = QPushButton()
+            btn.setObjectName("BTNonPanel")
             btn.setFixedSize(40, 40)
             btn.setToolTip(config['tooltip'])
-            btn.setStyleSheet("""
-                QPushButton {
+            self.back_btn_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=200)
+            btn.setStyleSheet(f"""
+                QPushButton {{
                     background: transparent;
                     border: none;
-                }
-                QPushButton:hover {
-                    background: rgba(90, 90, 90, 0.7);
+                }}
+                QPushButton:hover {{
+                    background: {self.back_btn_color};
                     border-radius: 5px;
-                }
+                }}
             """)
             svg = CustomSvgWidget(config['icon'], btn)
             svg.setFixedSize(30, 30)
@@ -571,16 +575,19 @@ class SmartWidget(QWidget):
         layout.addStretch()
         for btn_name, config in player_config.items():
             btn = QPushButton()
+            btn.setObjectName("BTNonPanel")
             btn.setFixedSize(25, 20)
             btn.setToolTip(config['tooltip'])
-            btn.setStyleSheet("""
-                QPushButton {
+            self.back_btn_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=200)
+            btn.setStyleSheet(f"""
+                QPushButton {{
                     background: transparent;
                     border: none;
-                }
-                QPushButton:hover {
-                    background: rgba(90, 90, 90, 0.7);
-                }
+                }}
+                QPushButton:hover {{
+                    background: {self.back_btn_color};
+                    border-radius: 5px;
+                }}
             """)
             svg = CustomSvgWidget(config['icon'], btn)
             svg.setFixedSize(20, 20)
@@ -1158,15 +1165,24 @@ class SmartWidget(QWidget):
     def shutdown_system(self):
         """Выключает компьютер после подтверждения"""
         try:
+            # Проверяем, не открыто ли уже окно подтверждения
+            if hasattr(self, 'confirm_dialog') and self.confirm_dialog and self.confirm_dialog.isVisible():
+                return
+                
             # Создаем кастомное окно вместо QMessageBox
-            confirm_dialog = QDialog(self)
-            confirm_dialog.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
-            confirm_dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-            confirm_dialog.setFixedSize(120, 70)
+            self.confirm_dialog = QDialog(self)
+            self.confirm_dialog.setWindowFlags(
+                Qt.WindowType.Dialog | 
+                Qt.WindowType.FramelessWindowHint |
+                Qt.WindowType.WindowStaysOnTopHint
+            )
+            self.confirm_dialog.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            self.confirm_dialog.setFixedSize(120, 70)
+            self.confirm_dialog.setModal(False)
 
-            container = QWidget(confirm_dialog)
+            container = QWidget(self.confirm_dialog)
             container.setObjectName("MessageContainer")
-            container.setGeometry(0, 0, confirm_dialog.width(), confirm_dialog.height())
+            container.setGeometry(0, 0, self.confirm_dialog.width(), self.confirm_dialog.height())
             container.setStyleSheet(
                 "background-color: rgba(30, 30, 32, 0.8);"
                 "border-radius: 10px;"
@@ -1221,19 +1237,53 @@ class SmartWidget(QWidget):
 
             self.apply_styles()
 
-            # Обработчики кнопок
-            yes_btn.clicked.connect(lambda: confirm_dialog.accept())
-            no_btn.clicked.connect(lambda: confirm_dialog.reject())
+            # Таймер для проверки фокуса
+            self.focus_timer = QTimer()
+            self.focus_timer.timeout.connect(self.check_dialog_focus)
+            self.focus_timer.start(100)
 
-            # Показываем и ждем результат
-            if confirm_dialog.exec_() == QDialog.DialogCode.Accepted:
-                try:
-                    shutdown_windows()
-                except Exception as e:
-                    debug_logger.error(f"Ошибка выключения: {e}")
+            # Обработчики кнопок
+            yes_btn.clicked.connect(self.on_shutdown_yes)
+            no_btn.clicked.connect(self.on_shutdown_no)
+
+            # Показываем диалог
+            self.confirm_dialog.show()
+            self.confirm_dialog.activateWindow()
 
         except Exception as e:
             debug_logger.error(f"Ошибка диалога: {e}")
+
+    def on_shutdown_yes(self):
+        """Обработчик кнопки Да"""
+        try:
+            if hasattr(self, 'confirm_dialog') and self.confirm_dialog:
+                self.cleanup_dialog()
+                shutdown_windows()
+        except Exception as e:
+            debug_logger.error(f"Ошибка выключения: {e}")
+
+    def on_shutdown_no(self):
+        """Обработчик кнопки Нет"""
+        if hasattr(self, 'confirm_dialog') and self.confirm_dialog:
+            self.cleanup_dialog()
+
+    def check_dialog_focus(self):
+        """Проверяет, активен ли диалог"""
+        if (hasattr(self, 'confirm_dialog') and 
+            self.confirm_dialog and 
+            self.confirm_dialog.isVisible() and
+            not self.confirm_dialog.isActiveWindow()):
+
+            self.cleanup_dialog()
+
+    def cleanup_dialog(self):
+        """Очищает ресурсы диалога"""
+        if hasattr(self, 'confirm_dialog') and self.confirm_dialog:
+            if hasattr(self, 'focus_timer') and self.focus_timer.isActive():
+                self.focus_timer.stop()
+            self.confirm_dialog.reject()
+            self.confirm_dialog.deleteLater()
+            self.confirm_dialog = None
 
     def open_settings(self):
         """Переключатель для основного окна и настроек"""
@@ -1408,6 +1458,47 @@ class SmartWidget(QWidget):
             self.setStyleSheet(style_sheet)
         except Exception as e:
             debug_logger.error(f"Ошибка в методе apply_styles: {e}")
+            
+    def update_background_style(self):
+        """Применяет/обновляет стиль фона"""
+        try:
+            self.background_color = self.style_manager.get_transparent_background_from_border(opacity=160, darken_factor=800)
+            self.main_container.setStyleSheet(f"""
+                #MainContainer {{
+                    background: {self.background_color};
+                    border-radius: 10px;
+                }}
+            """)
+            
+            self.back_btn_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=200)
+            
+            for btn_data in self.buttons_data.values():
+                btn = btn_data['button']
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background: transparent;
+                        border: none;
+                    }}
+                    QPushButton:hover {{
+                        background: {self.back_btn_color};
+                        border-radius: 5px;
+                    }}
+                """)
+                
+            for btn_data in self.player_buttons.values():
+                btn = btn_data['button']
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background: transparent;
+                        border: none;
+                    }}
+                    QPushButton:hover {{
+                        background: {self.back_btn_color};
+                        border-radius: 5px;
+                    }}
+                """)
+        except Exception as e:
+            debug_logger.error(f"Ошибка применения фона: {e}")
 
     def update_colors(self):
         self.styles = self.style_manager.load_styles()
@@ -1418,6 +1509,8 @@ class SmartWidget(QWidget):
 
         self.style_manager.apply_color_svg(self.pin_svg, strength=0.95)
         self.style_manager.apply_color_svg(self.lock_svg, strength=0.95)
+        
+        self.update_background_style()
         
         if hasattr(self, "snow_on_label"):
             self.snow_on_label.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=40)

@@ -479,6 +479,16 @@ class OtherSettingsWidget(QWidget):
         self.censor_check.setChecked(self.assistant.is_censored)
         self.censor_check.stateChanged.connect(self.toggle_censor)
         layout.addWidget(self.censor_check)
+        
+        self.correct_command_check = QCheckBox("Запоминать предыдущую команду", self)
+        self.correct_command_check.setStyleSheet("background: transparent;")
+        self.correct_command_check.setToolTip("Запоминание предыдущей команды позволяет не говорить всю фразу заново,\n "
+                                              "а только саму команду.(Пример: 'Джонни открой ...' Здесь бот не понял конкретно команду,\n "
+                                              "но он запомнил то, что его упомянули и действие для команды. Теперь будет достаточно произнести \n"
+                                              "только саму команду для запуска действия. 'Калькулятор')")
+        self.correct_command_check.setChecked(self.assistant.is_corrected_command)
+        self.correct_command_check.stateChanged.connect(self.toggle_correct_command)
+        layout.addWidget(self.correct_command_check)
 
         self.update_check = QCheckBox("Запуск утилиты обновления \n перед стартом программы", self)
         self.update_check.setStyleSheet("background: transparent;")
@@ -558,6 +568,10 @@ class OtherSettingsWidget(QWidget):
 
     def toggle_update(self):
         self.assistant.run_updater = self.update_check.isChecked()
+        self.assistant.save_settings()
+        
+    def toggle_correct_command(self):
+        self.assistant.is_corrected_command = self.correct_command_check.isChecked()
         self.assistant.save_settings()
 
     def toggle_minimize(self):
@@ -733,7 +747,42 @@ class OtherSettingsWidget(QWidget):
         if hasattr(self.assistant, 'hide_widget'):
             self.assistant.hide_widget()
         else:
-            debug_logger.error("Метод close_settings не найден в assistant")
+            debug_logger.error("Метод close_settings не найден в assistant")     
+            
+class SpeechHookManagerWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.assistant = parent
+        self.init_ui()
+
+    def init_ui(self):
+        # Создаем основной layout для самого SettingsWidgetPanel
+        main_layout = QVBoxLayout(self)  # ← передаем self в конструктор
+        main_layout.setContentsMargins(0, 0, 0, 0)  # Убираем отступы
+        
+        # Создаем скроллируемую область
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+        
+        # Создаем виджет для контента
+        content_widget = QWidget()
+        scroll_area.setWidget(content_widget)  # ← Устанавливаем контент в скролл
+        
+        # Создаем layout для контента
+        layout = QVBoxLayout(content_widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        label = QLabel("Данный раздел находится в разработке.")
+        label.setStyleSheet("font-size: 25px; background: transparent")
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        
+        # Добавляем скролл в основной layout
+        main_layout.addWidget(scroll_area)
 
 
 class DraggableCheckbox(QCheckBox):
