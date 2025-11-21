@@ -1,5 +1,6 @@
 import os
 import re
+import uuid
 import requests
 from PySide6.QtCore import QThread, Signal
 from packaging import version
@@ -321,6 +322,10 @@ def download_delta_files(files_to_update, manifest, target_version, update_auth,
             return True
         
         logger.info(f"Начинаем загрузку {total_files} файлов...")
+        
+        # СОЗДАЕМ client_session_id для всей сессии загрузки
+        client_session_id = str(uuid.uuid4())
+        logger.info(f"Начинаем загрузку {total_files} файлов, session: {client_session_id}")
 
         successful_downloads = 0
         failed_downloads = 0
@@ -345,7 +350,8 @@ def download_delta_files(files_to_update, manifest, target_version, update_auth,
                 file_target_version, 
                 update_auth, 
                 temp_dir,
-                on_progress
+                on_progress,
+                client_session_id
             )
             
             if success:
@@ -375,7 +381,7 @@ def download_delta_files(files_to_update, manifest, target_version, update_auth,
             on_complete(None, success=False, error=error_msg)
         return False
 
-def download_single_file(file_path, target_version, update_auth, temp_dir, on_progress=None):
+def download_single_file(file_path, target_version, update_auth, temp_dir, on_progress=None, client_session_id=None):
     """Загрузка одного файла с сервера с использованием UpdateAuthManager"""
     try:
         # Проверяем авторизацию
@@ -389,6 +395,10 @@ def download_single_file(file_path, target_version, update_auth, temp_dir, on_pr
         # Формируем URL и данные запроса
         url = f"{domain}/api/updates/{target_version}/{file_path}"
         data = {'token': token}
+        # Добавляем client_session_id если есть (новые клиенты)
+        if client_session_id:
+            data['client_session_id'] = client_session_id
+            logger.info(f"Используем session_id: {client_session_id}")
         headers = {"Authorization": f"Bearer {token}"}
         # Отправляем запрос с токеном
         response = session.post(
@@ -398,6 +408,12 @@ def download_single_file(file_path, target_version, update_auth, temp_dir, on_pr
             stream=True,
             timeout=30
         )
+        
+        # Получаем session_id из заголовка (может быть None для старых клиентов)
+        new_session_id = response.headers.get('X-Download-Session')
+        if new_session_id and new_session_id != client_session_id:
+            logger.info(f"Получен новый session_id от сервера: {new_session_id}")
+            client_session_id = new_session_id
         
         if response.status_code == 200:
             local_path = temp_dir / file_path

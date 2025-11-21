@@ -59,10 +59,10 @@ from bin.audio_control import controller
 from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel, SpeechHookManagerWidget
 from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react
 from logging_config import logger, debug_logger
-from bin.lists import get_audio_paths, censored_list, commands_list
+from bin.lists import get_audio_paths, commands_list, default_keywords_data
 
 build_ini = get_config_value("app", "build")
-version_file = "2.1.2"
+version_file = "2.1.3"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -238,7 +238,12 @@ class Assistant(QMainWindow):
             self.showNormal()
         if self.user_data:
             self.update_user_profile()
-        self.run_assist()
+        if self.check_keywords_file():
+            debug_logger.info("Файл keywords.json найден")
+        else:
+            debug_logger.info("Файл keywords.json не найден, создаю...")
+        if self.apply_keywords_for_values():
+            self.run_assist()
         self.toggle_update_button()
         QTimer.singleShot(5000, lambda: self.check_update_app())
         self.update_checker = QTimer()
@@ -2084,6 +2089,55 @@ class Assistant(QMainWindow):
             writer = csv.writer(file)
             writer.writerow(headers)  # Записываем заголовки
             writer.writerows(rows)  # Записываем данные
+            
+    def check_keywords_file(self):
+        """
+        Проверяет наличие файла keywords.json и создает его со стандартными значениями из default_keywords.json если нет
+        """
+        keywords_path = get_path("user_settings", "keywords.json")
+        default_keywords_path = get_path("bin", "default_keywords.json")
+
+        if not os.path.exists(keywords_path):
+            if os.path.exists(default_keywords_path):
+                with open(default_keywords_path, 'r', encoding='utf-8') as f:
+                    default_keywords = json.load(f)
+            else:
+                default_keywords = default_keywords_data
+            os.makedirs(os.path.dirname(keywords_path), exist_ok=True)
+            with open(keywords_path, 'w', encoding='utf-8') as f:
+                json.dump(default_keywords, f, ensure_ascii=False, indent=2)
+
+            return True
+        else:
+            return False
+        
+    def apply_keywords_for_values(self):
+        try:
+            keywords_path = get_path("user_settings", "keywords.json")
+            if os.path.exists(keywords_path):
+                with open(keywords_path, 'r', encoding='utf-8') as f:
+                    keywords_data = json.load(f)
+            
+            self.keywords_shutdown = keywords_data["keywords_shutdown"]
+            self.keywords_restart = keywords_data["keywords_restart"]
+            self.keywords_search = keywords_data["keywords_search"]
+            self.keywords_no = keywords_data['keywords_no']
+            self.keywords_yes = keywords_data['keywords_yes']
+            self.keywords_reject = keywords_data['keywords_reject']
+            self.screen_list = keywords_data["screen_list"]
+            self.fullscreen_list = keywords_data["fullscreen_list"]
+            self.action_up = keywords_data['action_up']
+            self.action_down = keywords_data['action_down']
+            self.all_actions = self.action_up + self.action_down
+            self.keywords_player = keywords_data["keywords_player"]
+            self.keywords_playpause = keywords_data['keywords_playpause']
+            self.keywords_next = keywords_data["keywords_next"]
+            self.keywords_prev = keywords_data["keywords_prev"]
+            self.censored_list = keywords_data["censored_list"]
+            return True
+        except Exception as e:
+            debug_logger.error(f"Ошибка во время применения списков: {e}")
+            return False
 
     # "Основной цикл ассистента"
     # "--------------------------------------------------------------------------------------------------"
@@ -2108,26 +2162,6 @@ class Assistant(QMainWindow):
             "ютуб": (lambda: self.start_default_command("ютуб", "open"), None)
         }
         default_commands_keys = list(default_commands.keys())
-        keywords_shutdown = ["питание", "комп", "компьютер"]
-        keywords_restart = ["перезагрузка", "рестарт"]
-        keywords_search = ["найди", "поищи", "посмотри", "загугли"]
-        keywords_no = ['нет', 'не', 'no', 'отмена', 'не надо', 'стоп', 'нельзя']
-        keywords_yes = ['на', 'да', 'ага', 'угу', 'yes', 'конечно', 'давай', 'го']
-        keywords_reject = ['отмена', 'отменить', 'отмени', 'сброс', 'сбрось', 'сбросить',
-                           'остановить', 'остановись', 'останови', 'стоп', 'забудь']
-        screen_list = ["скрин", "область", "выдели область", "скриншот"]
-        fullscreen_list = ["фулл скрин", "весь экран", "сфоткать"]
-        action_up = ['открыть', 'включить', 'запустить', 'подключить']
-        action_down = ['закрыть', 'выключить', 'отключить', 'отрубить', 'вырубить']
-        all_actions = action_up + action_down
-        # Списки для плеера
-        keywords_player = ["плеер", "плейлист", "музыка", "проигрыватель",
-                           "аудио", "песня", "трек", "трэк", "поставь"]
-        keywords_playpause = ['пауза', 'пуск', 'запуск', 'включить', 'врубить',
-                              'отрубить', 'выключить', 'стоп', 'продолжить', 'плэй',
-                              'включи', 'выключи', 'запусти', 'отруби']
-        keywords_next = ["некст", "следующий", "дальше", "вперед", "переключить"]
-        keywords_prev = ["бэк", "назад", "обратно", "предыдущий"]
 
         self.last_unrecognized_command = None  # Хранит контекст неудачной команды
         last_activity_time = time.time()  # Время последней активности
@@ -2150,19 +2184,19 @@ class Assistant(QMainWindow):
                 all_names = [self.assistant_name, self.assist_name2, self.assist_name3]
 
                 # Список фраз действие-команда, ["action command", ...]
-                action_command = self.handle_text_smart(text, all_actions)
+                action_command = self.handle_text_smart(text, self.all_actions)
 
                 # Чистая команда без действия, "command"
-                clean_target = self._extract_clean_target(text, all_actions)
+                clean_target = self._extract_clean_target(text, self.all_actions)
 
                 # has_action_words = any(kw in text.lower() for kw in all_actions)
-                if self.find_action(text, action_up, action_down, all_actions)[0] is not None:
+                if self.find_action(text, self.action_up, self.action_down, self.all_actions)[0] is not None:
                     has_action_words = True
                 else:
                     has_action_words = False
                 
                 # Проверка на наличие команд для управления    
-                self.is_keyword_player = any(self.find_closest_command(word, keywords_player, threshold=80) for word in words)
+                self.is_keyword_player = any(self.find_closest_command(word, self.keywords_player, threshold=80) for word in words)
 
                 debug_logger.info(f"[has_action_words] {has_action_words}")
 
@@ -2187,7 +2221,7 @@ class Assistant(QMainWindow):
                     debug_logger.info("Сброс флага упоминания имени")
 
                 # Проверка цензуры
-                if any(self.find_closest_command(word, censored_list, threshold=80) for word in words):
+                if any(self.find_closest_command(word, self.censored_list, threshold=80) for word in words):
                     self.censor_counter()
                     if self.is_censored:
                         self.get_reaction(name="censored_folder")
@@ -2210,7 +2244,7 @@ class Assistant(QMainWindow):
                             continue
 
                         # Подтверждение — "да"
-                        if any(word in text_lower for word in keywords_yes):
+                        if any(word in text_lower for word in self.keywords_yes):
                             debug_logger.info("Пользователь подтвердил команду(ы).")
 
                             turnoff_value = self.last_unrecognized_command.get('is_shutdown')
@@ -2220,7 +2254,7 @@ class Assistant(QMainWindow):
                             continue
 
                         # Отмена — "нет"
-                        elif any(word in text_lower for word in keywords_no):
+                        elif any(word in text_lower for word in self.keywords_no):
                             debug_logger.info("Пользователь отменил команду(ы).")
                             self.get_reaction(name="confirm_folder")
                             self.last_unrecognized_command = None
@@ -2251,7 +2285,7 @@ class Assistant(QMainWindow):
                             continue
 
                         # Подтверждение — "да"
-                        if any(word in text_lower for word in keywords_yes):
+                        if any(word in text_lower for word in self.keywords_yes):
                             debug_logger.info("Пользователь подтвердил команду(ы).")
 
                             pending_commands = self.last_unrecognized_command.get('pending_commands')
@@ -2293,7 +2327,7 @@ class Assistant(QMainWindow):
                             continue
 
                         # Отмена — "нет"
-                        elif any(word in text_lower for word in keywords_no):
+                        elif any(word in text_lower for word in self.keywords_no):
                             debug_logger.info("Пользователь отменил команду(ы).")
                             self.get_reaction(name="confirm_folder")
                             self.last_unrecognized_command = None
@@ -2337,7 +2371,7 @@ class Assistant(QMainWindow):
                             # Обновляем время последней активности при обработке команды
                             last_activity_time = current_time
 
-                            _, new_action_type = self.find_action(text, action_up, action_down, all_actions)
+                            _, new_action_type = self.find_action(text, self.action_up, self.action_down, self.all_actions)
 
                             current_action_type = self.last_unrecognized_command['pending_commands'][0].get('action_type')
 
@@ -2393,7 +2427,7 @@ class Assistant(QMainWindow):
                                     continue
                             # Конец блока В.
 
-                            if any(word in text for word in keywords_reject):
+                            if any(word in text for word in self.keywords_reject):
                                 debug_logger.info("Пользователь отменил команду(ы).")
                                 self.get_reaction(name="confirm_folder")
                                 self.last_unrecognized_command = None
@@ -2411,23 +2445,21 @@ class Assistant(QMainWindow):
                 if has_assistant_name:
                     debug_logger.info("<<< Условие, где есть Имя ассистента >>>")
                     trigger_react = False
-                    _, action_type = self.find_action(text, action_up, action_down, all_actions)
-                    if self.find_closest_command(clean_target, keywords_search):
-                        search_yandex(text, self.assistant_name,
-                                      self.assist_name2,
-                                      self.assist_name3)
+                    _, action_type = self.find_action(text, self.action_up, self.action_down, self.all_actions)
+                    if self.find_any_command_in_text(clean_target, self.keywords_search, threshold=80):
+                        search_yandex(text, self.assistant_name, self.assist_name2, self.assist_name3)
                         self.get_reaction(name="approve_folder")
                         continue
-                    elif self.find_closest_command(clean_target, fullscreen_list):
+                    elif self.find_closest_command(clean_target, self.fullscreen_list, threshold=70):
                         self.capture_fullscreen()
                         continue
-                    elif self.find_closest_command(clean_target, screen_list):
+                    elif self.find_closest_command(clean_target, self.screen_list, threshold=70):
                         self.capture_area()
                         continue
-                    elif self.find_closest_command(clean_target, keywords_shutdown):
+                    elif self.find_closest_command(clean_target, self.keywords_shutdown):
                         self.get_confirm_shutdown(clean_target, text, action_type)
                         continue
-                    elif self.find_closest_command(clean_target, keywords_restart):
+                    elif self.find_closest_command(clean_target, self.keywords_restart):
                         self.get_confirm_shutdown(clean_target, text, action_type, is_shutdown=False)
                         continue
 
@@ -2437,17 +2469,17 @@ class Assistant(QMainWindow):
                                 # Если нет слов-действий и в тексте нет команд для управления плеером — воспроизводим эхо
                                 self.get_reaction(name="echo_folder")
 
-                    final_commands = self.handle_text_smart(text, all_actions)
+                    final_commands = self.handle_text_smart(text, self.all_actions)
                     debug_logger.info(f"[handle_text_smart]---> {final_commands}")
 
                     for command in final_commands:
                         command = command.strip()
                         debug_logger.info(f"[Команда в цикле из списка выше] {command}")
 
-                        _, action_type = self.find_action(command, action_up, action_down, all_actions)
+                        _, action_type = self.find_action(command, self.action_up, self.action_down, self.all_actions)
 
                         if action_type:
-                            clean_target = self._extract_clean_target(command, all_actions)
+                            clean_target = self._extract_clean_target(command, self.all_actions)
                             # Ищем совпадение со специальными командами
 
                             default_list = self.find_closest_command(clean_target, default_commands_keys)
@@ -2512,21 +2544,21 @@ class Assistant(QMainWindow):
                     if has_action_words and not has_assistant_name:
                         debug_logger.info("<<< Условие без имени ассистента, только действие и команда >>>")
 
-                        if self.find_closest_command(clean_target, screen_list):
+                        if self.find_closest_command(clean_target, self.screen_list):
                             self.capture_area()
 
-                        final_commands = self.handle_text_smart(text, all_actions)
+                        final_commands = self.handle_text_smart(text, self.all_actions)
                         debug_logger.info(f"[final_commands] {final_commands}")
 
                         pending_commands = []
 
                         for command in final_commands:
                             command = command.strip()
-                            clean_target = self._extract_clean_target(command, all_actions)
+                            clean_target = self._extract_clean_target(command, self.all_actions)
                             if not clean_target:
                                 continue
 
-                            _, action_type = self.find_action(command, action_up, action_down, all_actions)
+                            _, action_type = self.find_action(command, self.action_up, self.action_down, self.all_actions)
                             if not action_type:
                                 continue
 
@@ -2573,15 +2605,15 @@ class Assistant(QMainWindow):
 
                     # Ищем первое подходящее действие (в порядке приоритета: пауза, след, пред)
                     for word in words:
-                        if self.find_closest_command(word, keywords_playpause, threshold=80):
+                        if self.find_closest_command(word, self.keywords_playpause, threshold=80):
                             controller.play_pause()
                             self.get_reaction(name="player_folder")
                             continue
-                        elif self.find_closest_command(word, keywords_next, threshold=80):
+                        elif self.find_closest_command(word, self.keywords_next, threshold=80):
                             controller.next_track()
                             self.get_reaction(name="player_folder")
                             continue
-                        elif self.find_closest_command(word, keywords_prev, threshold=80):
+                        elif self.find_closest_command(word, self.keywords_prev, threshold=80):
                             controller.previous_track()
                             self.get_reaction(name="player_folder")
                             continue
@@ -2750,6 +2782,24 @@ class Assistant(QMainWindow):
             return 100
         score = (1 - distance / max_len) * 100
         return score
+    
+    def find_any_command_in_text(self, input_text, command_list, threshold=50):
+        """
+        Ищет любую команду из списка в тексте (проверяет каждое слово текста)
+        """
+        if not input_text or not command_list:
+            return None
+        
+        # Разбиваем текст на слова
+        words = input_text.split()
+        
+        for word in words:
+            # Для каждого слова ищем похожую команду
+            best_match = self.find_closest_command(word, command_list, threshold)
+            if best_match:
+                return best_match
+        
+        return None
 
     def find_closest_command(self, input_text, command_list, threshold=50):
         """

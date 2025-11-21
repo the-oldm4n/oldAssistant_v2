@@ -269,5 +269,9 @@
     },
     "QScrollBar::sub-page:vertical": {
         "background": "none"
+    },
+    "QListWidget": {
+        "border": "1px solid #D62D2D",
+        "border-radius": "15px"
     }
 }

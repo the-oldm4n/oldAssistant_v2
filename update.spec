@@ -1,4 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
+version_file = 'G:/PycharmProjects/oldAssistant_v2/update_app/version.txt'
 
 block_cipher = None
 
@@ -10,6 +11,7 @@ additional_files = [
     ('G:/PycharmProjects/oldAssistant_v2/update_app/icon.ico', '.'),
     ('G:/PycharmProjects/oldAssistant_v2/update_app/check_and_download.py', '.'),
     ('G:/PycharmProjects/oldAssistant_v2/update_app/utils.py', '.'),
+    ('G:/PycharmProjects/oldAssistant_v2/update_app/version.txt', '.'),
 ]
 
 a = Analysis(
@@ -46,7 +48,8 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,              # Сжатие исполняемого файла
-    console=False,          # True - показывать консоль, False - скрыть
+    console=False,
     uac_admin=True,
-    icon='G:/PycharmProjects/oldAssistant_v2/update_app/icon.ico'
+    icon='G:/PycharmProjects/oldAssistant_v2/update_app/icon.ico',
+    version=version_file,
 )

@@ -69,8 +69,8 @@ def get_config_value(section, key, default=None):
     """Получение конкретного значения из конфига"""
     config = configparser.ConfigParser()
     root = get_base_directory()
-    # root = os.path.dirname(get_directory())
     config_path = os.path.join(root, "config.ini")
+    logger.info(f"config_path:{config_path}")
     if not os.path.exists(config_path):
         logger.info(f"File is not found")
         return default

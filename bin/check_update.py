@@ -1,5 +1,6 @@
 import os
 import re
+import uuid
 from packaging import version
 from typing import Tuple, Optional, Dict
 import requests
@@ -303,7 +304,7 @@ def download_update(type_version, on_complete=None, version=None):
             on_complete(None, success=False, error=error_msg)
         return None
 
-def download_single_file(file_path, target_version, auth_manager, on_progress=None):
+def download_single_file(file_path, target_version, auth_manager, on_progress=None, client_session_id=None):
     """Загрузка одного файла с сервера с использованием AuthManager"""
     try:
         # Проверяем авторизацию
@@ -317,25 +318,33 @@ def download_single_file(file_path, target_version, auth_manager, on_progress=No
         # Формируем URL и данные запроса
         url = f"{domain}/api/updates/{target_version}/{file_path}"
 
+        data = {}
+        
         if auth_manager.is_guest():
-            debug_logger.info("Загрузка в гостевом режиме")
-            response = session.post(
-                url,
-                json={"guest": True},  # или просто пустой JSON
-                stream=True,
-                timeout=30
-            )
+            data["guest"] = True
         else:
-            data = {'token': token}
-            headers = {"Authorization": f"Bearer {token}"}
-            # Отправляем запрос с токеном
-            response = session.post(
-                url,
-                json=data,
-                headers=headers,
-                stream=True,
-                timeout=30
-            )
+            data['token'] = token
+            
+        # Добавляем client_session_id если есть (новые клиенты)
+        if client_session_id:
+            data['client_session_id'] = client_session_id
+            debug_logger.info(f"Используем session_id: {client_session_id}")
+        
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        
+        response = session.post(
+            url,
+            json=data,
+            headers=headers,
+            stream=True,
+            timeout=30
+        )
+        
+        # Получаем session_id из заголовка (может быть None для старых клиентов)
+        new_session_id = response.headers.get('X-Download-Session')
+        if new_session_id and new_session_id != client_session_id:
+            debug_logger.info(f"Получен новый session_id от сервера: {new_session_id}")
+            client_session_id = new_session_id
         
         if response.status_code == 200:
             # Создаем директории если нужно
@@ -427,6 +436,10 @@ def download_delta_files(files_to_update, manifest, auth_manager, on_complete=No
         
         debug_logger.info(f"Начинаем загрузку {total_files} файлов...")
         
+        # СОЗДАЕМ client_session_id для всей сессии загрузки
+        client_session_id = str(uuid.uuid4())
+        debug_logger.info(f"Начинаем загрузку {total_files} файлов, session: {client_session_id}")
+        
         successful_downloads = 0
         failed_downloads = 0
         
@@ -452,7 +465,13 @@ def download_delta_files(files_to_update, manifest, auth_manager, on_complete=No
                 continue
                 
             # Загружаем файл
-            success = download_single_file(file_path, file_target_version, auth_manager, on_progress)
+            success = download_single_file(
+                file_path,
+                file_target_version,
+                auth_manager,
+                on_progress,
+                client_session_id
+                )
             
             if success:
                 successful_downloads += 1

@@ -1,4 +1,40 @@
 {
+  "2.1.3": {
+    "full_update": false,
+    "changed_files": [
+      "Update.exe",
+      "bin/check_update.py",
+      "bin/__pycache__/check_update.cpython-311.pyc",
+      "bin/choose_color_window.py",
+      "bin/__pycache__/choose_color_window.cpython-311.pyc",
+      "bin/color_presets/blue_neon.json",
+      "bin/color_presets/blue_orange.json",
+      "bin/color_presets/dark.json",
+      "bin/color_presets/dark_blue.json",
+      "bin/color_presets/green_neon.json",
+      "bin/color_presets/ice_and_flame.json",
+      "bin/color_presets/legacy.json",
+      "bin/color_presets/mint.json",
+      "bin/color_presets/moonlight.json",
+      "bin/color_presets/orange_neon.json",
+      "bin/color_presets/pink_blue.json",
+      "bin/color_presets/pink_neon.json",
+      "bin/color_presets/purple_neon.json",
+      "bin/color_presets/red_neon.json",
+      "bin/color_presets/snow_night.json",
+      "bin/color_presets/sunset.json",
+      "bin/color_presets/white.json",
+      "bin/lists.py",
+      "bin/__pycache__/lists.cpython-311.pyc",
+      "bin/settings_widgets.py",
+      "bin/__pycache__/settings_widgets.cpython-311.pyc",
+      "bin/default_keywords.json",
+      "config.ini",
+      "Assistant.exe",
+      "version.txt"
+    ],
+    "deleted_files": []
+  },
   "2.1.2": {
     "full_update": false,
     "changed_files": [

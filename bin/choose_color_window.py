@@ -1191,6 +1191,11 @@ class ColorSettingsWindow(QDialog):
                     },
                     "QScrollBar::sub-page:vertical": {
                         "background": "none"
+                    },
+                    "QListWidget": {
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_main_radius}px"
                     }
         }
        
