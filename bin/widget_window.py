@@ -1512,7 +1512,7 @@ class SmartWidget(QWidget):
         
         self.update_background_style()
         
-        if hasattr(self, "snow_on_label"):
+        if hasattr(self, "snow_on_label") and self.snow_on_label is not None:
             self.snow_on_label.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=40)
 
     def set_default_sensor_values(self):

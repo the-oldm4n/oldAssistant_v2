@@ -273,5 +273,16 @@
     "QListWidget": {
         "border": "1px solid #D62D2D",
         "border-radius": "15px"
+    },
+    "HelpWidget": {
+        "background": "transparent",
+        "border": "1px solid #D62D2D",
+        "border-radius": "15px"
+    },
+    "LogArea": {
+        "background": "transparent",
+        "color": "#F18E90",
+        "border": "none",
+        "font-size": "15px"
     }
 }

@@ -273,5 +273,16 @@
     "QListWidget": {
         "border": "1px solid qlineargradient(x1:0.85, y1:0.14, x2:0.15, y2:0.86, stop:0 #a08ddf, stop:1 #3b4deb)",
         "border-radius": "15px"
+    },
+    "HelpWidget": {
+        "background": "transparent",
+        "border": "1px solid qlineargradient(x1:0.85, y1:0.14, x2:0.15, y2:0.86, stop:0 #a08ddf, stop:1 #3b4deb)",
+        "border-radius": "15px"
+    },
+    "LogArea": {
+        "background": "transparent",
+        "color": "#8a8cff",
+        "border": "none",
+        "font-size": "15px"
     }
 }

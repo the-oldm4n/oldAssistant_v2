@@ -7,6 +7,8 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QFileDialog, QPushButton, QLineEdit, QLabel, QComboBox, \
     QVBoxLayout, QWidget, QDialog, QFrame, QStackedWidget, QHBoxLayout, QListWidget, QListWidgetItem, \
     QCompleter, QDialogButtonBox, QMessageBox, QMenu, QApplication
+from bin.lists import setup_custom_font_label
+from bin.shortcut_monitor import ShortcutMonitor
 from bin.signals import commands_signal
 from logging_config import debug_logger
 from path_builder import get_path
@@ -21,7 +23,21 @@ class CreateCommandsWidget(QWidget):
         super().__init__(parent)
         self.assistant = assistant
         self.current_form = None  # Текущая активная форма
+        self._help_initialized = False
+        self.folder_path = get_path('user_settings', "links for assist")
+        self.monitor = ShortcutMonitor(self.folder_path)
+        self.monitor.folder_changed.connect(self.on_folder_changed)
+        self.monitor.file_added.connect(self.on_file_added)
+        self.monitor.file_removed.connect(self.on_file_removed)
         self.init_ui()
+        
+    def showEvent(self, event):
+        """При показе панели настраиваем help system"""
+        super().showEvent(event)
+        self.monitor.start_monitoring()
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -29,9 +45,9 @@ class CreateCommandsWidget(QWidget):
         layout.setSpacing(10)
 
         # Заголовок
-        title = QLabel("Для чего создаем команду?")
+        title = setup_custom_font_label(text="Для чего создаем команду?", font_style="Comfortaa", weight="Medium")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("background: transparent; font-size: 16px; font-weight: bold;")
+        title.setStyleSheet("background: transparent; font-size: 18px;")
         layout.addWidget(title)
 
         # Контейнер для кнопок выбора типа
@@ -41,18 +57,21 @@ class CreateCommandsWidget(QWidget):
         self.btn_shortcut = QPushButton("Для ярлыка")
         self.btn_shortcut.setCheckable(True)
         self.btn_shortcut.clicked.connect(self.show_shortcut_form)
+        self.btn_shortcut.setProperty("helpId", "btn_shortcut")
         btn_layout.addWidget(self.btn_shortcut)
 
         # Кнопка для создания команды папки
         self.btn_folder = QPushButton("Для папки")
         self.btn_folder.setCheckable(True)
         self.btn_folder.clicked.connect(self.show_folder_form)
+        self.btn_folder.setProperty("helpId", "btn_folder")
         btn_layout.addWidget(self.btn_folder)
 
         # Кнопка для создания команды папки
         self.btn_url = QPushButton("Для сайта")
         self.btn_url.setCheckable(True)
         self.btn_url.clicked.connect(self.show_url_form)
+        self.btn_url.setProperty("helpId", "btn_url")
         btn_layout.addWidget(self.btn_url)
 
         layout.addLayout(btn_layout)
@@ -66,15 +85,19 @@ class CreateCommandsWidget(QWidget):
         self.create_forms()
 
         layout.addStretch()
+        
+        self.open_folder_lnk = QPushButton("Открыть папку с ярлыками")
+        self.open_folder_lnk.clicked.connect(self.assistant.open_folder_shortcuts)
+        layout.addWidget(self.open_folder_lnk)
 
-        self.ps = QLabel("Внимание! Перед присвоением команды попробуйте сказать нужную фразу и "
-                         "сверьте распознанный вариант в окне логов. (Инструкция во вкладке 'Гайды')")
+        self.ps = QLabel("Добавьте необходимые ярлыки через автопоиск или вручную, нажав на кнопку выше.")
         self.ps.setWordWrap(True)
-        self.ps.setStyleSheet("background-color: transparent")
+        self.ps.setStyleSheet("background-color: transparent; font-size: 15px;")
         layout.addWidget(self.ps)
 
         self.search_btn = QPushButton("Автопоиск ярлыков")
         self.search_btn.clicked.connect(self.autosearch_shortcuts)
+        self.search_btn.setProperty("helpId", "search_btn")
         layout.addWidget(self.search_btn)
 
     def autosearch_shortcuts(self):
@@ -126,7 +149,39 @@ class CreateCommandsWidget(QWidget):
         self.btn_url.setChecked(True)
         self.form_container.show()
         self.form_container.setCurrentWidget(self.url_form)
+        
+    def hideEvent(self, event):
+        """При закрытии виджета - выключить мониторинг"""
+        super().hideEvent(event)
+        self.monitor.stop_monitoring()
+    
+    def closeEvent(self, event):
+        """При полном закрытии - выключить мониторинг"""
+        self.monitor.stop_monitoring()
+        super().closeEvent(event)
+        
+    def on_folder_changed(self):
+        """Общее изменение в папке"""
+        debug_logger.info("Обнаружены изменения в папке")
+        self.refresh_file_list()
+    
+    def on_file_added(self, filepath):
+        """Конкретный файл добавлен"""
+        debug_logger.info(f"Файл добавлен: {filepath}")
+    
+    def on_file_removed(self, filepath):
+        """Конкретный файл удален"""
+        debug_logger.info(f"Файл удален: {filepath}")
+    
+    def refresh_file_list(self):
+        """Обновить список файлов в GUI"""
+        self.assistant.commands_manager.search_links()
 
+        if hasattr(self.shortcut_form, 'refresh_shortcuts'):
+            self.shortcut_form.refresh_shortcuts()
+            self.assistant.show_notification_message(f"Список ярлыков обновлен!")
+
+        
 
 class AppCommandForm(QWidget):
     def __init__(self, assistant, parent=None):
@@ -144,6 +199,7 @@ class AppCommandForm(QWidget):
         self.key_input = QLineEdit(self)
         self.key_input.setPlaceholderText("Введите команду (например: 'браузер')")
         self.key_input.returnPressed.connect(self.apply_command)  # Обработка нажатия Enter
+        self.key_input.setProperty("helpId", "key_input_app")
 
         # Label для ошибок
         self.error_label = QLabel(self)
@@ -151,12 +207,14 @@ class AppCommandForm(QWidget):
 
         self.label_command = QLabel("Команда (уникальное слово):")
         self.label_command.setStyleSheet("background: transparent;")
+        self.label_command.setProperty("helpId", "key_input_app")
 
         self.shortcut_combo = SearchComboBox(self)
         self.load_shortcuts()
         self.shortcut_combo.lineEdit().returnPressed.connect(self.apply_command)  # Обработка нажатия Enter
         self.label_link = QLabel("Выберите ярлык:")
         self.label_link.setStyleSheet("background: transparent;")
+        self.label_link.setProperty("helpId", "label_link_app")
 
         self.apply_button = QPushButton("Добавить команду", self)
         self.apply_button.clicked.connect(self.apply_command)
@@ -178,6 +236,7 @@ class AppCommandForm(QWidget):
             debug_logger.error(f"Ошибка загрузки ярлыков: {e}")
 
     def refresh_shortcuts(self):
+        self.load_shortcuts()
         current_selection = self.shortcut_combo.currentText()
         links_file = get_path('user_settings', 'links.json')
         try:
@@ -237,6 +296,7 @@ class FolderCommandForm(QWidget):
         self.key_input = QLineEdit(self)
         self.key_input.setPlaceholderText("Введите команду (например: 'загрузки')")
         self.key_input.returnPressed.connect(self.apply_command)  # Обработка нажатия Enter
+        self.key_input.setProperty("helpId", "key_input_app")
 
         # Label для ошибок
         self.error_label = QLabel(self)
@@ -244,18 +304,22 @@ class FolderCommandForm(QWidget):
 
         self.label_command_folder = QLabel("Команда (уникальное слово):")
         self.label_command_folder.setStyleSheet("background: transparent;")
+        self.label_command_folder.setProperty("helpId", "key_input_app")
 
         choice_layout = QHBoxLayout()
         choice_layout.setSpacing(5)
 
         self.folder_path = QLineEdit(self)
         self.folder_path.returnPressed.connect(self.apply_command)  # Обработка нажатия Enter
+        self.folder_path.setProperty("helpId", "label_folder")
         self.label_folder = QLabel("Путь к папке:")
         self.label_folder.setStyleSheet("background: transparent;")
+        self.label_folder.setProperty("helpId", "label_folder")
 
         select_button = QPushButton("Обзор", self)
         select_button.setStyleSheet("padding-left: 6px; padding-right: 6px;")
         select_button.clicked.connect(self.select_folder)
+        
 
         self.apply_button = QPushButton("Добавить команду", self)
         self.apply_button.clicked.connect(self.apply_command)
@@ -318,6 +382,7 @@ class UrlCommandForm(QWidget):
         self.key_input = QLineEdit(self)
         self.key_input.setPlaceholderText("Введите команду (например: 'загрузки')")
         self.key_input.returnPressed.connect(self.apply_command)
+        self.key_input.setProperty("helpId", "key_input_app")
 
         # Label для ошибок
         self.error_label = QLabel(self)
@@ -325,13 +390,16 @@ class UrlCommandForm(QWidget):
 
         self.label_command_folder = QLabel("Команда (уникальное слово):")
         self.label_command_folder.setStyleSheet("background: transparent;")
+        self.label_command_folder.setProperty("helpId", "key_input_app")
 
         self.url_path = QLineEdit(self)
         self.url_path.setPlaceholderText("https://example.com или example.com")
         self.url_path.returnPressed.connect(self.apply_command)
+        self.url_path.setProperty("helpId", "url_path")
 
         self.label_url = QLabel("Укажите ссылку:")
         self.label_url.setStyleSheet("background: transparent;")
+        self.label_url.setProperty("helpId", "url_path")
 
         self.apply_button = QPushButton("Добавить команду", self)
         self.apply_button.clicked.connect(self.apply_command)
@@ -427,6 +495,7 @@ class CommandsWidget(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
+        self._help_initialized = False
         self.init_ui()
         self.update_commands_list()
         commands_signal.commands_updated.connect(self.update_commands_list)
@@ -437,16 +506,18 @@ class CommandsWidget(QWidget):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(10)
 
-        self.title = QLabel("Добавленные команды")
+        self.title = setup_custom_font_label(text="Добавленные команды", font_style="Comfortaa", weight="Medium")
 
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title.setStyleSheet("background: transparent; font-size: 16px; font-weight: bold;")
+        self.title.setStyleSheet("background: transparent; font-size: 18px;")
+        self.title.setProperty("helpId", "commands_list")
         layout.addWidget(self.title)
 
         self.commands_list = QListWidget(self)
         self.commands_list.setFont(QFont("Tahoma"))
         self.commands_list.setStyleSheet("border: none; font-size: 15px;")
         self.commands_list.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
+        self.commands_list.setProperty("helpId", "commands_list")
         layout.addWidget(self.commands_list)
 
         # Включаем контекстное меню для списка
@@ -464,6 +535,9 @@ class CommandsWidget(QWidget):
         """Переопределяем метод показа виджета"""
         super().showEvent(event)
         self.select_last_item()
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
 
     def select_last_item(self):
         """Выбирает последний элемент в списке"""
@@ -577,9 +651,17 @@ class ProcessLinksWidget(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
+        self._help_initialized = False
         self.process_names_path = self.assistant.process_names
         self.process_names = self.load_process_names()
         self.init_ui()
+        
+    def showEvent(self, event):
+        """При показе панели настраиваем help system"""
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
 
     def init_ui(self):
         """ Инициализация пользовательского интерфейса """
@@ -591,10 +673,11 @@ class ProcessLinksWidget(QWidget):
         main_layout.setSpacing(10)
 
         # Заголовок
-        self.title = QLabel("Процессы ярлыков\n(нужны для закрытия)")
+        self.title = setup_custom_font_label(text="Процессы ярлыков\n(нужны для закрытия)", font_style="Comfortaa", weight="Medium")
 
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title.setStyleSheet("background: transparent; font-size: 16px; font-weight: bold;")
+        self.title.setStyleSheet("background: transparent; font-size: 18px;")
+        self.title.setProperty("helpId", "process_widget_info")
         main_layout.addWidget(self.title)
 
         # Горизонтальный макет для левой и правой колонок
@@ -602,22 +685,25 @@ class ProcessLinksWidget(QWidget):
 
         # Левая колонка: список ярлыков
         left_layout = QVBoxLayout()
-        self.links_label = QLabel("Ярлыки")
-        self.links_label.setStyleSheet("background: transparent;")
+        self.links_label = setup_custom_font_label(text="Ярлыки", font_style="Comfortaa", weight="Medium")
+        self.links_label.setStyleSheet("background: transparent; font-size: 14px")
         left_layout.addWidget(self.links_label)
         self.links_list = QListWidget()
         self.links_list.setStyleSheet("background: transparent;")
         self.links_list.itemClicked.connect(self.on_link_selected)
+        self.links_list.setProperty("helpId", "links_list")
         left_layout.addWidget(self.links_list)
 
         # Правая колонка: список процессов
         right_layout = QVBoxLayout()
-        self.processes_label = QLabel("Список процессов")
-        self.processes_label.setStyleSheet("background: transparent;")
+        self.processes_label = setup_custom_font_label(text="Список процессов", font_style="Comfortaa", weight="Medium")
+        self.processes_label.setStyleSheet("background: transparent; font-size: 14px")
+        self.processes_label.setProperty("helpId", "processes_list")
         right_layout.addWidget(self.processes_label)
 
         self.processes_list = QListWidget()
         self.processes_list.setStyleSheet("background: transparent;")
+        self.processes_list.setProperty("helpId", "processes_list")
         right_layout.addWidget(self.processes_list)
 
         # Кнопки для управления процессами

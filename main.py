@@ -42,10 +42,11 @@ from bin.apply_color_methods import ApplyColor
 from bin.check_update import GetManifestThread, get_update_strategy, load_changelog, VersionCheckThread
 from bin.download_thread import DeltaDownloadThread, DownloadThread
 from bin.frosted_widget import GarlandDecorator, SnowOverlay
+from bin.help_widget import HelpWidget
 from bin.progress_bar_widget import CustomProgressBar, SVGProgressBar
 from bin.register_module import AuthManager
 from bin.screenshot_tool import SystemScreenshot
-from bin.signals import gui_signals, color_signal, progress_signal, commands_signal
+from bin.signals import gui_signals, color_signal, commands_signal
 from bin.toast_notification import ToastNotification, SimpleNotice, SupplyNotice
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from bin.widget_window import SmartWidget
@@ -59,10 +60,10 @@ from bin.audio_control import controller
 from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel, SpeechHookManagerWidget
 from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react
 from logging_config import logger, debug_logger
-from bin.lists import get_audio_paths, commands_list, default_keywords_data
+from bin.lists import get_audio_paths, commands_list, default_keywords_data, setup_global_font
 
 build_ini = get_config_value("app", "build")
-version_file = "2.1.3"
+version_file = "2.1.4"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -374,12 +375,16 @@ class Assistant(QMainWindow):
             self.icon_svg.setStyleSheet("background: transparent;")
             self.title_bar_layout.addWidget(self.icon_svg)
 
-            # self.title_label = QLabel("OWLAPP")
             self.title_label = self.setup_custom_font_label(text="OWLAPP")
             self.title_label.setStyleSheet("background: transparent; font-size: 24px;")
             self.title_bar_layout.addWidget(self.title_label)
+            
+            self.progress_load = SVGProgressBar(style="circle", show_text=True, circle_size=30, padding=5)
+            self.progress_load.hide()
+            self.title_bar_layout.addWidget(self.progress_load)
+            
             self.title_bar_layout.addStretch()
-
+            
             self.update_btn = QPushButton()
             self.update_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self.update_btn.setFixedSize(30, 30)
@@ -541,13 +546,6 @@ class Assistant(QMainWindow):
                 self.btn_update_all_presets.clicked.connect(self.update_style_all)
                 self.buttons_layout.addWidget(self.btn_update_all_presets)
             
-            # self.svg_image = CustomSvgWidget(self.svg_file_path)
-            # self.svg_image.setFixedSize(130, 130)
-            # self.svg_image.setStyleSheet("background: transparent; border: none;")
-            # self.color_svg = QGraphicsColorizeEffect()
-            # self.svg_image.setGraphicsEffect(self.color_svg)
-            # self.buttons_layout.addWidget(self.svg_image, alignment=Qt.AlignmentFlag.AlignCenter)
-            
             self.user_profile_widget = QWidget()
             self.user_profile_widget.setObjectName("UserProfileWidget")
             self.user_profile_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -577,10 +575,6 @@ class Assistant(QMainWindow):
 
             # Добавляем виджет в правый layout
             self.buttons_layout.addWidget(self.user_profile_widget, stretch=1)
-            
-            self.progress_load = CustomProgressBar(self, style="looper")
-            self.progress_load.hide()
-            self.buttons_layout.addWidget(self.progress_load)
 
             self.update_label = QLabel("Установлена последняя версия") # Установлена последняя версия
             self.update_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -611,46 +605,22 @@ class Assistant(QMainWindow):
             self._setup_compact_toolbar()
             self.right_layout.addLayout(self.compact_layout)
             self.hide_layout(self.compact_layout)
-            
-            # self.user_profile_widget = QWidget()
-            # self.user_profile_widget.setObjectName("UserProfileWidget")
-            # self.user_profile_widget.setFixedSize(180, 60)
-            # self.user_profile_widget.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-
-            # self.user_profile_widget.setCursor(Qt.CursorShape.PointingHandCursor)
-            # self.user_profile_widget.mousePressEvent = self.on_profile_click
-
-            # self.user_profile_layout = QHBoxLayout(self.user_profile_widget)
-            # self.user_profile_layout.setContentsMargins(10, 5, 10, 5)
-            # self.user_profile_layout.setSpacing(8)
-            # self.user_profile_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
-
-            # # Аватарка
-            # self.avatar_svg = CustomSvgWidget(self.default_avatar_path)
-            # self.avatar_svg.setFixedSize(40, 40)
-            # self.avatar_svg.setStyleSheet("background: transparent; border: none;")
-            # self.avatar_color_svg = QGraphicsColorizeEffect()
-            # self.avatar_svg.setGraphicsEffect(self.avatar_color_svg)
-            # self.style_manager.apply_color_svg(self.avatar_svg, strength=0.90)
-
-            # # Юзернейм
-            # self.username_label = QLabel("Username")
-            # self.username_label.setStyleSheet("background: transparent;")
-
-            # self.user_profile_layout.addWidget(self.username_label)
-            # self.user_profile_layout.addWidget(self.avatar_svg)
-
-            # # Добавляем виджет в правый layout
-            # self.right_layout.addWidget(self.user_profile_widget, alignment=Qt.AlignmentFlag.AlignRight)
 
             # Логи
             self.log_area = QTextEdit()
+            self.log_area.setObjectName("LogArea")
             self.log_area.setReadOnly(True)
             self.log_area.setFont(QFont("Consolas"))
             self.log_area.setStyleSheet("font-size: 16px")
+            
+            self.help_widget = HelpWidget()
+            self.help_widget.hide()
+            
             self.clear_logs_button = QPushButton("Очистить логи")
             self.clear_logs_button.clicked.connect(self.clear_logs)
+            
             self.right_layout.addWidget(self.log_area)
+            self.right_layout.addWidget(self.help_widget)
             self.right_layout.addWidget(self.clear_logs_button)
 
             # === Добавляем в main_layout ===
@@ -674,12 +644,12 @@ class Assistant(QMainWindow):
 
             settings = QAction("Настройки", self)
             settings.triggered.connect(self.open_settings_of_tray)
-
-            show_action = QAction("Развернуть", self)
-            show_action.triggered.connect(self.show)
-
-            hide_action = QAction("Свернуть", self)
-            hide_action.triggered.connect(self.custom_hide)
+            
+            open_folder_links = QAction("Папка с ярлыками", self)
+            open_folder_links.triggered.connect(self.open_folder_shortcuts)
+            
+            open_folder_screens = QAction("Папка со скринами", self)
+            open_folder_screens.triggered.connect(self.open_folder_screenshots)
 
             quit_action = QAction("Закрыть", self)
             quit_action.triggered.connect(self.close_app)
@@ -687,8 +657,8 @@ class Assistant(QMainWindow):
             self.menu_tray = QMenu()
             self.menu_tray.addAction(start_widget)
             self.menu_tray.addAction(settings)
-            self.menu_tray.addAction(show_action)
-            self.menu_tray.addAction(hide_action)
+            self.menu_tray.addAction(open_folder_links)
+            self.menu_tray.addAction(open_folder_screens)
             self.menu_tray.addAction(quit_action)
             self.tray_icon.setContextMenu(self.menu_tray)
             self.tray_icon.activated.connect(self.on_tray_icon_activated)
@@ -703,7 +673,35 @@ class Assistant(QMainWindow):
 
         except Exception as e:
             debug_logger.error(f"Ошибка при инициализации GUI: {e}")
+                   
+    def install_event_filter_recursive(self, widget):
+        """Рекурсивно устанавливает event filter для виджета и всех его детей"""
+        if not widget:
+            return
             
+        widget.installEventFilter(self)  # Фильтр устанавливается на главное окно!
+        
+        # Рекурсивно обходим всех детей
+        for child in widget.children():
+            if isinstance(child, QWidget):
+                self.install_event_filter_recursive(child)
+    
+    def eventFilter(self, obj, event):
+        """Обрабатывает события мыши для показа справок"""
+        if event.type() == QEvent.Enter:
+            help_id = obj.property("helpId")
+            if help_id and hasattr(self, 'help_widget'):
+                # Вызываем show_help у виджета помощи
+                self.help_widget.show_help(help_id)
+                return True
+                
+        elif event.type() == QEvent.Leave:
+            # Опционально: можно очищать справку при уходе мыши
+            # или показывать справку по умолчанию
+            pass
+            
+        return super().eventFilter(obj, event)
+        
     def setup_custom_font_label(self, text: str):
         # Загрузка шрифта
         font_path = get_path("bin", "fonts", "Flatiron", "Flatiron Regular.otf")
@@ -886,11 +884,6 @@ class Assistant(QMainWindow):
             self.snow_on_background.show()
         else:
             self.snow_on_background.hide()
-
-    # def toggle_snow(self):
-    #     """Переключает состояние снега"""
-    #     self.is_snow = not self.is_snow
-    #     self.update_snow_state()
 
     # Упрощенная версия без лишних проверок
     def set_snow_enabled(self, enabled):
@@ -1152,19 +1145,18 @@ class Assistant(QMainWindow):
         """Применяет все стили к окну"""
         try:
             self.styles = self.style_manager.load_styles()
-            # Применение к конкретным виджетам
+
             self.style_manager.apply_to_widget(self.label_version, 'label_version')
-            self.style_manager.apply_to_widget(self.update_label, 'update_label')
-            
+            if hasattr(self, 'update_label'):
+                self.style_manager.apply_to_widget(self.update_label, 'update_label')
             if hasattr(self, 'avatar_svg'):
-                # Если уже есть SVG, просто применяем стили
                 self.style_manager.apply_color_svg(self.avatar_svg, strength=0.90)
                 
             # if hasattr(self, "update_svg"):
             #     self.style_manager.apply_color_svg(self.update_svg, strength=0.90, specified_color="#44D14F")
 
-            self.style_manager.apply_progressbar(key="QPushButton", widget=self.progress_load, style="parts")
-            # Применение к SVG
+            if hasattr(self, 'progress_load'):
+                self.style_manager.apply_progressbar(key="QPushButton", widget=self.progress_load)
             if hasattr(self, 'svg_image'):
                 self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
             if hasattr(self, 'settings_svg'):
@@ -1188,7 +1180,6 @@ class Assistant(QMainWindow):
             if hasattr(self, 'close_svg'):
                 self.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#ff0000")
             
-
             # Применение общего стиля окна
             if hasattr(self, 'central_widget'):
                 self.central_widget.setObjectName("MainWindowWidget")
@@ -1395,12 +1386,10 @@ class Assistant(QMainWindow):
                         debug_logger.error(f"Не удалось удалить {old_path}: {e}")
 
     def animation_start_load(self):
-        progress_signal.start_progress.emit()
         self.progress_load.show()
         self.progress_load.startAnimation()
 
     def animation_stop_load(self):
-        progress_signal.stop_progress.emit()
         self.progress_load.hide()
         self.progress_load.stopAnimation()
 
@@ -1425,9 +1414,8 @@ class Assistant(QMainWindow):
             return
         try:
             self.animation_start_load()
-            progress_signal.start_progress.emit()
             self.toggle_update_button()
-            self.update_label.hide()
+            self.update_label.setText("Поиск обновления...")
 
             self.thread = VersionCheckThread()
             self.thread.version_checked.connect(self.handle_version_check)
@@ -1473,19 +1461,20 @@ class Assistant(QMainWindow):
         strategy = get_update_strategy(self.current_ver, self.latest_version, manifest)
         
         if strategy == "full":
-            print("Требуется полная установка (было критическое обновление)")
+            debug_logger.info("Требуется полная установка (было критическое обновление)")
             self.start_full_download()
         else:
-            print("Дельта-обновление доступно")
+            debug_logger.info("Дельта-обновление доступно")
             # Собираем все файлы из всех версий между current и latest
             files_to_update = self.collect_all_changed_files(
                 self.current_ver, self.latest_version, manifest
             )
             # Передаем manifest в start_delta_download
-            self.start_delta_download(files_to_update, manifest)  # ← добавил manifest
+            self.start_delta_download(files_to_update, manifest)
 
     def start_full_download(self):
         """Запуск загрузки полной версии"""
+        self.update_label.setText("Загрузка обновления...")
         type_version = "exp" if self.beta_version else "stable"
         self.download_thread = DownloadThread(type_version)
         self.download_thread.download_complete.connect(self.handle_download_complete)
@@ -1493,8 +1482,9 @@ class Assistant(QMainWindow):
         self.download_thread.start()
         self.toggle_update_button()
 
-    def start_delta_download(self, files_to_update, manifest):  # ← добавил параметр manifest
+    def start_delta_download(self, files_to_update, manifest):
         """Запуск загрузки дельта-обновления"""
+        self.update_label.setText("Загрузка обновления...")
         self.download_thread = DeltaDownloadThread(
             files_to_update, 
             manifest,  # ← передаем manifest в поток
@@ -1509,7 +1499,7 @@ class Assistant(QMainWindow):
         """Собирает все измененные файлы между версиями"""
         # Преобразуем версии из манифеста в объекты Version для сравнения
         version_objects = []
-        version_to_str_map = {}  # Сопоставление Version -> строковый ключ
+        version_to_str_map = {}
         
         for ver_str in manifest.keys():
             try:
@@ -1565,7 +1555,7 @@ class Assistant(QMainWindow):
     def handle_download_complete(self, file_path, success=True, skipped=False, error=None, batch=False):
         self.animation_stop_load()
         self.update_label.show()
-        print(f"Values:", file_path, success, skipped, error, "batch:", batch)
+        debug_logger.info(f"Values:", file_path, success, skipped, error, "batch:", batch)
         self.is_batch_update = batch
         if self.is_batch_update:
             # Обработка дельта-обновления
@@ -1577,7 +1567,7 @@ class Assistant(QMainWindow):
                 if skipped:
                     self.show_notification_message("Подготовка к процедуре обновления...\n Не выключайте приложение")
                     debug_logger.info(f"[SKIP] Файлы уже существуют")
-                    # self.open_window_and_update()
+                    self.open_window_and_update()
                 else:
                     debug_logger.info(f"[OK] Новый файл загружен")
             else:
@@ -3459,6 +3449,7 @@ class Assistant(QMainWindow):
         self._load_current_panel()
         self.show_layout(self.compact_layout)
         self.show_compact_buttons()
+        self.help_widget.show()
         self.get_size_widget(self.left_container)
 
         self.animation.stop()
@@ -3524,6 +3515,7 @@ class Assistant(QMainWindow):
             btn = item['button']
             btn.setGraphicsEffect(None)
             btn.setVisible(False)
+        self.help_widget.hide()
         self.get_size_widget(self.mutable_panel)
         # Сжимаем
         self.animation.stop()
@@ -3843,20 +3835,19 @@ class Assistant(QMainWindow):
         self.spacer = QSpacerItem(self._get_panel_width(), 1, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.main_layout.addSpacerItem(self.spacer)
         # Заголовок
-        label = QLabel("🎥 Обучение")
+        label = QLabel("Обучение")
         label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px; background: transparent;")
         self.main_layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Кнопки для видео
         path_guides = get_path("bin", "guides")
         videos = [
-            ("Создание команд", f"{path_guides}/new_commands.mp4"),
-            ("Настройки и опции", f"{path_guides}/settings.mp4"),
+            ("Кастомизация стилей", f"{path_guides}/styles_panel.mp4")
         ]
 
         for title, video_path in videos:
             btn = QPushButton(title)
-            btn.clicked.connect(lambda _, p=video_path: self._open_video(p))
+            btn.clicked.connect(lambda _, p=video_path: self.open_video(p))
             self.main_layout.addWidget(btn)
 
         # Кнопка "Встроенные команды"
@@ -3865,7 +3856,7 @@ class Assistant(QMainWindow):
         self.main_layout.addWidget(cmd_btn)
         self.mutable_layout.addWidget(self.main)
 
-    def _open_video(self, video_path):
+    def open_video(self, video_path):
         full_path = get_path(video_path)
         if os.path.exists(full_path):
             QDesktopServices.openUrl(QUrl.fromLocalFile(full_path))
@@ -3884,14 +3875,11 @@ class Assistant(QMainWindow):
             ("Встроенные команды (открыть/закрыть)",
              "'Пейнт', 'Калькулятор', 'Корзина', 'Ап Дата', 'Переменные окружения', 'Диспетчер задач', 'Микшер',"
              "'Панель(для вызова виджета)', 'Микро'"),
-            ("Прочие команды",
-             "'Выключи комп', 'Перезагрузи комп', 'Найди, поищи, загугли', 'Скрин, область', 'Фулл скрин, сфоткай, "
-             "весь экран'"),
             ("Управление плеером без произношения имени бота", "(Плеер) + (Действие)\n\n" +
              "Пауза, врубай, включи, запусти\n" +
              "Стоп, выключи, отключи, останови\n" +
              "Следующий, дальше, вперед\n" +
-             "Предыдущий, назад"),
+             "Предыдущий, назад")
         ]
 
         for title, text in sections:
@@ -5662,23 +5650,10 @@ if __name__ == '__main__':
 
         app = QApplication([])
         app.setWindowIcon(QIcon(get_path('icon_assist.ico')))
+        setup_global_font(app, "Open Sans", 10, "Medium")
         window = Assistant()
         app.exec()
 
     except Exception as e:
         logger.error(f"Произошла ошибка при запуске программы: {e}")
         debug_logger.error(f"Произошла ошибка при запуске программы: {e}")
-
-# if __name__ == '__main__':
-#     try:
-#         if activate_existing_window():
-#             sys.exit(0)
-#         app = QApplication([])
-#         app.setWindowIcon(QIcon(get_path('icon_assist.ico')))
-#         window = Assistant()
-#
-#         app.exec_()
-#
-#     except Exception as e:
-#         logger.error(f"Произошла ошибка при запуске программы: {e}")
-#         debug_logger.error(f"Произошла ошибка при запуске программы: {e}")

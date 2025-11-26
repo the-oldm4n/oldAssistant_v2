@@ -4,7 +4,7 @@ import sounddevice as sd
 import winshell
 from PySide6.QtGui import QFontDatabase, QFont
 
-from bin.lists import fonts_list, default_keywords_data
+from bin.lists import fonts_list, default_keywords_data, setup_custom_font_label
 from bin.signals import color_signal, widget_btns_signal, update_presets_signal
 from bin.speak_functions import thread_react
 from bin.choose_color_window import ColorSettingsWindow
@@ -27,10 +27,19 @@ class InterfaceWidget(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
+        self._help_initialized = False
+        self.setProperty("helpId", "style_widget")
         update_presets_signal.presets_updated.connect(self.load_custom_presets)
         self.init_ui()
 
     style_applied = Signal(dict)  # Сигнал для передачи стиля
+    
+    def showEvent(self, event):
+        """При показе панели настраиваем help system"""
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -38,9 +47,9 @@ class InterfaceWidget(QWidget):
         layout.setSpacing(20)
 
         # Заголовок
-        title = QLabel("Выбор стиля интерфейса")
+        title = setup_custom_font_label("Выбор стиля интерфейса", font_style="Comfortaa", weight="Medium")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("background: transparent; font-size: 16px; font-weight: bold;")
+        title.setStyleSheet("background: transparent; font-size: 18px;")
         layout.addWidget(title)
 
         # Контейнер для двух колонок
@@ -233,6 +242,7 @@ class SettingsWidget(QWidget):
         self.current_steam_path = None
         self.current_volume = None
         self.name_1 = None
+        self._help_initialized = False
         self.load_current_settings()
         self.setObjectName("WMSettingsWidget")
         self.init_ui()
@@ -251,6 +261,13 @@ class SettingsWidget(QWidget):
             self.assistant.hide_widget()
         else:
             debug_logger.error("Метод close_settings не найден в assistant")
+            
+    def showEvent(self, event):
+        """При показе панели настраиваем help system"""
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
 
     def init_ui(self):
         # Создаем виджет-контейнер для содержимого
@@ -265,32 +282,38 @@ class SettingsWidget(QWidget):
         layout.setSpacing(10)
 
         # Поле для ввода имени ассистента
-        name_label = QLabel("Основное имя ассистента:", self)
-        name_label.setStyleSheet("background: transparent;")
+        name_label = setup_custom_font_label("Основное имя ассистента:", font_style="Comfortaa", weight="Medium")
+        name_label.setStyleSheet("background: transparent; font-size: 14px;")
+        name_label.setProperty("helpId", "name_label")
         layout.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.name_input = QLineEdit(self)
         self.name_input.setText(self.assistant.assistant_name)
+        self.name_input.setProperty("helpId", "name_label")
         layout.addWidget(self.name_input)
 
         # Поле для ввода имени №2
-        name2_label = QLabel("Дополнительно:", self)
+        name2_label = setup_custom_font_label("Дополнительно:", font_style="Comfortaa", weight="Medium")
         name2_label.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        name2_label.setStyleSheet("background: transparent;")
+        name2_label.setStyleSheet("background: transparent; font-size: 14px;")
+        name2_label.setProperty("helpId", "name2_label")
         layout.addWidget(name2_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.name2_input = QLineEdit(self)
         self.name2_input.setText(self.assistant.assist_name2)
+        self.name2_input.setProperty("helpId", "name2_label")
         layout.addWidget(self.name2_input)
 
         # Поле для ввода имени №3
         self.name3_input = QLineEdit(self)
         self.name3_input.setText(self.assistant.assist_name3)
+        self.name3_input.setProperty("helpId", "name2_label")
         layout.addWidget(self.name3_input)
 
         # Выбор голоса
-        voice_label = QLabel("Выберите голос:", self)
-        voice_label.setStyleSheet("background: transparent;")
+        voice_label = setup_custom_font_label("Выберите голос:", font_style="Comfortaa", weight="Medium")
+        voice_label.setStyleSheet("background: transparent; font-size: 14px;")
+        voice_label.setProperty("helpId", "voice_label")
         layout.addWidget(voice_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.voice_combo = QComboBox(self)
@@ -298,11 +321,13 @@ class SettingsWidget(QWidget):
         current_key = next(key for key, value in speakers.items() if value == self.assistant.speaker)
         self.voice_combo.setCurrentText(current_key)
         self.voice_combo.currentIndexChanged.connect(self.on_voice_change)
+        self.voice_combo.setProperty("helpId", "voice_label")
         layout.addWidget(self.voice_combo)
 
         # Громкость
-        volume_label = QLabel("Громкость ассистента", self)
-        volume_label.setStyleSheet("background: transparent;")
+        volume_label = setup_custom_font_label("Громкость ассистента", font_style="Comfortaa", weight="Medium")
+        volume_label.setStyleSheet("background: transparent; font-size: 14px;")
+        volume_label.setProperty("helpId", "volume_label")
         layout.addWidget(volume_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.volume_slider = QSlider(Qt.Orientation.Horizontal, self)
@@ -310,6 +335,7 @@ class SettingsWidget(QWidget):
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(int(self.assistant.volume_assist * 100))
         self.volume_slider.valueChanged.connect(self.update_volume)
+        self.volume_slider.setProperty("helpId", "volume_label")
         layout.addWidget(self.volume_slider)
 
         self.check_voice = QPushButton("Тест голоса", self)
@@ -317,12 +343,14 @@ class SettingsWidget(QWidget):
         layout.addWidget(self.check_voice)
 
         # Путь к Steam
-        steam_label = QLabel("Укажите полный путь к файлу steam.exe", self)
-        steam_label.setStyleSheet("background: transparent;")
+        steam_label = setup_custom_font_label("Путь к файлу steam.exe", font_style="Comfortaa", weight="Medium")
+        steam_label.setStyleSheet("background: transparent; font-size: 14px;")
+        steam_label.setProperty("helpId", "steam_label")
         layout.addWidget(steam_label, alignment=Qt.AlignmentFlag.AlignLeft)
 
         self.steam_path_input = QLineEdit(self)
         self.steam_path_input.setText(self.assistant.steam_path)
+        self.steam_path_input.setProperty("helpId", "steam_label")
         layout.addWidget(self.steam_path_input)
 
         select_steam_button = QPushButton("Выбрать папку", self)
@@ -335,6 +363,7 @@ class SettingsWidget(QWidget):
         self.default_btn = QPushButton("По умолчанию")
         self.default_btn.setStyleSheet("padding-left: 10px; padding-right: 10px;")
         self.default_btn.clicked.connect(self.set_default_settings)
+        self.default_btn.setProperty("helpId", "default_btn")
         layout.addWidget(self.default_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
         # Кнопка применения
@@ -462,8 +491,16 @@ class OtherSettingsWidget(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
+        self._help_initialized = False
         self.init_ui()
         self.get_devices()
+        
+    def showEvent(self, event):
+        """При показе панели настраиваем help system"""
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
 
     def init_ui(self):
         content_widget = QWidget()
@@ -479,28 +516,28 @@ class OtherSettingsWidget(QWidget):
         self.censor_check.setStyleSheet("background: transparent;")
         self.censor_check.setChecked(self.assistant.is_censored)
         self.censor_check.stateChanged.connect(self.toggle_censor)
+        self.censor_check.setProperty("helpId", "censor_check")
         layout.addWidget(self.censor_check)
         
         self.correct_command_check = QCheckBox("Запоминать предыдущую команду", self)
         self.correct_command_check.setStyleSheet("background: transparent;")
-        self.correct_command_check.setToolTip("Запоминание предыдущей команды позволяет не говорить всю фразу заново,\n "
-                                              "а только саму команду.(Пример: 'Джонни открой ...' Здесь бот не понял конкретно команду,\n "
-                                              "но он запомнил то, что его упомянули и действие для команды. Теперь будет достаточно произнести \n"
-                                              "только саму команду для запуска действия. 'Калькулятор')")
         self.correct_command_check.setChecked(self.assistant.is_corrected_command)
         self.correct_command_check.stateChanged.connect(self.toggle_correct_command)
+        self.correct_command_check.setProperty("helpId", "correct_command_check")
         layout.addWidget(self.correct_command_check)
 
         self.update_check = QCheckBox("Запуск утилиты обновления \n перед стартом программы", self)
         self.update_check.setStyleSheet("background: transparent;")
         self.update_check.setChecked(self.assistant.run_updater)
         self.update_check.stateChanged.connect(self.toggle_update)
+        self.update_check.setProperty("helpId", "update_check")
         layout.addWidget(self.update_check)
 
         self.start_win_check = QCheckBox("Запуск с Windows", self)
         self.start_win_check.setStyleSheet("background: transparent;")
         self.start_win_check.setChecked(self.assistant.toggle_start)
         self.start_win_check.stateChanged.connect(self.assistant.toggle_start_win)
+        self.start_win_check.setProperty("helpId", "start_win_check")
         layout.addWidget(self.start_win_check)
 
         # Чекбокс для сворачивания в трей
@@ -508,6 +545,7 @@ class OtherSettingsWidget(QWidget):
         self.minimize_check.setStyleSheet("background: transparent;")
         self.minimize_check.setChecked(self.assistant.is_min_tray)
         self.minimize_check.stateChanged.connect(self.toggle_minimize)
+        self.minimize_check.setProperty("helpId", "minimize_check")
         layout.addWidget(self.minimize_check)
 
         self.widget_check = QCheckBox("Запускать виджет", self)
@@ -515,6 +553,7 @@ class OtherSettingsWidget(QWidget):
         self.widget_check.setToolTip("Открытие виджета при запуске программы")
         self.widget_check.setChecked(self.assistant.is_widget)
         self.widget_check.stateChanged.connect(self.toggle_widget)
+        self.widget_check.setProperty("helpId", "widget_check")
         layout.addWidget(self.widget_check)
 
         self.keep_watch_check = QCheckBox("Обрабатывать команды \nбез имени ассистента"
@@ -523,6 +562,7 @@ class OtherSettingsWidget(QWidget):
         self.keep_watch_check.setToolTip("Расширенная обработка команд")
         self.keep_watch_check.setChecked(self.assistant.is_keep_watch)
         self.keep_watch_check.stateChanged.connect(self.toggle_keep_watch)
+        self.keep_watch_check.setProperty("helpId", "keep_watch_check")
         layout.addWidget(self.keep_watch_check)
         
         self.snow_check = QCheckBox("Снег на главном окне", self)
@@ -530,6 +570,7 @@ class OtherSettingsWidget(QWidget):
         self.snow_check.setToolTip("Показывать снег на главном окне")
         self.snow_check.setChecked(self.assistant.is_snow)
         self.snow_check.stateChanged.connect(self.toggle_snow_main)
+        self.snow_check.setProperty("helpId", "snow_check")
         layout.addWidget(self.snow_check)
         
         self.garland_check = QCheckBox("Гирлянда на главном окне", self)
@@ -537,15 +578,19 @@ class OtherSettingsWidget(QWidget):
         self.garland_check.setToolTip("Показывать гирлянду")
         self.garland_check.setChecked(self.assistant.is_garland)
         self.garland_check.stateChanged.connect(self.toggle_garland_main)
+        self.garland_check.setProperty("helpId", "garland_check")
         layout.addWidget(self.garland_check)
 
         self.add_link_btn = QPushButton("Добавить ярлык на Рабочий стол", self)
         self.add_link_btn.clicked.connect(self.add_link_desktop)
+        self.add_link_btn.setProperty("helpId", "add_link_btn")
         layout.addWidget(self.add_link_btn)
 
-        self.label_input = QLabel("Устройство ввода")
-        self.label_input.setStyleSheet("background: transparent;")
+        self.label_input = setup_custom_font_label("Устройство ввода", font_style="Comfortaa", weight="Medium")
+        self.label_input.setStyleSheet("background: transparent; font-size: 14px;")
+        self.label_input.setProperty("helpId", "label_input")
         self.device_list = QComboBox()
+        self.device_list.setProperty("helpId", "label_input")
         layout.addWidget(self.label_input)
         layout.addWidget(self.device_list)
 
@@ -759,8 +804,16 @@ class SpeechHookManagerWidget(QWidget):
         self.default_keywords = {}
         self.user_keywords = {}
         self.current_list = None
+        self._help_initialized = False
         self.init_data()
         self.init_ui()
+        
+    def showEvent(self, event):
+        """При показе панели настраиваем help system"""
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
     
     def init_ui(self):
         """Инициализация интерфейса"""
@@ -794,6 +847,7 @@ class SpeechHookManagerWidget(QWidget):
             self.list_selector.addItem(self.get_display_name(key), key)
     
         self.list_selector.currentIndexChanged.connect(self.on_list_changed)
+        self.list_selector.setProperty("helpId", "list_selector")
         list_selection_layout.addWidget(self.list_selector)
         
         layout.addLayout(list_selection_layout)
@@ -804,6 +858,7 @@ class SpeechHookManagerWidget(QWidget):
         self.words_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.words_list.customContextMenuRequested.connect(self.show_context_menu)
         self.words_list.itemDoubleClicked.connect(self.on_item_double_clicked)
+        self.words_list.setProperty("helpId", "words_list")
         layout.addWidget(self.words_list)
 
         # Добавление нового слова
@@ -1462,10 +1517,18 @@ class SettingsWidgetPanel(QWidget):
         self.loaded_state = self.state_manager.load_state()
         self.is_snow = self.loaded_state["is_snow"]
         self.drag_mode = False
+        self._help_initialized = False
         self.fonts_list = fonts_list
         self.init_ui()
         self.load_saved_font()
         self.load_buttons_settings()
+        
+    def showEvent(self, event):
+        """При показе панели настраиваем help system"""
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
 
     def init_ui(self):
         # Создаем основной layout для самого SettingsWidgetPanel
@@ -1481,25 +1544,21 @@ class SettingsWidgetPanel(QWidget):
         
         # Создаем виджет для контента
         content_widget = QWidget()
-        scroll_area.setWidget(content_widget)  # ← Устанавливаем контент в скролл
+        scroll_area.setWidget(content_widget)
         
         # Создаем layout для контента
         layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        # Дальше весь ваш существующий код...
-        self.get_widget_btn = QPushButton("Открыть виджет", self)
-        self.get_widget_btn.clicked.connect(self.get_widget)
-        layout.addWidget(self.get_widget_btn)
-
-        self.title = QLabel("Настройка кнопок на виджет-панели")
-        self.title.setStyleSheet("background: transparent; font-weight: bold; font-size: 15px")
-        layout.addWidget(self.title)
+        self.title = setup_custom_font_label("Кастомизация виджета", font_style="Comfortaa", weight="Medium")
+        self.title.setStyleSheet("background: transparent; font-size: 18px")
+        layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Кнопка для включения/выключения режима перетаскивания
         self.drag_toggle_btn = QPushButton("Настроить порядок расположения")
         self.drag_toggle_btn.clicked.connect(self.toggle_drag_mode)
+        self.drag_toggle_btn.setProperty("helpId", "drag_toggle_btn")
         layout.addWidget(self.drag_toggle_btn)
 
         drag_layout = QVBoxLayout()
@@ -1528,6 +1587,7 @@ class SettingsWidgetPanel(QWidget):
         self.font_preview_label.setStyleSheet("background: transparent; padding: 5px;")
 
         self.font_combo = NonClosingComboBox()
+        self.font_combo.setProperty("helpId", "font_combo")
         self.font_combo.addItems(self.fonts_list.keys())
         font_layout.addWidget(self.font_combo)
         font_layout.addWidget(self.font_preview_label)
@@ -1543,14 +1603,26 @@ class SettingsWidgetPanel(QWidget):
         self.snow_panel_checkbox.setToolTip("Показывать снег на панели")
         self.snow_panel_checkbox.setChecked(self.is_snow)
         self.snow_panel_checkbox.stateChanged.connect(self.toggle_snow)
+        self.snow_panel_checkbox.setProperty("helpId", "snow_panel_checkbox")
         layout.addWidget(self.snow_panel_checkbox)
         
         layout.addStretch()
         
+        bottom_layout = QHBoxLayout()
+        
+        self.get_widget_btn = QPushButton("Открыть виджет", self)
+        self.get_widget_btn.setStyleSheet("padding-left: 10px; padding-right: 10px")
+        self.get_widget_btn.clicked.connect(self.get_widget)
+        bottom_layout.addWidget(self.get_widget_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+        
+        bottom_layout.addStretch()
+        
         self.default_btn = QPushButton("По умолчанию")
         self.default_btn.setStyleSheet("padding-left: 10px; padding-right: 10px")
         self.default_btn.clicked.connect(self.set_default_buttons_settings)
-        layout.addWidget(self.default_btn, alignment=Qt.AlignmentFlag.AlignRight)
+        bottom_layout.addWidget(self.default_btn, alignment=Qt.AlignmentFlag.AlignRight)
+        
+        layout.addLayout(bottom_layout)
 
         self.save_btn = QPushButton("Применить")
         self.save_btn.clicked.connect(self.save_order)

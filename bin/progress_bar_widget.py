@@ -5,10 +5,11 @@ from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient, QLinearGradie
 from bin.custom_svg_widget import CustomSvgWidget
 
 class CustomProgressBar(QWidget):
-    def __init__(self, parent=None, style="default", circle_size=100, line_width=2):
+    def __init__(self, parent=None, style="default", circle_size=100, line_width=2, padding=20):
         super().__init__(parent)
         self.style = style
         self.circle_size = circle_size
+        self.padding = padding
         self.value = 0
         self.max_value = 100
         self.line_width = line_width
@@ -38,6 +39,7 @@ class CustomProgressBar(QWidget):
 
     def _set_value(self, val):
         self._value = val
+        self.update()
 
     # Объявляем свойство 'value'
     value = Property(int, _get_value, _set_value)
@@ -172,7 +174,7 @@ class CustomProgressBar(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         
         try:
-            diameter = min(self.width(), self.height()) - 20
+            diameter = min(self.width(), self.height()) - self.padding
             x = (self.width() - diameter) // 2
             y = (self.height() - diameter) // 2
             
@@ -256,10 +258,12 @@ class CustomProgressBar(QWidget):
         
         
 class SVGProgressBar(CustomProgressBar):
-    def __init__(self, parent=None, style="default", circle_size=200, svg_widget=None, show_text=True, line_width=2):
+    def __init__(self, parent=None, style="default", circle_size=200, svg_widget=None, show_text=True, 
+                 line_width=2, padding=20):
         # Передаем line_width в родительский конструктор
-        super().__init__(parent, style, circle_size, line_width)
+        super().__init__(parent, style, circle_size, line_width, padding)
         self.svg_widget = svg_widget
+        self.padding = padding
         self.show_text = show_text  # Флаг для отображения текста
         
         if self.svg_widget and style == "circle":
@@ -325,7 +329,7 @@ class SVGProgressBar(CustomProgressBar):
         painter.setRenderHint(QPainter.Antialiasing)
         
         try:
-            diameter = min(self.width(), self.height()) - 20
+            diameter = min(self.width(), self.height()) - self.padding
             x = (self.width() - diameter) // 2
             y = (self.height() - diameter) // 2
             

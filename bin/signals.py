@@ -12,11 +12,6 @@ class GuiSignals(QObject):
 
 gui_signals = GuiSignals()
 
-class ProgressBarSignals(QObject):
-    start_progress = Signal()
-    stop_progress = Signal()
-
-progress_signal = ProgressBarSignals()
 
 class CommandsChangeSignal(QObject):
     commands_updated = Signal()

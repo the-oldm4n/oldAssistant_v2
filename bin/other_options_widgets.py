@@ -14,7 +14,7 @@ from bin.apply_color_methods import ApplyColor
 from bin.check_update import check_all_versions
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.download_thread import DownloadThread, SliderProgressBar
-from bin.signals import progress_signal
+from bin.progress_bar_widget import SVGProgressBar
 from logging_config import logger, debug_logger
 from path_builder import get_path
 
@@ -27,8 +27,17 @@ class CensorCounterWidget(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
+        self._help_initialized = False
         self.init_ui()
         self.load_data()
+        self.setProperty("helpId", "censor_conter_widget")
+        
+    def showEvent(self, event):
+        """При показе панели настраиваем help system"""
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
 
     def init_ui(self):
         # Основной layout
@@ -235,15 +244,19 @@ class CheckUpdateWidget(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
-        progress_signal.start_progress.connect(self.animation_start_load)
-        progress_signal.stop_progress.connect(self.animation_stop_load)
+        self._help_initialized = False
         self.init_ui()
         self.style_manager = ApplyColor(self)
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
         self.style_manager.apply_progressbar(key="QPushButton", widget=self.progress, style="parts")
-        self.style_manager.apply_progressbar(key="QPushButton", widget=self.progress_any, style="parts")
-        self.style_manager.apply_progressbar(key="QPushButton", widget=self.progress_load_duplicate, style="parts")
+        
+    def showEvent(self, event):
+        """При показе панели настраиваем help system"""
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
 
     def init_ui(self):
         # Основной layout
@@ -251,56 +264,27 @@ class CheckUpdateWidget(QWidget):
 
         self.check_button = QPushButton("Проверить обновления")
         self.check_button.clicked.connect(self.assistant.check_update_app)
+        self.check_button.setProperty("helpId", "check_button_update")
         layout.addWidget(self.check_button)
 
-        self.update_check = QCheckBox("Уведомлять о бета-версиях", self)
+        self.update_check = QCheckBox("Проверить свежие бета-версии", self)
         self.update_check.setStyleSheet("background: transparent;")
-        self.update_check.setChecked(self.assistant.beta_version)  # Устанавливаем текущее значение
-        self.update_check.stateChanged.connect(self.toggle_beta_version)  # Подключаем обработчик
+        self.update_check.setChecked(self.assistant.beta_version)
+        self.update_check.stateChanged.connect(self.toggle_beta_version)
+        self.update_check.setProperty("helpId", "check_exp_update")
         layout.addWidget(self.update_check)
 
-        self.rollback = QPushButton("Откатиться до стабильной версии")
+        self.rollback = QPushButton("Откат до стабильной версии")
         self.rollback.clicked.connect(self.wait_and_rollback)
+        self.rollback.setProperty("helpId", "rollback_version")
         layout.addWidget(self.rollback)
 
-        self.progress = SliderProgressBar(self)
-        self.progress.hide()
-        layout.addWidget(self.progress)
-
-        self.load_any_version = QPushButton("Выбрать из доступных версий")
-        self.load_any_version.clicked.connect(self.open_list)
-        layout.addWidget(self.load_any_version)
-
-        self.list_versions = QListWidget()
-        self.list_versions.setStyleSheet("background: transparent;")
-        self.list_versions.setFixedHeight(200)
-        self.list_versions.hide()
-        layout.addWidget(self.list_versions)
-
-        self.done_button = QPushButton("Установить выбранную версию")
-        self.done_button.clicked.connect(self.on_button_click)
-        self.done_button.hide()
-        layout.addWidget(self.done_button)
-
-        self.progress_any = SliderProgressBar(self)
-        self.progress_any.hide()
-        layout.addWidget(self.progress_any)
-
-        self.list_versions.itemClicked.connect(self.on_version_click)
-
         layout.addStretch()
-
-        self.progress_load_duplicate = SliderProgressBar(self)  # Дубликат прогрессбара из основного окна
-        self.progress_load_duplicate.hide()
-        layout.addWidget(self.progress_load_duplicate)
-
-    def animation_start_load(self):
-        self.progress_load_duplicate.show()
-        self.progress_load_duplicate.startAnimation()
-
-    def animation_stop_load(self):
-        self.progress_load_duplicate.hide()
-        self.progress_load_duplicate.stopAnimation()
+        
+        self.progress = SVGProgressBar(style="circle", show_text=False, circle_size=200)
+        self.progress.hide()
+        self.progress.setProperty("helpId", "rollback_version")
+        layout.addWidget(self.progress, alignment=Qt.AlignmentFlag.AlignCenter)
 
     def toggle_beta_version(self, state):
         """Включает/отключает проверку экспериментальных версий"""
@@ -330,6 +314,10 @@ class CheckUpdateWidget(QWidget):
             self.download_thread.finished.connect(self.finish_load)
             self.download_thread.start()
         except Exception as e:
+            self.progress.hide()
+            self.progress.stopAnimation()
+            self.rollback.show()
+            self.assistant.show_notification_message(f"Ошибка: {e}")
             debug_logger.error(f"Ошибка в методе rollback_stable_version: {e}")
 
     def start_load(self):
@@ -342,68 +330,6 @@ class CheckUpdateWidget(QWidget):
         self.rollback.setText("Ожидайте")
         self.progress.stopAnimation()
 
-    def open_list(self):
-        self.load_any_version.hide()
-        self.load_versions()
-        self.list_versions.show()
-
-    def load_versions(self):
-        data = check_all_versions()
-        all_versions = list(chain.from_iterable(data))
-        sorted_versions = sorted(all_versions, key=lambda v: version.parse(v), reverse=True)
-
-        self.list_versions.clear()
-
-        for ver in sorted_versions:
-            item = QListWidgetItem(ver)
-            if "alpha" in ver or "beta" in ver or "rc" in ver:
-                item.setForeground(QColor("orange"))  # Нестабильные
-            else:
-                item.setForeground(QColor("green"))  # Стабильные
-            self.list_versions.addItem(item)
-
-    def on_version_click(self, item):
-        """Обработчик клика по версии"""
-        selected_version = item.text()
-        self.done_button.setText(f"Версия {selected_version}. Установить?")
-        self.done_button.show()  # Показываем кнопку
-
-    def on_button_click(self):
-        try:
-            selected_item = self.list_versions.currentItem()
-            if selected_item:
-                selected_version = selected_item.text()
-                self.list_versions.hide()
-                self.done_button.setText(f"Скачивание...")
-                self.progress_any.show()
-                self.progress_any.startAnimation()
-                if any(ver in selected_version for ver in ("alpha", "beta", "rc")):
-                    self.download_thread = DownloadThread(type_version="exp", version=selected_version)
-                    self.download_thread.download_complete.connect(
-                        lambda: self.assistant.update_app(type_version="exp"))
-                else:
-                    self.download_thread = DownloadThread(type_version="stable", version=selected_version)
-                    self.download_thread.download_complete.connect(
-                        lambda: self.assistant.update_app(type_version="stable"))
-
-                self.download_thread.finished.connect(self.finish_load_any_version)
-                self.download_thread.start()
-
-            else:
-                self.assistant.show_notification_message("Версия не выбрана!")
-                debug_logger.error("Версия не выбрана!")
-        except Exception as e:
-            self.done_button.setText(f"Произошла ошибка")
-            self.progress_any.hide()
-            self.progress_any.stopAnimation()
-            logger.error(f"Ошибка в методе one_button_click: {e}")
-            debug_logger.error(f"Ошибка в методе one_button_click: {e}")
-
-    def finish_load_any_version(self):
-        self.done_button.setText(f"Почти готово...")
-        self.progress_any.hide()
-        self.progress_any.stopAnimation()
-
 
 class DebugLoggerWidget(QWidget):
     """Виджет для открытия папки с подробными логами"""
@@ -411,8 +337,16 @@ class DebugLoggerWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.assistant = parent
+        self._help_initialized = False
         self.check_button = None
         self.init_ui()
+        
+    def showEvent(self, event):
+        """При показе панели настраиваем help system"""
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
 
     def init_ui(self):
         # Основной layout
@@ -420,10 +354,12 @@ class DebugLoggerWidget(QWidget):
 
         self.check_button = QPushButton("Файл логов")
         self.check_button.clicked.connect(self.open_folder)
+        self.check_button.setProperty("helpId", "open_log_folder")
         layout.addWidget(self.check_button)
 
-        self.open_button = QPushButton("Открыть лог-файл")
+        self.open_button = QPushButton("Посмотреть последние логи")
         self.open_button.clicked.connect(self.load_window)
+        self.open_button.setProperty("helpId", "open_log_file")
         layout.addWidget(self.open_button)
 
         layout.addStretch()
@@ -445,7 +381,6 @@ class DebuglogWindow(QDialog):
     """
     Окно с логами
     """
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent_window = parent
@@ -472,7 +407,7 @@ class DebuglogWindow(QDialog):
         title_layout.setContentsMargins(10, 5, 10, 5)
         title_layout.setSpacing(5)
 
-        title_label = QLabel("Подробный лог-файл")
+        title_label = QLabel("Debug-logger")
         title_label.setStyleSheet("background: transparent;")
         title_label.setObjectName("TitleLabel")
         title_label.setFixedSize(150, 20)

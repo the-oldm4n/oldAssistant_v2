@@ -73,7 +73,7 @@ class ColorSettingsWindow(QDialog):
         self.init_ui()
 
         self.load_color_settings()
-        # self.apply_styles()
+        self.apply_styles()
         
     # def __setattr__(self, name, value):
     #     if name in ['border_btn_radius', 'border_main_radius']:
@@ -87,6 +87,9 @@ class ColorSettingsWindow(QDialog):
         """Применяет все стили к окну"""
         try:
             self.styles = self.style_manager.load_styles()
+            
+            if hasattr(self, 'info_svg'):
+                self.style_manager.apply_color_svg(self.info_svg, strength=0.90)
 
             # Применение общего стиля окна
             # if hasattr(self, 'central_widget'):
@@ -132,6 +135,10 @@ class ColorSettingsWindow(QDialog):
         """Обработка отпускания кнопки мыши"""
         self.drag_pos = None
         event.accept()
+        
+    def open_info(self):
+        video_path = get_path("bin", "guides", "styles_panel.mp4")
+        self.assistant.open_video(video_path)
 
     def init_ui(self):
         # Основной контейнер
@@ -155,6 +162,15 @@ class ColorSettingsWindow(QDialog):
         self.title_label = QLabel("Редактор стилей", self.title_bar)
         self.title_label.setStyleSheet("background: transparent")
         self.title_layout.addWidget(self.title_label)
+        
+        self.info_btn = QPushButton("", self.title_bar)
+        self.info_btn.setFixedSize(30, 30)
+        self.info_btn.clicked.connect(self.open_info)
+        self.info_svg = CustomSvgWidget(self.assistant.icon_guide_path, self.info_btn)
+        self.info_svg.setFixedSize(20, 20)
+        self.info_svg.move(5, 5)
+        self.info_svg.setStyleSheet("background: transparent;")
+        self.title_layout.addWidget(self.info_btn)
 
         self.close_btn = QPushButton("", self.title_bar)
         self.close_btn.setFixedSize(30, 30)
@@ -265,32 +281,72 @@ class ColorSettingsWindow(QDialog):
         checkbox.setStyleSheet("background-color: transparent")
         checkbox.stateChanged.connect(lambda state: self.toggle_gradient(element_type, state))
         layout.addWidget(checkbox)
+        
+        solid_color_container = QWidget()
+        solid_color_container.setStyleSheet("background-color: transparent")
+        solid_color_layout = QHBoxLayout(solid_color_container)
+        solid_color_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Основной цвет (показывается всегда)
-        solid_color_btn = QPushButton('Выбрать цвет')
-        solid_color_btn.clicked.connect(lambda: self.choose_solid_color(element_type))
-        layout.addWidget(solid_color_btn)
+        solid_color_label = QLabel("Текущий цвет:")
+        solid_color_label.setStyleSheet("background-color: transparent")
+        solid_color_layout.addWidget(solid_color_label)
+        
+        solid_color_preview = QLabel()
+        solid_color_preview.setFixedSize(30, 30)
+        solid_color_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
+        solid_color_preview.mousePressEvent = lambda event: self.choose_solid_color(element_type)
+        solid_color_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        solid_color_layout.addWidget(solid_color_preview)
+        solid_color_layout.addStretch()
+        
+        layout.addWidget(solid_color_container)
 
         # Контейнер для элементов градиента (скрывается при отключении)
         gradient_group = QWidget()
+        gradient_group.setObjectName("GradientGroup")
         gradient_layout = QVBoxLayout(gradient_group)
         gradient_layout.setContentsMargins(0, 0, 0, 0)
 
         # Кнопки выбора цветов
-        color_layout = QHBoxLayout()
-        color1_btn = QPushButton('Цвет 1')
-        color1_btn.clicked.connect(lambda: self.choose_gradient_color(element_type, 1))
-        color_layout.addWidget(color1_btn)
-        color2_btn = QPushButton('Цвет 2')
-        color2_btn.clicked.connect(lambda: self.choose_gradient_color(element_type, 2))
-        color_layout.addWidget(color2_btn)
-        gradient_layout.addLayout(color_layout)
+        two_colors_layout = QHBoxLayout()
+        
+        color1_layout = QHBoxLayout()
+        color1_label = QLabel("Цвет 1:")
+        color1_label.setStyleSheet("background-color: transparent")
+        color1_layout.addWidget(color1_label)
+        
+        self.color1_preview = QLabel()
+        self.color1_preview.setFixedSize(30, 30)
+        self.color1_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
+        self.color1_preview.mousePressEvent = lambda event: self.choose_gradient_color(element_type, 1)
+        self.color1_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        color1_layout.addWidget(self.color1_preview)
+        color1_layout.addStretch()
+        
+        color2_layout = QHBoxLayout()
+        color2_label = QLabel("Цвет 2:")
+        color2_label.setStyleSheet("background-color: transparent")
+        color2_layout.addWidget(color2_label)
+        
+        self.color2_preview = QLabel()
+        self.color2_preview.setFixedSize(30, 30)
+        self.color2_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
+        self.color2_preview.mousePressEvent = lambda event: self.choose_gradient_color(element_type, 2)
+        self.color2_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        color2_layout.addWidget(self.color2_preview)
+        color2_layout.addStretch()
+        
+        two_colors_layout.addLayout(color1_layout)
+        two_colors_layout.addLayout(color2_layout)
+        
+        gradient_layout.addLayout(two_colors_layout)
 
         # Управление углом
         angle_label = QLabel(f'Угол градиента (0-360°):')
         angle_label.setStyleSheet("background: transparent")
         gradient_layout.addWidget(angle_label)
         angle_slider = QSlider(Qt.Orientation.Horizontal)
+        angle_slider.setStyleSheet("background: transparent")
         angle_slider.setRange(0, 360)
         angle_slider.setTickInterval(45)
         angle_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
@@ -317,10 +373,11 @@ class ColorSettingsWindow(QDialog):
         # Сохраняем ссылки на элементы для обновления
         self.gradient_settings[element_type]['widgets'] = {
             'checkbox': checkbox,
-            'solid_color_btn': solid_color_btn,
+            'solid_color_container': solid_color_container,
+            'color1_preview': self.color1_preview,
+            'color2_preview': self.color2_preview,
+            "solid_color_preview": solid_color_preview,
             'gradient_group': gradient_group,
-            'color1_btn': color1_btn,
-            'color2_btn': color2_btn,
             'slider': angle_slider,
             'spinbox': angle_spin,
             'preview': preview
@@ -341,6 +398,7 @@ class ColorSettingsWindow(QDialog):
         btn_radius_label.setStyleSheet("background: transparent")
         
         self.btn_radius_slider = QSlider(Qt.Orientation.Horizontal)
+        self.btn_radius_slider.setStyleSheet("background: transparent")
         self.btn_radius_slider.setRange(0, 15)
         self.btn_radius_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.btn_radius_slider.setTickInterval(1)
@@ -362,6 +420,7 @@ class ColorSettingsWindow(QDialog):
         main_radius_label.setStyleSheet("background: transparent")
         
         self.main_radius_slider = QSlider(Qt.Orientation.Horizontal)
+        self.main_radius_slider.setStyleSheet("background: transparent")
         self.main_radius_slider.setRange(0, 20)
         self.main_radius_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         self.main_radius_slider.setTickInterval(1)
@@ -409,64 +468,137 @@ class ColorSettingsWindow(QDialog):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(8)
 
-        # Основной текст
-        self.text_color_btn = QPushButton('Цвет текста (общий, на кнопках)')
-        self.text_color_btn.clicked.connect(self.choose_text_color)
-        layout.addWidget(self.text_color_btn)
+        text_color_layout = QHBoxLayout()
+        text_color_label = QLabel('Цвет текста:')
+        text_color_label.setStyleSheet("background: transparent")
+        
+        self.text_color_preview = QLabel()
+        self.text_color_preview.setFixedSize(30, 30)
+        self.text_color_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
+        self.text_color_preview.mousePressEvent = lambda event: self.choose_text_color()
+        self.text_color_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        
+        text_edit_color_layout = QHBoxLayout()
+        
+        text_edit_label = QLabel('Цвет текста в логах и подсказках:')
+        text_edit_label.setStyleSheet("background: transparent")
+        
+        self.text_edit_preview = QLabel()
+        self.text_edit_preview.setFixedSize(30, 30)
+        self.text_edit_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
+        self.text_edit_preview.mousePressEvent = lambda event: self.choose_text_edit_color()
+        self.text_edit_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-        # Текст в QTextEdit
-        self.text_edit_color_btn = QPushButton('Цвет текста в логах')
-        self.text_edit_color_btn.clicked.connect(self.choose_text_edit_color)
-        layout.addWidget(self.text_edit_color_btn)
+        text_color_layout.addWidget(text_color_label)
+        text_color_layout.addWidget(self.text_color_preview)
+        text_color_layout.addStretch()
+        text_edit_color_layout.addWidget(text_edit_label)
+        text_edit_color_layout.addWidget(self.text_edit_preview)
+        text_edit_color_layout.addStretch()
+        
+        layout.addLayout(text_color_layout)
+        layout.addLayout(text_edit_color_layout)
 
-        # Превью текста
-        self.text_preview = QLabel("Пример текста")
-        self.text_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.text_preview)
+        preview_layout = QVBoxLayout()
 
-        # Превью текста
-        self.text_edit_preview = QLabel("Пример текста в логах")
-        self.text_edit_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.text_edit_preview)
+        # Превью текста в логах       
+        self.log_demo = QLabel("Это пример текста в логах\nОтвет ассистента: Ну привет")
+        self.log_demo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.log_demo.setMinimumHeight(40)
+        self.log_demo.setStyleSheet("""
+            background: #1a1a1a; 
+            border: 1px solid #333; 
+            border-radius: 5px; 
+            padding: 5px;
+            font-family: 'Courier New', monospace;
+        """)
+        preview_layout.addWidget(self.log_demo)
 
+        layout.addLayout(preview_layout)
+
+        layout.addStretch()
+    
     def choose_text_color(self):
-        color = QColorDialog.getColor(QColor(self.text_color), self, "Выберите цвет текста")
-        if color.isValid():
-            self.text_color = color.name()
-            self.update_text_preview()
-
+        """Показывает пикер цвета для текста"""
+        preview_pos = self.text_color_preview.mapToGlobal(QPoint(5, 5))
+        picker = SimpleColorPicker(self.text_color, self)
+        picker.move(preview_pos.x() + self.text_color_preview.width(), preview_pos.y())
+        picker.color_changed.connect(self.on_text_color_changed)
+        picker.focusOutEvent = lambda event: picker.close()
+        picker.exec()
+        
+    def on_text_color_changed(self, color):
+        """Обработчик изменения цвета текста"""
+        self.text_color = color
+        self.update_color_previews()
+        self.apply_changes(preview=True)
+    
+    def on_text_edit_color_changed(self, color):
+        """Обработчик изменения цвета текста в логах"""
+        self.text_edit_color = color
+        self.update_color_previews()
+        self.apply_changes(preview=True)
+    
     def choose_text_edit_color(self):
-        color = QColorDialog.getColor(QColor(self.text_edit_color), self, "Выберите цвет текста в логах")
-        if color.isValid():
-            self.text_edit_color = color.name()
-            self.update_text_preview()
-
+        preview_pos = self.text_edit_preview.mapToGlobal(QPoint(5, 5))
+        picker = SimpleColorPicker(self.text_edit_color, self)
+        picker.move(preview_pos.x() + self.text_edit_preview.width(), preview_pos.y())
+        picker.color_changed.connect(self.on_text_edit_color_changed)
+        picker.focusOutEvent = lambda event: picker.close()
+        picker.exec()
+    
     def choose_solid_color(self, element_type):
         """Выбор сплошного цвета (когда градиент выключен)"""
         current_color = self.gradient_settings[element_type].get('solid_color', "#000000")
-        color = QColorDialog.getColor(QColor(current_color), self, "Выберите цвет")
-        if color.isValid():
-            self.gradient_settings[element_type]['solid_color'] = color.name()
-            if element_type == 'background':
-                self.bg_color = color.name()
-            elif element_type == 'buttons':
-                self.btn_color = color.name()
-            elif element_type == 'borders':
-                self.border_color = color.name()
-            self.update_gradient_preview(element_type)
-            self.apply_changes(preview=True)
+        
+        # Получаем позицию превью для отображения пикера
+        widgets = self.gradient_settings[element_type]['widgets']
+        preview_pos = widgets['solid_color_preview'].mapToGlobal(QPoint(0, 0))
+        
+        picker = SimpleColorPicker(current_color, self)
+        picker.move(preview_pos.x() + widgets['solid_color_preview'].width(), preview_pos.y())
+        picker.color_changed.connect(lambda color: self.on_solid_color_changed(element_type, color))
+        picker.focusOutEvent = lambda event: picker.close()
+        
+        picker.exec()
 
-    def update_text_preview(self):
-        """Обновляет превью текста"""
-        self.text_preview.setStyleSheet(f"""
-            color: {self.text_color};
-            background-color: {'#FFFFFF' if QColor(self.text_color).lightness() < 128 else '#000000'};
+    def on_solid_color_changed(self, element_type, color):
+        """Обработчик изменения сплошного цвета"""
+        self.gradient_settings[element_type]['solid_color'] = color
+
+        if element_type == 'background':
+            self.bg_color = color
+        elif element_type == 'buttons':
+            self.btn_color = color
+        elif element_type == 'borders':
+            self.border_color = color
+
+        widgets = self.gradient_settings[element_type]['widgets']
+        widgets['solid_color_preview'].setStyleSheet(f"background-color: {color}; border: 1px solid #ccc; border-radius: 3px;")
+
+        self.update_gradient_preview(element_type)
+        self.apply_changes(preview=True)
+    
+    def update_color_previews(self):
+        """Обновляет цвет превью-лейблов"""
+        # Превью для основного текста
+        self.text_color_preview.setStyleSheet(
+            f"background-color: {self.text_color}; border: 1px solid #ccc; border-radius: 3px;"
+        )
+        
+        # Превью для текста в логах
+        self.text_edit_preview.setStyleSheet(
+            f"background-color: {self.text_edit_color}; border: 1px solid #ccc; border-radius: 3px;"
+        )
+       
+        # Демо текста в логах
+        self.log_demo.setStyleSheet(f"""
+            background: #1a1a1a; 
+            border: 1px solid #333; 
+            border-radius: 5px; 
             padding: 5px;
-        """)
-        self.text_edit_preview.setStyleSheet(f"""
+            font-family: 'Consolas', monospace;
             color: {self.text_edit_color};
-            background-color: {'#FFFFFF' if QColor(self.text_color).lightness() < 128 else '#000000'};
-            padding: 5px;
         """)
 
     def toggle_gradient(self, element_type, state):
@@ -489,28 +621,47 @@ class ColorSettingsWindow(QDialog):
 
         widgets = self.gradient_settings[element_type]['widgets']
 
-        # Включаем/выключаем виджеты
-        widgets['color1_btn'].setEnabled(enabled)
-        widgets['color2_btn'].setEnabled(enabled)
-        widgets['slider'].setEnabled(enabled)
-        widgets['spinbox'].setEnabled(enabled)
+        if enabled:
+            # Градиент ВКЛ - скрываем solid, показываем градиент
+            widgets['solid_color_container'].setVisible(False)
+            widgets['gradient_group'].setVisible(True)
+            widgets['preview'].setVisible(True)
+        else:
+            # Градиент ВЫКЛ - показываем solid, скрываем градиент
+            widgets['solid_color_container'].setVisible(True)
+            widgets['gradient_group'].setVisible(False)
+            widgets['preview'].setVisible(False)
 
         if enabled and self.gradient_settings[element_type]['color1'] and self.gradient_settings[element_type][
             'color2']:
             self.update_gradient_preview(element_type)
 
         self.apply_changes(preview=True)
-
+    
     def choose_gradient_color(self, element_type, color_num):
         """Выбор цвета градиента для конкретного элемента"""
-        current_color = self.gradient_settings[element_type][f'color{color_num}']
-        initial_color = QColor(current_color) if current_color else QColor("#000000")
+        current_color = self.gradient_settings[element_type].get(f'color{color_num}', "#000000")
+        
+        # Получаем позицию превью для отображения пикера
+        widgets = self.gradient_settings[element_type]['widgets']
+        preview_widget = widgets[f'color{color_num}_preview']
+        preview_pos = preview_widget.mapToGlobal(QPoint(0, 0))
+        
+        picker = SimpleColorPicker(current_color, self)
+        picker.move(preview_pos.x() + preview_widget.width(), preview_pos.y())
+        picker.color_changed.connect(lambda color: self.on_gradient_color_changed(element_type, color_num, color))
+        picker.focusOutEvent = lambda event: picker.close()
+        
+        picker.exec()
 
-        color = QColorDialog.getColor(initial_color, self, f"Выберите цвет {color_num} для градиента")
-        if color.isValid():
-            self.gradient_settings[element_type][f'color{color_num}'] = color.name()
-            self.update_gradient_preview(element_type)
-            self.apply_changes(preview=True)
+    def on_gradient_color_changed(self, element_type, color_num, color):
+        """Обработчик изменения цвета градиента"""
+        self.gradient_settings[element_type][f'color{color_num}'] = color
+        widgets = self.gradient_settings[element_type]['widgets']
+        preview_widget = widgets[f'color{color_num}_preview']
+        preview_widget.setStyleSheet(f"background-color: {color}; border: 1px solid #ccc; border-radius: 3px;")
+        self.update_gradient_preview(element_type)
+        self.apply_changes(preview=True)
 
     def update_gradient_angle(self, element_type, angle):
         """Обновляет угол градиента для конкретного элемента"""
@@ -527,8 +678,11 @@ class ColorSettingsWindow(QDialog):
             # Режим градиента
             if settings.get('color1') and settings.get('color2'):
                 preview.set_gradient(settings['color1'], settings['color2'], settings.get('angle', 0))
+            else:
+                # Если цвета не заданы, показываем дефолтный градиент
+                preview.set_gradient("#000000", "#ffffff", 0)
         else:
-            # Режим сплошного цвета
+            # Режим сплошного цвета - показываем solid color в превью
             color = settings.get('solid_color', "#000000")
             preview.set_gradient(color, color, 0)  # Одинаковый цвет для обоих стопов
 
@@ -586,6 +740,7 @@ class ColorSettingsWindow(QDialog):
         self.border_in_main_window = main_border != "none"
 
         self.main_border_checkbox.setChecked(self.border_in_main_window)
+        self.update_color_previews()
         debug_logger.info(f"Стили загружены в переменные!")
 
     def load_element_settings(self, element_type, css_value):
@@ -658,8 +813,29 @@ class ColorSettingsWindow(QDialog):
             # в соответствии с загруженным значением settings['enabled']
             self.toggle_gradient(element_type,
                                  Qt.CheckState.Checked if settings['enabled'] else Qt.CheckState.Unchecked)
-            if 'solid_color_btn' in widgets:
-                widgets['solid_color_btn'].setText('Выбрать цвет')
+            # if 'solid_color_btn' in widgets:
+            #     widgets['solid_color_btn'].setText('Выбрать цвет')
+            
+            # Обновляем UI если виджеты уже созданы
+
+            # ОБНОВЛЯЕМ ЦВЕТА ПРЕВЬЮ
+            if 'color1_preview' in widgets:
+                color1 = settings.get('color1', "#000000")
+                widgets['color1_preview'].setStyleSheet(
+                    f"background-color: {color1}; border: 1px solid #ccc; border-radius: 3px;"
+                )
+            
+            if 'color2_preview' in widgets:
+                color2 = settings.get('color2', "#000000") 
+                widgets['color2_preview'].setStyleSheet(
+                    f"background-color: {color2}; border: 1px solid #ccc; border-radius: 3px;"
+                )
+            
+            if 'solid_color_preview' in widgets:
+                solid_color = settings.get('solid_color', "#000000")
+                widgets['solid_color_preview'].setStyleSheet(
+                    f"background-color: {solid_color}; border: 1px solid #ccc; border-radius: 3px;"
+                )
 
             if settings['enabled']:
                 widgets['slider'].setValue(settings['angle'])
@@ -669,7 +845,7 @@ class ColorSettingsWindow(QDialog):
 
         QApplication.processEvents()  # Обработать все события в очереди
         self.container.repaint()
-        self.update_text_preview()  # для обновления цвета текста на превью во вкладке "Текст"
+        self.update_color_previews()
         self.apply_changes(preview=True)
 
     def apply_changes(self, preview=False):
@@ -1196,6 +1372,18 @@ class ColorSettingsWindow(QDialog):
                         "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
                             'enabled'] else f"1px solid {self.border_color}",
                         "border-radius": f"{self.border_main_radius}px"
+                    },
+                    "HelpWidget": {
+                        "background":"transparent",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_main_radius}px"
+                    },
+                    "LogArea": {
+                        "background": "transparent",
+                        "color": self.text_edit_color,
+                        "border": "none",
+                        "font-size": "15px"
                     }
         }
        
@@ -1497,3 +1685,406 @@ class SavePresetDialog(QDialog):
         if hasattr(self, 'drag_position') and event.buttons() == Qt.MouseButton.LeftButton:
             self.move(event.globalPos() - self.drag_position)
             event.accept()
+
+from PySide6.QtWidgets import *
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+
+class SimpleColorPicker(QDialog):
+    color_changed = Signal(str)
+    def __init__(self, initial_color="#FF0000", parent=None):
+        super().__init__(parent)
+        self.icon_close_path = get_path("bin", "icons", "close.svg")
+        self.color = QColor(initial_color)
+        self.setup_ui()
+        self.update_all()
+    
+    def setup_ui(self):
+        self.setObjectName("WindowContainer")
+        self.setWindowTitle("Выбор цвета")
+        self.setFixedSize(280, 270)
+        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+
+        layout = QVBoxLayout(self)
+
+        self.setup_color_picker(layout)
+        
+        self.color_preview = QLabel()
+        self.color_preview.setFixedHeight(30)
+        self.color_preview.setFixedWidth(100)
+        self.color_preview.setStyleSheet(f"background-color: {self.color.name()}; border: 1px solid #ccc;")
+
+        hex_layout = QHBoxLayout()
+        hex_layout.addStretch()
+        self.hex_edit = QLineEdit()
+        self.hex_edit.textEdited.connect(self.on_hex_changed)
+        hex_layout.addWidget(self.hex_edit)
+        hex_layout.addWidget(self.color_preview)
+        layout.addLayout(hex_layout)
+
+        layout.addStretch()
+        
+    def set_color(self, color):
+        """Установить цвет и обновить все элементы"""
+        self.color = color
+        self.update_all()
+        
+    def on_hex_changed(self, text):  # ← ДОБАВИТЬ ЭТОТ МЕТОД
+        """При изменении HEX"""
+        if QColor.isValidColor(text):
+            self.color = QColor(text)
+            self.update_all()
+            self.color_changed.emit(self.color.name())
+        
+    def on_sv_changed(self, s, v):
+        """При изменении Saturation/Value в палитре"""
+        h = self.color.hue()
+        self.color.setHsv(h, s, v)
+        self.update_all()
+        self.color_changed.emit(self.color.name())
+        
+    def on_hs_changed(self, h, s):
+        """При изменении Hue/Saturation в палитре"""
+        current_v = self.color.value()
+        
+        # ЕСЛИ НАСЫЩЕННОСТЬ МЕНЬШЕ 2 - ДЕЛАЕМ ЧИСТЫЙ БЕЛЫЙ/СЕРЫЙ
+        if s < 2:
+            self.color.setHsv(h, 0, current_v)
+        else:
+            self.color.setHsv(h, s, current_v)
+        
+        # Обновляем градиент Value ползунка
+        if hasattr(self, 'value_slider'):
+            self.value_slider.set_base_color(h, s)
+        
+        self.update_all()
+        self.color_changed.emit(self.color.name())
+
+
+    def on_hue_changed(self, h):
+        """При изменении Hue в полосе"""
+        s = self.color.saturation()
+        v = self.color.value()
+        self.color.setHsv(h, s, v)
+        
+        # Обновляем палитру S/V с новым Hue
+        if hasattr(self, 'sv_palette'):
+            self.sv_palette.set_hue(h)
+        
+        self.update_all()
+        self.color_changed.emit(self.color.name())
+
+    def on_value_changed(self, v):
+        """При изменении Value в ползунке"""
+        h = self.color.hue()
+        s = self.color.saturation()
+        self.color.setHsv(h, s, v)
+        self.update_all()
+        self.color_changed.emit(self.color.name())
+            
+    def update_all(self):
+        """Обновить все элементы"""
+        self.update_slider_value()
+        self.update_preview()
+        self.update_hex()
+        self.update_palette_from_color()
+            
+    def update_palette_from_color(self):
+        """Обновить палитру из текущего цвета"""
+        if hasattr(self, 'hs_palette') and hasattr(self, 'value_slider'):
+            h = self.color.hue()
+            s = self.color.saturation()
+            v = self.color.value()
+
+            self.hs_palette.set_color(h, s)
+            self.value_slider.set_base_color(h, s)
+            self.value_slider.set_value(v)
+        
+    def update_slider_value(self):
+        """Обновить ползунок value"""
+        if hasattr(self, 'value_slider'):
+            v = self.color.value()
+            self.value_slider.set_value(v)
+        
+    def update_preview(self):
+        """Обновить превью цвета"""
+        self.color_preview.setStyleSheet(f"background-color: {self.color.name()}; border: 1px solid #ccc;")
+        
+    def update_hex(self):
+        """Обновить HEX поле"""
+        self.hex_edit.blockSignals(True)
+        self.hex_edit.setText(self.color.name())
+        self.hex_edit.blockSignals(False)
+        
+    def get_color(self):
+        """Получить выбранный цвет"""
+        return self.color.name()
+    
+    def setup_color_picker(self, layout):
+        """Палитра Hue + Saturation + Value"""
+        picker_layout = QHBoxLayout()
+        
+        # 1. Квадратная палитра Hue + Saturation
+        self.hs_palette = HSPaletteWidget(self)
+        self.hs_palette.color_changed.connect(self.on_hs_changed)
+        picker_layout.addWidget(self.hs_palette)
+        
+        # 2. Вертикальный ползунок Value
+        self.value_slider = ValueSliderWidget(self)
+        self.value_slider.value_changed.connect(self.on_value_changed)
+        picker_layout.addWidget(self.value_slider)
+        
+        layout.addLayout(picker_layout)
+        
+class SVPaletteWidget(QFrame):
+    """Квадратная палитра Saturation (X) vs Value (Y)"""
+    color_changed = Signal(int, int)  # s, v
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(200, 200)
+        self.hue = 0
+        self.saturation = 255
+        self.value = 255
+        self.is_dragging = False
+        self.cursor_pos = QPoint(199, 199)
+        self.cached_image = None
+        self.generate_cached_image()
+
+    def set_hue(self, hue):
+        """Установить Hue и перегенерировать палитру"""
+        self.hue = hue
+        self.generate_cached_image()
+        self.update()
+
+    def generate_cached_image(self):
+        """Создать палитру Saturation (X) vs Value (Y)"""
+        self.cached_image = QImage(200, 200, QImage.Format_ARGB32)
+        painter = QPainter(self.cached_image)
+        
+        for y in range(200):
+            for x in range(200):
+                saturation = int((x / 200.0) * 255)  # X ось = Saturation
+                value = int(((200 - y) / 200.0) * 255)  # Y ось = Value (инвертировано)
+                
+                color = QColor()
+                color.setHsv(self.hue, saturation, value)
+                painter.setPen(color)
+                painter.drawPoint(x, y)
+        
+        painter.end()
+
+    def set_color(self, s, v):
+        """Установить позицию курсора из S/V"""
+        x = int((s / 255.0) * 199)
+        y = int(199 - (v / 255.0) * 199)  # инвертируем Value
+        self.cursor_pos = QPoint(x, y)
+        self.update()
+
+    def paintEvent(self, event):  # ← ДОБАВИТЬ ЭТОТ МЕТОД
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        if self.cached_image:
+            painter.drawImage(0, 0, self.cached_image)
+        
+        # Курсор
+        painter.setPen(QPen(Qt.white, 2))
+        painter.drawEllipse(self.cursor_pos, 4, 4)
+        painter.setPen(QPen(Qt.black, 1))
+        painter.drawEllipse(self.cursor_pos, 4, 4)
+        painter.end()
+
+    def mousePressEvent(self, event):  # ← ДОБАВИТЬ
+        self.is_dragging = True
+        self.update_color(event.pos())
+        
+    def mouseMoveEvent(self, event):  # ← ДОБАВИТЬ
+        if self.is_dragging:
+            self.update_color(event.pos())
+            
+    def mouseReleaseEvent(self, event):  # ← ДОБАВИТЬ
+        self.is_dragging = False
+
+    def update_color(self, pos):
+        x = max(0, min(199, pos.x()))
+        y = max(0, min(199, pos.y()))
+        self.cursor_pos = QPoint(x, y)
+        
+        saturation = int((x / 200.0) * 255)
+        value = int(((200 - y) / 200.0) * 255)  # инвертируем
+        
+        self.saturation = saturation
+        self.value = value
+        self.color_changed.emit(saturation, value)
+        self.update()
+
+
+class HSPaletteWidget(QWidget):
+    color_changed = Signal(int, int)  # h, s
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(200, 200)
+        self.hue = 0
+        self.saturation = 255
+        self.is_dragging = False
+        self.cursor_pos = QPoint(199, 199)
+        self.cached_image = None
+        self.generate_cached_image()
+
+    def generate_cached_image(self):
+        """Создать кэшированное изображение палитры"""
+        self.cached_image = QImage(200, 200, QImage.Format_ARGB32)
+        painter = QPainter(self.cached_image)
+        
+        for y in range(200):
+            for x in range(200):
+                hue = int((x / 200.0) * 359)
+                saturation = int(((200 - y) / 200.0) * 255)
+                
+                # Value=255 для яркого отображения палитры
+                color = QColor()
+                color.setHsv(hue, saturation, 255)
+                painter.setPen(color)
+                painter.drawPoint(x, y)
+        
+        painter.end()
+
+    def set_color(self, h, s):
+        """Установить позицию курсора из H/S"""
+        x = int((h / 359.0) * 199)
+        y = int(199 - (s / 255.0) * 199)
+        self.cursor_pos = QPoint(x, y)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Рисуем кэшированное изображение палитры
+        if self.cached_image:
+            painter.drawImage(0, 0, self.cached_image)
+        
+        # Рисуем бордер С ПРАВИЛЬНЫМИ КООРДИНАТАМИ
+        painter.setPen(QPen(QColor("#cccccc"), 2))
+        painter.setBrush(Qt.NoBrush)
+        # Смещаем на 1px внутрь чтобы перо не выходило за границы
+        painter.drawRect(1, 1, self.width()-2, self.height()-2)
+        
+        # Курсор поверх всего
+        painter.setPen(QPen(Qt.white, 2))
+        painter.drawEllipse(self.cursor_pos, 4, 4)
+        painter.setPen(QPen(Qt.black, 1))
+        painter.drawEllipse(self.cursor_pos, 4, 4)
+        
+        painter.end()
+
+    def mousePressEvent(self, event):
+        self.is_dragging = True
+        self.update_color(event.pos())
+        
+    def mouseMoveEvent(self, event):
+        if self.is_dragging:
+            self.update_color(event.pos())
+            
+    def mouseReleaseEvent(self, event):
+        self.is_dragging = False
+
+    def update_color(self, pos):
+        x = max(0, min(199, pos.x()))
+        y = max(0, min(199, pos.y()))
+
+        self.cursor_pos = QPoint(x, y)
+        hue = int((x / 200.0) * 359)
+        saturation = int(((200 - y) / 200.0) * 255)
+        
+        self.hue = hue
+        self.saturation = saturation
+        self.color_changed.emit(hue, saturation)
+        self.update()
+
+class ValueSliderWidget(QWidget):
+    value_changed = Signal(int)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(30, 200)
+        self.value = 255
+        self.is_dragging = False
+        self.cursor_y = 0
+        self.base_hue = 0
+        self.base_saturation = 255
+        self.cached_images = {}  # Кэш для разных цветов
+        
+    def set_base_color(self, h, s):
+        """Установить базовый цвет для градиента Value"""
+        self.base_hue = h
+        self.base_saturation = s
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        # Создаем ключ кэша
+        cache_key = f"{self.base_hue}_{self.base_saturation}"
+        
+        # Используем кэш или создаем новое изображение
+        if cache_key not in self.cached_images:
+            self.generate_cached_image(cache_key)
+        
+        # Рисуем кэшированное изображение
+        painter.drawImage(0, 0, self.cached_images[cache_key])
+        
+        # Рисуем бордер
+        painter.setPen(QPen(QColor("#cccccc"), 2))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(1, 1, self.width()-2, self.height()-2)
+        
+        # Курсор поверх всего
+        painter.setPen(QPen(Qt.black, 2))
+        painter.drawRect(0, self.cursor_y - 2, 30, 4)
+        painter.setPen(QPen(Qt.white, 1))
+        painter.drawRect(1, self.cursor_y - 1, 28, 2)
+        
+        painter.end()
+
+    def generate_cached_image(self, cache_key):
+        """Создать кэшированное изображение градиента"""
+        image = QImage(30, 200, QImage.Format_ARGB32)
+        painter = QPainter(image)
+        
+        for y in range(200):
+            value = int(((200 - y) / 200.0) * 255)
+            color = QColor()
+            color.setHsv(self.base_hue, self.base_saturation, value)
+            painter.setPen(color)
+            painter.drawLine(0, y, 30, y)
+        
+        painter.end()
+        self.cached_images[cache_key] = image
+
+    def set_value(self, value):
+        """Установить позицию курсора из Value"""
+        self.cursor_y = int(199 - (value / 255.0) * 199)
+        self.value = value
+        self.update()
+
+    def mousePressEvent(self, event):
+        self.is_dragging = True
+        self.update_value(event.pos())
+        
+    def mouseMoveEvent(self, event):
+        if self.is_dragging:
+            self.update_value(event.pos())
+            
+    def mouseReleaseEvent(self, event):
+        self.is_dragging = False
+
+    def update_value(self, pos):
+        y = max(0, min(199, pos.y()))
+        self.cursor_y = y
+        self.value = int(((199 - y) / 199.0) * 255)
+        self.value_changed.emit(self.value)
+        self.update()

@@ -21,4 +21,5 @@
 /update_pack
 /installer.log
 /.idea/
-
+bin/guides/styles_panel.mp4
+/update_packages/
