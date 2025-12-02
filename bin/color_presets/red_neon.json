@@ -27,7 +27,7 @@
         "color": "#ffffff",
         "height": "30px",
         "border": "1px solid #D62D2D",
-        "border-radius": "2px",
+        "border-radius": "3px",
         "font-size": "13px",
         "margin": "0",
         "padding": "3px"
@@ -109,18 +109,8 @@
         "border": "none",
         "font-size": "15px"
     },
-    "label_version": {
-        "background": "transparent",
-        "color": "#F18E90",
-        "font-size": "10px"
-    },
     "label_message": {
         "color": "#ffffff",
-        "font-size": "13px"
-    },
-    "update_label": {
-        "background": "transparent",
-        "color": "#F18E90",
         "font-size": "13px"
     },
     "clock_mini": {
@@ -163,11 +153,11 @@
     },
     "MessageContainer": {
         "border": "1px solid #D62D2D",
-        "border-radius": "10px"
+        "border-radius": "15px"
     },
     "WindowContainer": {
         "border": "1px solid #D62D2D",
-        "border-radius": "10px"
+        "border-radius": "15px"
     },
     "MainWindowWidget": {
         "border": "none",
@@ -185,7 +175,7 @@
         "border": "none"
     },
     "QMenu": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #411215)",
+        "background-color": "qlineargradient(x1:0.02, y1:0.35, x2:0.98, y2:0.65, stop:0 #000000, stop:1 #270d01)",
         "color": "#ffffff",
         "font-size": "13px",
         "padding": "5px",
@@ -194,31 +184,20 @@
     },
     "QMenu::item": {
         "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #411215)",
-        "padding": "8px 20px",
+        "padding": "8px 30px",
         "margin": "1px",
-        "border-radius": "5px",
+        "border-radius": "3px",
         "border-left": "1px solid #a40000",
         "border-right": "1px solid #a40000"
     },
     "QMenu::item:selected": {
-        "border-radius": "5px",
+        "border-radius": "3px",
         "background-color": "#D62D2D",
         "color": "#ffffff"
     },
     "QColorDialog QPushButton": {
         "padding-left": "5px",
         "padding-right": "5px"
-    },
-    "UserProfileWidget": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #411215)",
-        "color": "#ffffff",
-        "border": "1px solid #D62D2D",
-        "border-radius": "10px"
-    },
-    "UserProfileWidget::hover": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #411215, stop:1 #000000)",
-        "border": "1px solid #D62D2D",
-        "border-radius": "10px"
     },
     "QSlider::handle:horizontal": {
         "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #411215)",
@@ -284,5 +263,50 @@
         "color": "#F18E90",
         "border": "none",
         "font-size": "15px"
+    },
+    "SidebarElement": {
+        "background": "transparent",
+        "color": "#ffffff",
+        "border-radius": "none",
+        "border": "none"
+    },
+    "SidebarElement::hover": {
+        "border-top": "1px solid#D62D2D",
+        "border-bottom": "1px solid #D62D2D"
+    },
+    "ToolButton": {
+        "background": "transparent",
+        "border-radius": "none",
+        "border": "none"
+    },
+    "VersionLabel": {
+        "background": "#D62D2D",
+        "color": "#ffffff",
+        "border-radius": "10px",
+        "border": "none",
+        "padding": "6px",
+        "font-size": "13px"
+    },
+    "VersionLabel::hover": {
+        "border": "2px solid #F18E90"
+    },
+    "UpdateLabel": {
+        "background": "#D62D2D",
+        "color": "#ffffff",
+        "border-radius": "10px",
+        "border": "none",
+        "padding": "6px",
+        "font-size": "14px"
+    },
+    "UpdateLabel::hover": {
+        "border": "2px solid #F18E90"
+    },
+    "UserProfileWidget": {
+        "background-color": "transparent",
+        "border": "1px solid #D62D2D",
+        "border-radius": "17px"
+    },
+    "UserProfileWidget::hover": {
+        "border": "2px solid #D62D2D"
     }
 }

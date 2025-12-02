@@ -27,7 +27,7 @@
         "color": "#e5e5e5",
         "height": "30px",
         "border": "1px solid #2ad0ca",
-        "border-radius": "2px",
+        "border-radius": "3px",
         "font-size": "13px",
         "margin": "0",
         "padding": "3px"
@@ -109,18 +109,8 @@
         "border": "none",
         "font-size": "15px"
     },
-    "label_version": {
-        "background": "transparent",
-        "color": "#7ee5e2",
-        "font-size": "10px"
-    },
     "label_message": {
         "color": "#e5e5e5",
-        "font-size": "13px"
-    },
-    "update_label": {
-        "background": "transparent",
-        "color": "#7ee5e2",
         "font-size": "13px"
     },
     "clock_mini": {
@@ -163,11 +153,11 @@
     },
     "MessageContainer": {
         "border": "1px solid #2ad0ca",
-        "border-radius": "10px"
+        "border-radius": "15px"
     },
     "WindowContainer": {
         "border": "1px solid #2ad0ca",
-        "border-radius": "10px"
+        "border-radius": "15px"
     },
     "MainWindowWidget": {
         "border": "none",
@@ -185,7 +175,7 @@
         "border": "none"
     },
     "QMenu": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #0D313A)",
+        "background-color": "qlineargradient(x1:1.00, y1:0.53, x2:0.00, y2:0.47, stop:0 #000000, stop:1 #011b1e)",
         "color": "#ffffff",
         "font-size": "13px",
         "padding": "5px",
@@ -194,31 +184,20 @@
     },
     "QMenu::item": {
         "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #0D313A)",
-        "padding": "8px 20px",
+        "padding": "8px 30px",
         "margin": "1px",
-        "border-radius": "5px",
+        "border-radius": "3px",
         "border-left": "1px solid #009e98",
         "border-right": "1px solid #009e98"
     },
     "QMenu::item:selected": {
-        "border-radius": "5px",
+        "border-radius": "3px",
         "background-color": "#2ad0ca",
         "color": "#ffffff"
     },
     "QColorDialog QPushButton": {
         "padding-left": "5px",
         "padding-right": "5px"
-    },
-    "UserProfileWidget": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #0D313A)",
-        "color": "#e5e5e5",
-        "border": "1px solid #2ad0ca",
-        "border-radius": "10px"
-    },
-    "UserProfileWidget::hover": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #0D313A, stop:1 #000000)",
-        "border": "1px solid #2ad0ca",
-        "border-radius": "10px"
     },
     "QSlider::handle:horizontal": {
         "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #000000, stop:1 #0D313A)",
@@ -284,5 +263,50 @@
         "color": "#7ee5e2",
         "border": "none",
         "font-size": "15px"
+    },
+    "SidebarElement": {
+        "background": "transparent",
+        "color": "#e5e5e5",
+        "border-radius": "none",
+        "border": "none"
+    },
+    "SidebarElement::hover": {
+        "border-top": "1px solid#2ad0ca",
+        "border-bottom": "1px solid #2ad0ca"
+    },
+    "ToolButton": {
+        "background": "transparent",
+        "border-radius": "none",
+        "border": "none"
+    },
+    "VersionLabel": {
+        "background": "#2ad0ca",
+        "color": "#e5e5e5",
+        "border-radius": "10px",
+        "border": "none",
+        "padding": "6px",
+        "font-size": "13px"
+    },
+    "VersionLabel::hover": {
+        "border": "2px solid #7ee5e2"
+    },
+    "UpdateLabel": {
+        "background": "#2ad0ca",
+        "color": "#e5e5e5",
+        "border-radius": "10px",
+        "border": "none",
+        "padding": "6px",
+        "font-size": "14px"
+    },
+    "UpdateLabel::hover": {
+        "border": "2px solid #7ee5e2"
+    },
+    "UserProfileWidget": {
+        "background-color": "transparent",
+        "border": "1px solid #2ad0ca",
+        "border-radius": "17px"
+    },
+    "UserProfileWidget::hover": {
+        "border": "2px solid #2ad0ca"
     }
 }

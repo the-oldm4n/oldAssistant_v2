@@ -532,15 +532,27 @@ class SnowOverlay(QWidget):
         new_preset = self._choose_preset()
         self._start_interpolation(new_preset)
 
+    # def _init_snowflakes(self):
+    #     self.flakes = []
+    #     w, h = self.width(), self.height()
+    #     for _ in range(self.snowflake_count):
+    #         x = random.uniform(0, w)
+    #         y = random.uniform(-h, h)  # начинают за пределами сверху
+    #         size = random.uniform(self.flake_size_min, self.flake_size_max)
+    #         speed_factor = random.uniform(0.7, 1.3)
+    #         sway_offset = random.uniform(0, 1000)  # фаза для колебаний
+    #         self.flakes.append([x, y, size, speed_factor, sway_offset])
+    
     def _init_snowflakes(self):
         self.flakes = []
+        # Используем ТЕКУЩИЙ размер виджета, а не начальный
         w, h = self.width(), self.height()
         for _ in range(self.snowflake_count):
-            x = random.uniform(0, w)
-            y = random.uniform(-h, h)  # начинают за пределами сверху
+            x = random.uniform(0, w)  # от 0 до текущей ширины
+            y = random.uniform(-h, h)  # от -текущей высоты до текущей высоты
             size = random.uniform(self.flake_size_min, self.flake_size_max)
             speed_factor = random.uniform(0.7, 1.3)
-            sway_offset = random.uniform(0, 1000)  # фаза для колебаний
+            sway_offset = random.uniform(0, 1000)
             self.flakes.append([x, y, size, speed_factor, sway_offset])
 
     def resizeEvent(self, event):
@@ -639,7 +651,7 @@ class SnowOverlay(QWidget):
 
 
 class GarlandDecorator:
-    def __init__(self, target_widget, light_count=15, light_size=8, width=820):
+    def __init__(self, target_widget, light_count=15, light_size=8, width=920):
         self.target_widget = target_widget
         self.light_count = light_count
         self.light_size = light_size
@@ -671,6 +683,8 @@ class GarlandDecorator:
         
         self.original_paint_event = target_widget.paintEvent
         target_widget.paintEvent = self.custom_paint_event
+        
+        self.lights_density = light_count / width if width > 0 else 0.018
         self.generate_lights()
     
     def set_color_palette(self, palette_name):
@@ -703,6 +717,39 @@ class GarlandDecorator:
             self.hide()
         else:
             self.show()
+            
+    def update_size(self, new_width):
+        """Принудительное обновление размера гирлянды"""
+        if new_width > 0 and new_width != self.width:
+            self.width = new_width
+            # Пересчитываем количество лампочек для сохранения плотности
+            self.light_count = max(10, int(self.width * self.lights_density))
+            self.generate_lights()
+            self.target_widget.update()
+    
+    # def generate_lights(self):
+    #     self.lights = []
+    #     colors = self.color_palettes[self.current_palette]
+
+    #     padding = 10
+        
+    #     for i in range(self.light_count):
+    #         # Расчет позиции с учетом отступов
+    #         available_width = self.width - (2 * padding)
+    #         x = padding + (available_width * i) / max(1, self.light_count - 1)
+            
+    #         wave_height = 15
+    #         y_offset = (math.sin(i * 0.8) - 1) * (wave_height / 2)
+            
+    #         base_color = QColor(random.choice(colors))
+    #         self.lights.append({
+    #             'x': x, 
+    #             'y_offset': y_offset,
+    #             'base_color': base_color, 
+    #             'brightness': 0,
+    #             'size': self.light_size,
+    #             'phase': random.uniform(0, 2 * math.pi)
+    #         })
     
     def generate_lights(self):
         self.lights = []
@@ -711,7 +758,7 @@ class GarlandDecorator:
         padding = 10
         
         for i in range(self.light_count):
-            # Расчет позиции с учетом отступов
+            # Расчет позиции с учетом отступов и ТЕКУЩЕЙ ширины
             available_width = self.width - (2 * padding)
             x = padding + (available_width * i) / max(1, self.light_count - 1)
             

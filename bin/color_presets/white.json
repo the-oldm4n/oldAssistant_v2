@@ -27,7 +27,7 @@
         "color": "#000000",
         "height": "30px",
         "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)",
-        "border-radius": "2px",
+        "border-radius": "3px",
         "font-size": "13px",
         "margin": "0",
         "padding": "3px"
@@ -109,18 +109,8 @@
         "border": "none",
         "font-size": "15px"
     },
-    "label_version": {
-        "background": "transparent",
-        "color": "#ffffff",
-        "font-size": "10px"
-    },
     "label_message": {
         "color": "#000000",
-        "font-size": "13px"
-    },
-    "update_label": {
-        "background": "transparent",
-        "color": "#ffffff",
         "font-size": "13px"
     },
     "clock_mini": {
@@ -163,11 +153,11 @@
     },
     "MessageContainer": {
         "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)",
-        "border-radius": "10px"
+        "border-radius": "15px"
     },
     "WindowContainer": {
         "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)",
-        "border-radius": "10px"
+        "border-radius": "15px"
     },
     "MainWindowWidget": {
         "border": "none",
@@ -185,7 +175,7 @@
         "border": "none"
     },
     "QMenu": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #9192af, stop:1 #a1a1bf)",
+        "background-color": "qlineargradient(x1:0.32, y1:0.03, x2:0.68, y2:0.97, stop:0 #7b7c9e, stop:1 #a8aabe)",
         "color": "#ffffff",
         "font-size": "13px",
         "padding": "5px",
@@ -194,31 +184,20 @@
     },
     "QMenu::item": {
         "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #9192af, stop:1 #a1a1bf)",
-        "padding": "8px 20px",
+        "padding": "8px 30px",
         "margin": "1px",
-        "border-radius": "5px",
+        "border-radius": "3px",
         "border-left": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #594ab0, stop:1 #6e6ecd)",
         "border-right": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #594ab0, stop:1 #6e6ecd)"
     },
     "QMenu::item:selected": {
-        "border-radius": "5px",
+        "border-radius": "3px",
         "background-color": "qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)",
         "color": "#ffffff"
     },
     "QColorDialog QPushButton": {
         "padding-left": "5px",
         "padding-right": "5px"
-    },
-    "UserProfileWidget": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #9192af, stop:1 #a1a1bf)",
-        "color": "#000000",
-        "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)",
-        "border-radius": "10px"
-    },
-    "UserProfileWidget::hover": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #a1a1bf, stop:1 #9192af)",
-        "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)",
-        "border-radius": "10px"
     },
     "QSlider::handle:horizontal": {
         "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #9192af, stop:1 #a1a1bf)",
@@ -284,5 +263,50 @@
         "color": "#ffffff",
         "border": "none",
         "font-size": "15px"
+    },
+    "SidebarElement": {
+        "background": "transparent",
+        "color": "#000000",
+        "border-radius": "none",
+        "border": "none"
+    },
+    "SidebarElement::hover": {
+        "border-top": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)",
+        "border-bottom": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)"
+    },
+    "ToolButton": {
+        "background": "transparent",
+        "border-radius": "none",
+        "border": "none"
+    },
+    "VersionLabel": {
+        "background": "qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)",
+        "color": "#000000",
+        "border-radius": "10px",
+        "border": "none",
+        "padding": "6px",
+        "font-size": "13px"
+    },
+    "VersionLabel::hover": {
+        "border": "2px solid #ffffff"
+    },
+    "UpdateLabel": {
+        "background": "qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)",
+        "color": "#000000",
+        "border-radius": "10px",
+        "border": "none",
+        "padding": "6px",
+        "font-size": "14px"
+    },
+    "UpdateLabel::hover": {
+        "border": "2px solid #ffffff"
+    },
+    "UserProfileWidget": {
+        "background-color": "transparent",
+        "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)",
+        "border-radius": "17px"
+    },
+    "UserProfileWidget::hover": {
+        "border": "2px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #8b7ce2, stop:1 #a0a0ff)"
     }
 }

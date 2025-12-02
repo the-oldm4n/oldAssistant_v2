@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QPushButton, QSpinBox, QSlide
     QColorDialog, QCheckBox, QHBoxLayout, QComboBox, QApplication, QLineEdit
 from bin.apply_color_methods import ApplyColor
 from bin.custom_svg_widget import CustomSvgWidget
+from bin.custom_widgets import CustomToggle
 from bin.signals import color_signal, update_presets_signal
 from logging_config import debug_logger
 from path_builder import get_path
@@ -277,7 +278,7 @@ class ColorSettingsWindow(QDialog):
         layout.setSpacing(10)
 
         # Чекбокс для включения градиента
-        checkbox = QCheckBox(f'Использовать градиент для {title.lower()}')
+        checkbox = CustomToggle(f'Использовать градиент для {title.lower()}')
         checkbox.setStyleSheet("background-color: transparent")
         checkbox.stateChanged.connect(lambda state: self.toggle_gradient(element_type, state))
         layout.addWidget(checkbox)
@@ -437,7 +438,7 @@ class ColorSettingsWindow(QDialog):
         layout.addLayout(main_radius_layout)
 
         # === Бордер у главного окна ===
-        self.main_border_checkbox = QCheckBox("Показывать бордер у главного окна")
+        self.main_border_checkbox = CustomToggle("Показывать бордер у главного окна")
         self.main_border_checkbox.setStyleSheet("background: transparent")
         self.main_border_checkbox.setChecked(self.border_in_main_window)
         self.main_border_checkbox.stateChanged.connect(self.on_border_state_changed)
@@ -1184,18 +1185,8 @@ class ColorSettingsWindow(QDialog):
                         "border": "none",
                         "font-size": "15px"
                     },
-                    "label_version": {
-                        "background": "transparent",
-                        "color": self.text_edit_color,
-                        "font-size": "10px"
-                    },
                     "label_message": {
                         "color": self.text_color,
-                        "font-size": "13px"
-                    },
-                    "update_label": {
-                        "background": "transparent",
-                        "color": self.text_edit_color,
                         "font-size": "13px"
                     },
                     "clock_mini": {
@@ -1299,20 +1290,6 @@ class ColorSettingsWindow(QDialog):
                         "padding-left": "5px",
                         "padding-right": "5px"
                     },
-                    "UserProfileWidget": {
-                        "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
-                            'enabled'] else self.btn_color,
-                        "color": self.text_color,
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": f"{self.border_btn_radius}px",
-                    },
-                    "UserProfileWidget::hover": {
-                        "background-color": self.get_hover_gradient_css('buttons'),
-                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
-                            'enabled'] else f"1px solid {self.border_color}",
-                        "border-radius": f"{self.border_btn_radius}px",
-                    },
                     "QSlider::handle:horizontal": {
                         "background-color": self.get_gradient_css('buttons') if self.gradient_settings['buttons'][
                             'enabled'] else self.btn_color,
@@ -1384,6 +1361,57 @@ class ColorSettingsWindow(QDialog):
                         "color": self.text_edit_color,
                         "border": "none",
                         "font-size": "15px"
+                    },
+                    "SidebarElement": {
+                        "background": "transparent",
+                        "color": self.text_color,
+                        "border-radius": "none",
+                        "border": "none"
+                    },
+                    "SidebarElement::hover": {
+                        "border-top": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid{self.border_color}",
+                        "border-bottom": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}"
+                    },
+                    "ToolButton": {
+                        "background": "transparent",
+                        "border-radius": "none",
+                        "border": "none"
+                    },
+                    "VersionLabel": {
+                        "background": f"{self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"{self.border_color}",
+                        "color": self.text_color,
+                        "border-radius": "10px",
+                        "border": "none",
+                        "padding": "6px",
+                        "font-size": "13px"
+                    },
+                    "VersionLabel::hover": {
+                        "border": f"2px solid {self.text_edit_color}"
+                    },
+                    "UpdateLabel": {
+                        "background": f"{self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"{self.border_color}",
+                        "color": self.text_color,
+                        "border-radius": "10px",
+                        "border": "none",
+                        "padding": "6px",
+                        "font-size": "14px"
+                    },
+                    "UpdateLabel::hover": {
+                        "border": f"2px solid {self.text_edit_color}"
+                    },
+                    "UserProfileWidget": {
+                        "background-color": "transparent",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": "17px"
+                    },
+                    "UserProfileWidget::hover": {
+                        "border": f"2px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"2px solid {self.border_color}"
                     }
         }
        
@@ -1417,7 +1445,7 @@ class ColorSettingsWindow(QDialog):
         reference = self.reference_style()
 
         # Сливаем с сохранением порядка
-        merged = self.merge_with_reference(current, reference)
+        merged = self.merge_with_reference(reference)
 
         # Сохраняем обратно
         try:
@@ -1456,35 +1484,13 @@ class ColorSettingsWindow(QDialog):
         debug_logger.info(f"✅ Обновлено файлов: {len(updated_files)} в папках: {folders}")
         return updated_files
     
-    def merge_with_reference(self, current_style, reference_style):
+    def merge_with_reference(self, reference_style):
         """
-        Сливает current_style и reference_style, сохраняя:
-        - Порядок селекторов как в reference_style
-        - Текущие значения из current_style (если есть)
-        - Все селекторы из reference_style (гарантированно)
+        Полная синхронизация со reference_style.
+        Все значения берутся из reference_style.
+        current_style используется ТОЛЬКО как источник для последующего применения настроек цвета.
         """
-        merged = {}
-
-        for selector in reference_style:
-            ref_props = reference_style[selector]
-            cur_props = current_style.get(selector, {})
-
-            # Начинаем с эталонных свойств (гарантируем наличие всех ключей)
-            merged_props = dict(ref_props)  # копируем структуру
-
-            # Перезаписываем только те свойства, которые уже есть в current
-            for prop, value in cur_props.items():
-                merged_props[prop] = value
-
-            merged[selector] = merged_props
-
-        # (Опционально) добавить "лишние" селекторы из current, которых нет в reference
-        # Обычно не нужно, но на всякий случай:
-        for selector in current_style:
-            if selector not in reference_style:
-                merged[selector] = current_style[selector]
-
-        return merged
+        return dict(reference_style)
 
 
 class GradientPreview(QLabel):

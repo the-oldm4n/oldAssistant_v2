@@ -4,6 +4,7 @@ import sounddevice as sd
 import winshell
 from PySide6.QtGui import QFontDatabase, QFont
 
+from bin.custom_widgets import CustomToggle
 from bin.lists import fonts_list, default_keywords_data, setup_custom_font_label
 from bin.signals import color_signal, widget_btns_signal, update_presets_signal
 from bin.speak_functions import thread_react
@@ -512,28 +513,28 @@ class OtherSettingsWidget(QWidget):
         layout.setSpacing(10)
 
         # Чекбоксы
-        self.censor_check = QCheckBox("Реагировать на мат", self)
+        self.censor_check = CustomToggle("Реагировать на мат")
         self.censor_check.setStyleSheet("background: transparent;")
         self.censor_check.setChecked(self.assistant.is_censored)
         self.censor_check.stateChanged.connect(self.toggle_censor)
         self.censor_check.setProperty("helpId", "censor_check")
         layout.addWidget(self.censor_check)
         
-        self.correct_command_check = QCheckBox("Запоминать предыдущую команду", self)
+        self.correct_command_check = CustomToggle("Запоминать предыдущую команду")
         self.correct_command_check.setStyleSheet("background: transparent;")
         self.correct_command_check.setChecked(self.assistant.is_corrected_command)
         self.correct_command_check.stateChanged.connect(self.toggle_correct_command)
         self.correct_command_check.setProperty("helpId", "correct_command_check")
         layout.addWidget(self.correct_command_check)
 
-        self.update_check = QCheckBox("Запуск утилиты обновления \n перед стартом программы", self)
+        self.update_check = CustomToggle("Запуск утилиты обновления \n перед стартом программы")
         self.update_check.setStyleSheet("background: transparent;")
         self.update_check.setChecked(self.assistant.run_updater)
         self.update_check.stateChanged.connect(self.toggle_update)
         self.update_check.setProperty("helpId", "update_check")
         layout.addWidget(self.update_check)
 
-        self.start_win_check = QCheckBox("Запуск с Windows", self)
+        self.start_win_check = CustomToggle("Запуск с Windows")
         self.start_win_check.setStyleSheet("background: transparent;")
         self.start_win_check.setChecked(self.assistant.toggle_start)
         self.start_win_check.stateChanged.connect(self.assistant.toggle_start_win)
@@ -541,14 +542,14 @@ class OtherSettingsWidget(QWidget):
         layout.addWidget(self.start_win_check)
 
         # Чекбокс для сворачивания в трей
-        self.minimize_check = QCheckBox("Сворачивать в трей при запуске", self)
+        self.minimize_check = CustomToggle("Сворачивать в трей при запуске")
         self.minimize_check.setStyleSheet("background: transparent;")
         self.minimize_check.setChecked(self.assistant.is_min_tray)
         self.minimize_check.stateChanged.connect(self.toggle_minimize)
         self.minimize_check.setProperty("helpId", "minimize_check")
         layout.addWidget(self.minimize_check)
 
-        self.widget_check = QCheckBox("Запускать виджет", self)
+        self.widget_check = CustomToggle("Запускать виджет")
         self.widget_check.setStyleSheet("background: transparent;")
         self.widget_check.setToolTip("Открытие виджета при запуске программы")
         self.widget_check.setChecked(self.assistant.is_widget)
@@ -556,8 +557,8 @@ class OtherSettingsWidget(QWidget):
         self.widget_check.setProperty("helpId", "widget_check")
         layout.addWidget(self.widget_check)
 
-        self.keep_watch_check = QCheckBox("Обрабатывать команды \nбез имени ассистента"
-                                          "\n(возможны ложные срабатывания)", self)
+        self.keep_watch_check = CustomToggle("Обрабатывать команды \nбез имени ассистента"
+                                          "\n(возможны ложные срабатывания)")
         self.keep_watch_check.setStyleSheet("background: transparent;")
         self.keep_watch_check.setToolTip("Расширенная обработка команд")
         self.keep_watch_check.setChecked(self.assistant.is_keep_watch)
@@ -565,7 +566,7 @@ class OtherSettingsWidget(QWidget):
         self.keep_watch_check.setProperty("helpId", "keep_watch_check")
         layout.addWidget(self.keep_watch_check)
         
-        self.snow_check = QCheckBox("Снег на главном окне", self)
+        self.snow_check = CustomToggle("Снег на главном окне")
         self.snow_check.setStyleSheet("background: transparent;")
         self.snow_check.setToolTip("Показывать снег на главном окне")
         self.snow_check.setChecked(self.assistant.is_snow)
@@ -573,7 +574,7 @@ class OtherSettingsWidget(QWidget):
         self.snow_check.setProperty("helpId", "snow_check")
         layout.addWidget(self.snow_check)
         
-        self.garland_check = QCheckBox("Гирлянда на главном окне", self)
+        self.garland_check = CustomToggle("Гирлянда на главном окне")
         self.garland_check.setStyleSheet("background: transparent;")
         self.garland_check.setToolTip("Показывать гирлянду")
         self.garland_check.setChecked(self.assistant.is_garland)
@@ -830,8 +831,7 @@ class SpeechHookManagerWidget(QWidget):
         # Создаем виджет для контента
         content_widget = QWidget()
         scroll_area.setWidget(content_widget)
-        content_widget.setMaximumWidth(325)
-        
+
         # Создаем layout для контента
         layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(5, 5, 5, 5)
@@ -880,6 +880,7 @@ class SpeechHookManagerWidget(QWidget):
         # Кнопка сброса
         self.reset_button = QPushButton("Сбросить к значениям по умолчанию")
         self.reset_button.clicked.connect(self.reset_to_default)
+        self.reset_button.setProperty("helpId", "reset_words_list")
         layout.addWidget(self.reset_button)
 
         # Добавляем скролл в основной layout

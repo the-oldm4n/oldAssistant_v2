@@ -30,16 +30,17 @@ import subprocess
 from vosk import Model, KaldiRecognizer
 from PySide6.QtGui import (QIcon, QCursor, QFont, QColor, QDesktopServices, QAction, QPixmap, QFontDatabase,
 QPen, QPainter, QBrush, QPainterPath)
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QImage, QMouseEvent
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (QApplication, QWidget, QLineEdit, QVBoxLayout, QHBoxLayout, \
                                QPushButton, QSystemTrayIcon, QMenu, QMessageBox, \
                                QTextEdit, QDialog, QLabel, QTextBrowser, QMainWindow, QSizePolicy,
                                QGraphicsColorizeEffect, QTabWidget, QSpacerItem, QTabBar)
 from PySide6.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, Signal, QPropertyAnimation, QPoint, \
-    QEasingCurve, Slot, QUrl, QThread
+    QEasingCurve, Slot, QUrl, QThread, QRect
 from bin.apply_color_methods import ApplyColor
 from bin.check_update import GetManifestThread, get_update_strategy, load_changelog, VersionCheckThread
+from bin.custom_widgets import AnimatedSidebar, GlowButton, VersionLabel
 from bin.download_thread import DeltaDownloadThread, DownloadThread
 from bin.frosted_widget import GarlandDecorator, SnowOverlay
 from bin.help_widget import HelpWidget
@@ -60,10 +61,10 @@ from bin.audio_control import controller
 from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel, SpeechHookManagerWidget
 from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react
 from logging_config import logger, debug_logger
-from bin.lists import get_audio_paths, commands_list, default_keywords_data, setup_global_font
+from bin.lists import get_audio_paths, commands_list, default_keywords_data, setup_custom_font_label, setup_global_font
 
 build_ini = get_config_value("app", "build")
-version_file = "2.1.4"
+version_file = "2.1.5"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -133,8 +134,8 @@ class Assistant(QMainWindow):
         super().__init__()
         self.start_ipc_server()
         self.version = self.get_version()
-        self.ps = "Powered by theoldman"
-        self.label_version = QLabel(f"Версия: {self.version} {self.ps}", self)
+        # self.ps = "Powered by theoldman"
+        self.label_version = VersionLabel(version=self.version)
         self.latest_version_url = None
         self.latest_version = None
         self.current_ver = None
@@ -158,6 +159,7 @@ class Assistant(QMainWindow):
         self.is_manual_check = False
         self.stop_checking = False
         self.is_force_close = False
+        self._is_checking_log = False
         self.count = 0
         gui_signals.open_widget_signal.connect(self.open_widget)
         gui_signals.close_widget_signal.connect(self.close_widget)
@@ -215,6 +217,7 @@ class Assistant(QMainWindow):
         self.auth = AuthManager(domain)
         self.user_data = self.auth.user_data
         self.is_admin = True if self.auth.load_auth_data_id() == 1 else False
+        self.get_btns_data()
         self.init_ui()
         self.splash = InitScreen()
         self.splash.init_complete.connect(self.handle_init_result)
@@ -230,6 +233,8 @@ class Assistant(QMainWindow):
         self.check_autostart()
         self.check_start_win()
         self.check_start_widget()
+        self.init_file_watcher()
+        self.load_existing_logs()
         # Прятать ли программу в трей
         if self.is_min_tray:
             # Показ окна при первом запуске(для отладки)
@@ -250,6 +255,7 @@ class Assistant(QMainWindow):
         self.update_checker = QTimer()
         self.update_checker.timeout.connect(self.check_update_app)
         self.update_checker.start(3600000)  # Чек обновлений раз в 60 минут (3600000)
+        
 
     def handle_init_result(self, success):
         """Обработчик результата инициализации"""
@@ -265,22 +271,58 @@ class Assistant(QMainWindow):
         return version_file
 
     def title_bar_mouse_press(self, event):
-        """Обработка нажатия мыши на заголовок"""
         if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            global_pos = event.globalPosition().toPoint()
+            window_pos = self.mapFromGlobal(global_pos)
+            region = self.get_cursor_region(window_pos)
+            
+            # ТОЛЬКО верхние края для масштабирования в title bar
+            if region in ["top", "top-left", "top-right", "left", "right"]:
+                self.drag_direction = region
+                self.dragging = True
+                self.drag_position = global_pos
+                self.initial_geometry = self.geometry()
+            elif region == "center":  # Только центр для перемещения
+                self.drag_pos = global_pos - self.frameGeometry().topLeft()
             event.accept()
 
     def title_bar_mouse_move(self, event):
         """Обработка перемещения мыши при удерживании на заголовке"""
-        if self.drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
-            # Получаем новую позицию основного окна
-            new_pos = event.globalPosition().toPoint() - self.drag_pos
+        global_pos = event.globalPosition().toPoint()
+        window_pos = self.mapFromGlobal(global_pos)
+        region = self.get_cursor_region(window_pos)
+        
+        # Обновляем курсор для ВСЕХ регионов
+        cursor_map = {
+            "top": Qt.CursorShape.SizeVerCursor,
+            "bottom": Qt.CursorShape.SizeVerCursor,
+            "left": Qt.CursorShape.SizeHorCursor,
+            "right": Qt.CursorShape.SizeHorCursor,
+            "top-left": Qt.CursorShape.SizeFDiagCursor,
+            "top-right": Qt.CursorShape.SizeBDiagCursor,
+            "bottom-left": Qt.CursorShape.SizeBDiagCursor,
+            "bottom-right": Qt.CursorShape.SizeFDiagCursor,
+            "center": Qt.CursorShape.ArrowCursor
+        }
+        self.setCursor(cursor_map.get(region, Qt.CursorShape.ArrowCursor))
+        
+        # Но обрабатываем перетаскивание ТОЛЬКО для верхних краев
+        if self.dragging and self.drag_direction in ["top", "top-left", "top-right", "left", "right"]:
+            self.handle_resize(global_pos)
+            event.accept()
+        elif self.drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
+            new_pos = global_pos - self.drag_pos
             self.move(new_pos)
             event.accept()
 
     def title_bar_mouse_release(self, event):
         """Обработка отпускания кнопки мыши"""
         self.drag_pos = None
+        self.dragging = False
+        self.drag_direction = None
+        self.initial_geometry = None
+        self.reached_min_size = False
+        self.setCursor(Qt.CursorShape.ArrowCursor)
         event.accept()
 
     def install_settings(self):
@@ -328,16 +370,90 @@ class Assistant(QMainWindow):
         self.icon_process_link_path = get_path("bin", "icons", "process_link.svg")
         self.default_avatar_path = get_path("bin", "icons", "default_avatar.svg")
         self.update_light_path = get_path("bin", "icons", "update_light.svg")
+        self.icon_main_settings_path = get_path("bin", "icons", "main_settings.svg")
+        self.icon_clear_logs_path = get_path("bin", "icons", "clear_log.svg")
+        
+    def icons_data(self):
+        icon_paths = {
+            "settings": get_path("bin", "icons", "settings.svg"),
+            "shortcut": get_path("bin", "icons", "shortcut.svg"),
+            "power": get_path("bin", "icons", "power.svg"),
+            "guide": get_path("bin", "icons", "guide.svg"),
+            "open_widget": get_path("bin", "icons", "open_widget.svg"),
+            "commands": get_path("bin", "icons", "commands.svg"),
+            "other": get_path("bin", "icons", "other.svg"),
+        }
+        return icon_paths
+    
+    def get_btns_data(self):
+        self.buttons_data = [
+            {
+                "key": "settings",
+                "text": "Настройки",
+                "icon_path": get_path("bin", "icons", "settings.svg"),
+                "svg_attr": "settings_svg",
+                "slot": self.open_main_settings
+            },
+            {
+                "key": "shortcuts",
+                "text": "Ярлыки",
+                "icon_path": get_path("bin", "icons", "shortcut.svg"),
+                "svg_attr": "shortcut_svg",
+                "slot": self.open_folder_shortcuts
+            },
+            {
+                "key": "commands",
+                "text": "Команды",
+                "icon_path": get_path("bin", "icons", "commands.svg"),
+                "svg_attr": "commands_svg",
+                "slot": self.open_commands_settings
+            },
+            {
+                "key": "other",
+                "text": "Прочее",
+                "icon_path": get_path("bin", "icons", "other.svg"),
+                "svg_attr": "other_svg",
+                "slot": self.other_options
+            },
+            {
+                "key": "guide",
+                "text": "Обучение",
+                "icon_path": get_path("bin", "icons", "guide.svg"),
+                "svg_attr": "guide_svg",
+                "slot": self.guide_options
+            },
+            {
+                "key": "start",
+                "text": "Старт ассистента",
+                "icon_path": get_path("bin", "icons", "power.svg"),
+                "svg_attr": "power_svg",
+                "slot": self.start_assist_toggle
+            },
+            {
+                "key": "widget",
+                "text": "Открыть виджет",
+                "icon_path": get_path("bin", "icons", "open_widget.svg"),
+                "svg_attr": "widget_svg",
+                "slot": self.open_widget
+            }
+        ]
+        return self.buttons_data
 
     def init_ui(self):
         """Инициализация пользовательского интерфейса."""
         try:
-            # Убираем стандартную рамку окна
+            self.margin = 7
+            self.dragging = False
+            self.drag_position = None
+            self.drag_direction = None
+            self.initial_geometry = None
+            self.reached_min_size = False
+
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
             self.setWindowIcon(QIcon(get_path('icon_assist.ico')))
             self.setWindowTitle("Ассистент")
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-            self.setFixedSize(820, 700)
+            self.resize(920, 700)
 
             # Центрирование окна
             screen_geometry = self.screen().availableGeometry()
@@ -352,6 +468,7 @@ class Assistant(QMainWindow):
             self.central_widget = QWidget()
             self.central_widget.setObjectName("MainWindowWidget") 
             self.setCentralWidget(self.central_widget)
+            self.central_widget.setMouseTracking(True)
             
             self.update_snow_state()
 
@@ -384,6 +501,26 @@ class Assistant(QMainWindow):
             self.title_bar_layout.addWidget(self.progress_load)
             
             self.title_bar_layout.addStretch()
+            
+            # Виджет профиля
+            self.user_profile_widget = QWidget()
+            self.user_profile_widget.setObjectName("UserProfileWidget")
+            self.user_profile_widget.setFixedSize(34, 34)
+            self.user_profile_widget.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.user_profile_widget.mousePressEvent = self.on_profile_click
+            self.user_profile_layout = QHBoxLayout(self.user_profile_widget)
+            self.user_profile_layout.setContentsMargins(0, 0, 0, 0)
+
+            # Аватарка
+            self.avatar_svg = CustomSvgWidget(self.default_avatar_path)
+            self.avatar_svg.setFixedSize(30, 30)
+            self.avatar_svg.setStyleSheet("background: transparent; border: none;")
+            self.avatar_color_svg = QGraphicsColorizeEffect()
+            self.avatar_svg.setGraphicsEffect(self.avatar_color_svg)
+            self.style_manager.apply_color_svg(self.avatar_svg, strength=0.90)
+
+            self.user_profile_layout.addWidget(self.avatar_svg)
+            self.title_bar_layout.addWidget(self.user_profile_widget)
             
             self.update_btn = QPushButton()
             self.update_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -441,170 +578,38 @@ class Assistant(QMainWindow):
             main_layout.setContentsMargins(5, 5, 5, 5)
             
             self.update_garland_state()
-
-            # === ЛЕВАЯ ЧАСТЬ: Контейнер с динамической шириной ===
-            self.left_container = QWidget()
-            self.left_container.setMaximumWidth(230)
-            self.left_container.setMinimumWidth(0)
-            self.left_container_layout = QVBoxLayout(self.left_container)
-            self.left_container_layout.setContentsMargins(5, 5, 5, 5)
-            self.left_container_layout.setSpacing(5)
-            self.left_container.setObjectName("WMLeftContainer")
-
-            self.spacer = QSpacerItem(230, 1, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-            self.left_container_layout.addSpacerItem(self.spacer)
-
-            # === 1. Основные кнопки ===
-            self.left_buttons_panel = QWidget()
-            self.left_buttons_panel.setObjectName("WMLeftButtonsPanel")
-            self.buttons_layout = QVBoxLayout(self.left_buttons_panel)
-            self.buttons_layout.setContentsMargins(0, 0, 0, 0)
-            self.buttons_layout.setSpacing(5)
             
-            # Словарь для хранения кнопок
-            self.buttons = {}
-
-            buttons_data = [
+            # === Сайдбар с элементами управления ===
+            sidebar_elements = [
                 {
-                    "key": "settings",
-                    "text": "Настройки",
-                    "icon_path": self.icon_settings_path,
-                    "slot": self.open_main_settings,
-                    "svg_attr": "settings_svg"
-                },
-                {
-                    "key": "shortcuts", 
-                    "text": "Ярлыки", 
-                    "icon_path": self.icon_shortcut_path,
-                    "slot": self.open_folder_shortcuts,
-                    "svg_attr": "shortcut_svg"
-                },
-                {
-                    "key": "commands",
-                    "text": "Команды",
-                    "icon_path": self.icon_commands_path, 
-                    "slot": self.open_commands_settings,
-                    "svg_attr": "commands_svg"
-                },
-                {
-                    "key": "other",
-                    "text": "Прочее",
-                    "icon_path": self.icon_other_path,
-                    "slot": self.other_options, 
-                    "svg_attr": "other_svg"
-                },
-                {
-                    "key": "guide",
-                    "text": "Обучение",
-                    "icon_path": self.icon_guide_path,
-                    "slot": self.guide_options,
-                    "svg_attr": "guide_svg"
-                },
-                {
-                    "key": "start", 
-                    "text": "Старт ассистента", 
-                    "icon_path": self.icon_power_path,
-                    "slot": self.start_assist_toggle,
-                    "svg_attr": "power_svg"
-                },
-                {
-                    "key": "widget",
-                    "text": "Открыть виджет",
-                    "icon_path": self.icon_widget_path,
-                    "slot": self.open_widget,
-                    "svg_attr": "widget_svg"
+                    "key": item["key"],
+                    "text": item["text"],
+                    "icon_path": item["icon_path"]
                 }
+                for item in self.buttons_data
             ]
+            self.sidebar = AnimatedSidebar(elements_data=sidebar_elements)
+            self._sidebar_slot_map = {item["key"]: item["slot"] for item in self.buttons_data}
+            self.sidebar.element_clicked.connect(self._handle_sidebar_click)
+            main_layout.addWidget(self.sidebar)
 
-            # Создаем кнопки через цикл
-            for button_data in buttons_data:
-                button = QPushButton(button_data["text"])
-                button.clicked.connect(button_data["slot"])
-                button.setStyleSheet("height: 40px; text-align: left; padding-left:50px")
-                
-                # Создаем SVG иконку
-                svg_widget = CustomSvgWidget(button_data["icon_path"], button)
-                svg_widget.setFixedSize(30, 30)
-                svg_widget.move(10, 5)
-                svg_widget.setStyleSheet("background:transparent;")
-                
-                # Сохраняем кнопку в словарь
-                self.buttons[button_data["key"]] = button
-                # Сохраняем ссылку на SVG как атрибут экземпляра
-                setattr(self, button_data["svg_attr"], svg_widget)
-                
-                self.buttons_layout.addWidget(button)
-
-            self.buttons_layout.addStretch()
-            
-            # self.btn_test = QPushButton()
-            # self.btn_test.clicked.connect(self.update_style_list)
-            # self.buttons_layout.addWidget(self.btn_test, alignment=Qt.AlignmentFlag.AlignCenter)
-            
-            if self.is_admin:
-                self.btn_update_all_presets = QPushButton("Обновить пресеты")
-                self.btn_update_all_presets.clicked.connect(self.update_style_all)
-                self.buttons_layout.addWidget(self.btn_update_all_presets)
-            
-            self.user_profile_widget = QWidget()
-            self.user_profile_widget.setObjectName("UserProfileWidget")
-            self.user_profile_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-            self.user_profile_widget.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.user_profile_widget.mousePressEvent = self.on_profile_click
-
-            self.user_profile_layout = QHBoxLayout(self.user_profile_widget)
-            self.user_profile_layout.setContentsMargins(10, 5, 10, 5)
-            self.user_profile_layout.setSpacing(8)
-            self.user_profile_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-
-            # Аватарка
-            self.avatar_svg = CustomSvgWidget(self.default_avatar_path)
-            self.avatar_svg.setFixedSize(40, 40)
-            self.avatar_svg.setStyleSheet("background: transparent; border: none;")
-            self.avatar_color_svg = QGraphicsColorizeEffect()
-            self.avatar_svg.setGraphicsEffect(self.avatar_color_svg)
-            self.style_manager.apply_color_svg(self.avatar_svg, strength=0.90)
-
-            # Юзернейм
-            self.username_label = QLabel("Username")
-            self.username_label.setStyleSheet("background: transparent;")
-
-            self.user_profile_layout.addWidget(self.avatar_svg)
-            self.user_profile_layout.addWidget(self.username_label)
-
-            # Добавляем виджет в правый layout
-            self.buttons_layout.addWidget(self.user_profile_widget, stretch=1)
-
-            self.update_label = QLabel("Установлена последняя версия") # Установлена последняя версия
-            self.update_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            self.update_label.mousePressEvent = self.update_answer
-            self.buttons_layout.addWidget(self.update_label)
-
-            self.label_version.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            self.label_version.mousePressEvent = self.changelog_window
-            self.buttons_layout.addWidget(self.label_version)
-
-            # Добавляем панель кнопок в контейнер
-            self.left_container_layout.addWidget(self.left_buttons_panel)
-
-            # === 2. Панель настроек (изначально скрыта) ===
+            # === Изменяемая панель (изначально скрыта) ===
             self.mutable_panel = QWidget()
             self.mutable_panel.setObjectName("WM_MutablePanel")
+            self.mutable_panel.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
             self.mutable_layout = QVBoxLayout(self.mutable_panel)
             self.mutable_layout.setContentsMargins(5, 5, 5, 5)
             self.mutable_panel.hide()
 
-            self.left_container_layout.addWidget(self.mutable_panel)
+            main_layout.addWidget(self.mutable_panel)
 
-            # === ПРАВАЯ ЧАСТЬ: Логи + иконки ===
+            # === ПРАВАЯ ЧАСТЬ: Логи + подсказки ===
             self.right_layout = QVBoxLayout()
             self.right_layout.setContentsMargins(5, 5, 5, 5)
 
-            # Компактная панель (иконки)
-            self._setup_compact_toolbar()
-            self.right_layout.addLayout(self.compact_layout)
-            self.hide_layout(self.compact_layout)
+            self.label_version.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.label_version.mousePressEvent = self.changelog_window
+            self.right_layout.addWidget(self.label_version, alignment=Qt.AlignmentFlag.AlignRight)
 
             # Логи
             self.log_area = QTextEdit()
@@ -616,23 +621,57 @@ class Assistant(QMainWindow):
             self.help_widget = HelpWidget()
             self.help_widget.hide()
             
-            self.clear_logs_button = QPushButton("Очистить логи")
-            self.clear_logs_button.clicked.connect(self.clear_logs)
+            options_layout = QHBoxLayout()
+            options_layout.addStretch()
             
+            if self.is_admin:
+                self.btn_update_all_presets = QPushButton()
+                self.btn_update_all_presets.setObjectName("ToolButton")
+                self.btn_update_all_presets.setFixedSize(35, 35)
+                self.btn_update_all_presets.setStyleSheet("background: transparent;")
+                self.btn_update_all_presets.setToolTip("Обновить пресеты")
+                self.btn_update_all_presets.clicked.connect(self.update_style_all)
+                self.btn_update_all_presets.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+                self.update_all_preset_svg = CustomSvgWidget(self.update_light_path, self.btn_update_all_presets)
+                self.update_all_preset_svg.setFixedSize(35, 35)
+                self.update_all_preset_svg.setStyleSheet("background: transparent;")
+                options_layout.addWidget(self.btn_update_all_presets)
+                
+            
+            self.clear_logs_button = QPushButton()
+            self.clear_logs_button.setObjectName("ToolButton")
+            self.clear_logs_button.setStyleSheet("background: transparent;")
+            self.clear_logs_button.setToolTip("Очистить логи")
+            self.clear_logs_button.setFixedSize(40, 40)
+            self.clear_logs_button.clicked.connect(self.clear_logs)
+            self.clear_logs_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.clear_logs_svg = CustomSvgWidget(self.icon_clear_logs_path, self.clear_logs_button)
+            self.clear_logs_svg.setFixedSize(40, 40)
+            self.clear_logs_svg.setStyleSheet("background: transparent;")
+            options_layout.addWidget(self.clear_logs_button, alignment=Qt.AlignmentFlag.AlignRight)
+            
+            self.update_label = QLabel("Стабильная версия") # Стабильная версия
+            self.update_label.setToolTip("Проверить обновления")
+            self.update_label.setObjectName("UpdateLabel")
+            self.update_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.update_label.mousePressEvent = self.update_answer
+
             self.right_layout.addWidget(self.log_area)
             self.right_layout.addWidget(self.help_widget)
-            self.right_layout.addWidget(self.clear_logs_button)
+            self.right_layout.addLayout(options_layout)
+            self.right_layout.addWidget(self.update_label, alignment=Qt.AlignmentFlag.AlignRight)
 
             # === Добавляем в main_layout ===
-            main_layout.addWidget(self.left_container)
+            # main_layout.addWidget(self.left_container)
             main_layout.addLayout(self.right_layout)
 
             root_layout.addWidget(self.content_widget)
 
             # === Анимация ширины ===
-            self.animation = QPropertyAnimation(self.left_container, b"geometry")
-            self.animation.setDuration(300)
-            self.animation.setEasingCurve(QEasingCurve.Type.OutBack)
+            # self.animation = QPropertyAnimation(self.left_container, b"geometry")
+            self.animation = QPropertyAnimation(self.mutable_panel, b"maximumWidth")
+            self.animation.setDuration(500)
+            self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
             # === Tray, логи, прочее ===
             self.tray_icon = QSystemTrayIcon(self)
@@ -663,16 +702,154 @@ class Assistant(QMainWindow):
             self.tray_icon.setContextMenu(self.menu_tray)
             self.tray_icon.activated.connect(self.on_tray_icon_activated)
             self.tray_icon.show()
-
-            self.init_file_watcher()
-            self.load_existing_logs()
-
-            self.timer = QTimer()
-            self.timer.timeout.connect(self.check_log)
-            self.timer.start(1000)
-
+            
+            self.centralWidget().adjustSize()
+            self.minimum_size = self.centralWidget().minimumSizeHint()
+            debug_logger.debug(f"Минимальный размер контента: {self.minimum_size.width()}x{self.minimum_size.height()}")      
+            self.setup_mouse_tracking_for_children(self.central_widget)
         except Exception as e:
             debug_logger.error(f"Ошибка при инициализации GUI: {e}")
+            
+    def _handle_sidebar_click(self, key: str):
+        slot = self._sidebar_slot_map.get(key)
+        if slot and callable(slot):
+            slot()
+        else:
+            debug_logger.error(f"Нет слота для ключа: {key}")
+            
+    def setup_mouse_tracking_for_children(self, widget):
+        """Рекурсивно устанавливает mouse tracking для всех дочерних виджетов"""
+        widget.setMouseTracking(True)
+        for child in widget.findChildren(QWidget):
+            child.setMouseTracking(True)
+            self.setup_mouse_tracking_for_children(child)
+            
+    def get_cursor_region(self, pos):
+        """Определяем область курсора для изменения размера"""
+        # Используем геометрию окна вместо rect()
+        width = self.width()
+        height = self.height()
+        x, y = pos.x(), pos.y()
+        
+        if x <= self.margin and y <= self.margin:
+            return "top-left"
+        elif x >= width - self.margin and y <= self.margin:
+            return "top-right"
+        elif x <= self.margin and y >= height - self.margin:
+            return "bottom-left"
+        elif x >= width - self.margin and y >= height - self.margin:
+            return "bottom-right"
+        elif x <= self.margin:
+            return "left"
+        elif x >= width - self.margin:
+            return "right"
+        elif y <= self.margin:
+            return "top"
+        elif y >= height - self.margin:
+            return "bottom"
+        else:
+            return "center"
+    
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position().toPoint()
+            self.drag_direction = self.get_cursor_region(pos)
+            
+            if self.drag_direction != "center":
+                self.dragging = True
+                self.drag_position = event.globalPosition().toPoint()
+                self.initial_geometry = self.geometry()
+                self.reached_min_size = False
+                
+    def mouseMoveEvent(self, event: QMouseEvent):
+        pos = event.position().toPoint()
+        region = self.get_cursor_region(pos)
+        
+        cursor_map = {
+            "top": Qt.CursorShape.SizeVerCursor,
+            "bottom": Qt.CursorShape.SizeVerCursor,
+            "left": Qt.CursorShape.SizeHorCursor,
+            "right": Qt.CursorShape.SizeHorCursor,
+            "top-left": Qt.CursorShape.SizeFDiagCursor,
+            "top-right": Qt.CursorShape.SizeBDiagCursor,
+            "bottom-left": Qt.CursorShape.SizeBDiagCursor,
+            "bottom-right": Qt.CursorShape.SizeFDiagCursor,
+            "center": Qt.CursorShape.ArrowCursor
+        }
+        self.setCursor(cursor_map.get(region, Qt.CursorShape.ArrowCursor))
+        
+        if self.dragging and self.drag_direction != "center":
+            self.handle_resize(event.globalPosition().toPoint())
+            
+    def enterEvent(self, event):
+        """При входе в окно устанавливаем правильный курсор"""
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def leaveEvent(self, event):
+        """При выходе из окна сбрасываем курсор"""
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+    
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        self.dragging = False
+        self.drag_direction = None
+        self.initial_geometry = None
+        self.reached_min_size = False
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+    
+    def handle_resize(self, global_pos):
+        """Обработка изменения размера с отслеживанием минимального размера"""
+        delta = global_pos - self.drag_position
+        new_geometry = QRect(self.initial_geometry)
+        
+        # Сохраняем исходную геометрию для проверки изменений
+        old_geometry = QRect(new_geometry)
+        
+        # Применяем изменения
+        if "left" in self.drag_direction:
+            new_geometry.setLeft(self.initial_geometry.left() + delta.x())
+        
+        if "right" in self.drag_direction:
+            new_geometry.setRight(self.initial_geometry.right() + delta.x())
+        
+        if "top" in self.drag_direction:
+            new_geometry.setTop(self.initial_geometry.top() + delta.y())
+        
+        if "bottom" in self.drag_direction:
+            new_geometry.setBottom(self.initial_geometry.bottom() + delta.y())
+        
+        # Проверяем, не стал ли размер меньше минимального
+        content_min_width = self.minimum_size.width() + 20  # + отступы
+        content_min_height = self.minimum_size.height() + 20
+        
+        will_shrink = (new_geometry.width() < old_geometry.width() or 
+                      new_geometry.height() < old_geometry.height())
+        
+        reached_min_width = new_geometry.width() <= content_min_width
+        reached_min_height = new_geometry.height() <= content_min_height
+        
+        # Если пытаемся уменьшить, но достигли минимального размера - блокируем
+        if will_shrink and (reached_min_width or reached_min_height):
+            # Не применяем изменения - оставляем старый размер
+            self.reached_min_size = True
+            return
+
+        # Если изменения допустимы - применяем
+        self.setGeometry(new_geometry)
+        self.reached_min_size = False
+        
+        if new_geometry.width() > 400 and new_geometry.height() > 300:
+            self.setGeometry(new_geometry)
+
+        if hasattr(self, 'snow_on_background') and self.snow_on_background:
+            # Обновляем геометрию
+            self.snow_on_background.setGeometry(self.central_widget.rect())
+            # Принудительно пересоздаем снежинки
+            self.snow_on_background._init_snowflakes()
+            # Обновляем отображение
+            self.snow_on_background.update()
+            
+        if hasattr(self, 'garland_decorator') and self.garland_decorator:
+            self.garland_decorator.update_size(self.width())
                    
     def install_event_filter_recursive(self, widget):
         """Рекурсивно устанавливает event filter для виджета и всех его детей"""
@@ -874,11 +1051,11 @@ class Assistant(QMainWindow):
                 flake_size_min=1,
                 flake_size_max=5
             )
-        self.snow_on_background.resize(800, 700)
+        self.snow_on_background.resize(920, 700)
         self.snow_on_background.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.snow_on_background.raise_()
         self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=50)
-        
+
         # Изначально показываем или скрываем в зависимости от состояния
         if self.is_snow:
             self.snow_on_background.show()
@@ -962,7 +1139,7 @@ class Assistant(QMainWindow):
     def clear_user_data(self):
         """Очистить данные пользователя"""
         self.user_data = None
-        self.username_label.setText("Гость")
+        # self.username_label.setText("Гость")
         self.set_default_avatar_svg()
                 
     def update_user_profile(self, user_data=None):
@@ -971,11 +1148,11 @@ class Assistant(QMainWindow):
         # Используем переданные данные или локальные
         data = user_data or self.user_data
 
-        if data and 'username' in data:
-            if hasattr(self, "username_label"):
-                self.username_label.setText(data['username'])
-            else:
-                self.username_label.setText("User")
+        # if data and 'username' in data:
+        #     if hasattr(self, "username_label"):
+        #         self.username_label.setText(data['username'])
+        #     else:
+        #         self.username_label.setText("User")
             
         if data and data.get('avatar') is None:
             return self.set_default_avatar_svg()
@@ -1005,10 +1182,10 @@ class Assistant(QMainWindow):
                 # Создаем QLabel для растровой аватарки если еще нет
                 if not hasattr(self, 'avatar_pixmap_label'):
                     self.avatar_pixmap_label = QLabel()
-                    self.avatar_pixmap_label.setFixedSize(50, 50)
+                    self.avatar_pixmap_label.setFixedSize(30, 30)
                     self.avatar_pixmap_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-                    self.avatar_pixmap_label.setStyleSheet("background: transparent; border: none;")
-
+                    self.avatar_pixmap_label.setStyleSheet("background: transparent;")
+                    self.avatar_pixmap_label.setAlignment(Qt.AlignCenter)
                     avatar_index = self.user_profile_layout.indexOf(self.avatar_svg)
                     self.user_profile_layout.insertWidget(avatar_index, self.avatar_pixmap_label)
                 else:
@@ -1017,7 +1194,7 @@ class Assistant(QMainWindow):
                 # Загружаем и устанавливаем растровую аватарку
                 pixmap = QPixmap()
                 pixmap.loadFromData(response.content)
-                rounded_pixmap = self.create_rounded_pixmap(pixmap, 50)
+                rounded_pixmap = self.create_rounded_pixmap(pixmap, 30)
                 self.avatar_pixmap_label.setPixmap(rounded_pixmap)
                 
             else:
@@ -1070,55 +1247,6 @@ class Assistant(QMainWindow):
 
         return rounded
 
-    def _setup_compact_toolbar(self):
-        """Инициализация компактной панели с иконками"""
-        self.compact_layout = QHBoxLayout()
-        self.compact_layout.setContentsMargins(0, 0, 0, 10)
-        self.compact_layout.setSpacing(10)
-
-        while self.compact_layout.count():
-            item = self.compact_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        self.compact_layout.addStretch()
-
-        self.left_spacer = QSpacerItem(1, 40, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.compact_layout.addSpacerItem(self.left_spacer)
-
-        buttons_data = [
-            (self.icon_close_path, "Закрыть", self.hide_widget),
-            (self.icon_settings_path, "Настройки", self.open_main_settings),
-            (self.icon_shortcut_path, "Ваши ярлыки", self.open_folder_shortcuts),
-            (self.icon_commands_path, "Ваши команды", self.open_commands_settings),
-            (self.icon_other_path, "Прочее", self.other_options),
-            (self.icon_guide_path, "Обучение", self.guide_options),
-            (self.icon_power_path, "Старт ассистента", self.start_assist_toggle),
-            (self.icon_widget_path, "Открыть виджет", self.open_widget),
-        ]
-
-        self.btn_svg_list = []
-
-        for svg_path, tooltip, callback in buttons_data:
-            btn = QPushButton()
-            btn.setFixedSize(40, 40)
-            btn.setToolTip(tooltip)
-            btn.clicked.connect(callback)
-            btn.setVisible(False)
-
-            svg_widget = CustomSvgWidget(svg_path, btn)
-            svg_widget.setFixedSize(30, 30)
-            svg_widget.move(5, 5)
-            svg_widget.setStyleSheet("background: transparent;")
-            self.style_manager.apply_color_svg(svg_widget, strength=0.90)
-
-            self.btn_svg_list.append({'button': btn, 'svg': svg_widget})
-
-            self.compact_layout.addWidget(btn)
-
-        self.right_spacer = QSpacerItem(1, 40, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.compact_layout.addSpacerItem(self.right_spacer)
-        self.compact_layout.addStretch()
-
     def preload_window(self):
         """Предварительная загрузка окна"""
         # Показываем в невидимой области
@@ -1145,16 +1273,10 @@ class Assistant(QMainWindow):
         """Применяет все стили к окну"""
         try:
             self.styles = self.style_manager.load_styles()
-
-            self.style_manager.apply_to_widget(self.label_version, 'label_version')
-            if hasattr(self, 'update_label'):
-                self.style_manager.apply_to_widget(self.update_label, 'update_label')
+            self.check_start_win() # Для изменения цвета кнопки автозапуска
+            
             if hasattr(self, 'avatar_svg'):
                 self.style_manager.apply_color_svg(self.avatar_svg, strength=0.90)
-                
-            # if hasattr(self, "update_svg"):
-            #     self.style_manager.apply_color_svg(self.update_svg, strength=0.90, specified_color="#44D14F")
-
             if hasattr(self, 'progress_load'):
                 self.style_manager.apply_progressbar(key="QPushButton", widget=self.progress_load)
             if hasattr(self, 'svg_image'):
@@ -1177,6 +1299,10 @@ class Assistant(QMainWindow):
                 self.style_manager.apply_color_svg(self.icon_svg, strength=0.95)
             if hasattr(self, 'update_light_svg'):
                 self.style_manager.apply_color_svg(self.update_light_svg, strength=0.95)
+            if hasattr(self, 'clear_logs_svg'):
+                self.style_manager.apply_color_svg(self.clear_logs_svg, strength=0.95)
+            if hasattr(self, 'update_all_preset_svg'):
+                self.style_manager.apply_color_svg(self.update_all_preset_svg, strength=0.95)    
             if hasattr(self, 'close_svg'):
                 self.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#ff0000")
             
@@ -1204,7 +1330,7 @@ class Assistant(QMainWindow):
             self.setStyleSheet(style_sheet)
             self.apply_menu_styles(self.menu_tray)
             if hasattr(self, "snow_on_background"):
-                self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=60)
+                self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=50)
                 
         except Exception as e:
             debug_logger.error(f"Ошибка в методе apply_styles: {e}")
@@ -1227,8 +1353,6 @@ class Assistant(QMainWindow):
 
     def update_colors(self):
         self.styles = self.style_manager.load_styles()
-        for data in self.btn_svg_list:  # Итерируемся по списку
-            self.style_manager.apply_color_svg(data['svg'], strength=0.90)
         for data in self.svg_settings_list:
             self.style_manager.apply_color_svg(data["svg"], strength=0.90)
 
@@ -1321,7 +1445,7 @@ class Assistant(QMainWindow):
             return
 
         # Реагируем только если это ручная проверка
-        if status_text == "Установлена последняя версия":
+        if status_text == "Стабильная версия":
             self.get_reaction(detail=True, name="update_button")
         elif status_text == "Доступно обновление":
             pass
@@ -1334,7 +1458,7 @@ class Assistant(QMainWindow):
         """
         Метод для отображения или скрытия кнопки "Установить обновление"
         """
-        if self.update_label.text() == "Доступно обновление": # Установлена последняя версия Доступно обновление 
+        if self.update_label.text() == "Доступно обновление": # Стабильная версия Доступно обновление 
             self.update_btn.show()
             self.style_manager.apply_color_svg(self.update_svg, strength=0.90, specified_color="#44D14F")
         else:
@@ -1449,9 +1573,9 @@ class Assistant(QMainWindow):
         else:
             self.animation_stop_load()
             self.update_label.show()
-            self.update_label.setText("Установлена последняя версия")
+            self.update_label.setText("Стабильная версия")
             self.toggle_update_button()
-            self.update_checked.emit(True, "Установлена последняя версия")
+            self.update_checked.emit(True, "Стабильная версия")
             self.swap_update_file(self.current_ver)
             self.stop_checking = False
             QTimer.singleShot(4000, lambda: self.update_complete())
@@ -1630,7 +1754,7 @@ class Assistant(QMainWindow):
     def init_file_watcher(self):
         """Инициализация FileSystemWatcher для отслеживания изменений файла логов."""
         self.file_watcher = QFileSystemWatcher([self.log_file_path])
-        self.file_watcher.fileChanged.connect(self.update_logs)
+        self.file_watcher.fileChanged.connect(self.check_log)
 
     def _check_log_file_size(self, max_lines=100):
         """Проверяет, превышает ли файл логов max_lines строк. Если да — очищает его."""
@@ -1671,28 +1795,40 @@ class Assistant(QMainWindow):
 
     def check_log(self):
         """Проверка файла на наличие новых данных."""
+        if self._is_checking_log:
+            return
+        self._is_checking_log = True
+
         try:
+            # Если файл удалён — переподключаем watcher и выходим
             if not os.path.exists(self.log_file_path):
                 self.logger.warning("Файл логов не найден. Пытаемся переподключиться...")
-                self.file_watcher.removePath(self.log_file_path)
+                if self.log_file_path in self.file_watcher.files():
+                    self.file_watcher.removePath(self.log_file_path)
                 self.file_watcher.addPath(self.log_file_path)
                 return
 
-            self._check_log_file_size()  # Проверяем, не превышен ли лимит
+            # Проверяем размер (ограничение лога)
+            self._check_log_file_size()
 
+            # Читаем новые данные
             with open(self.log_file_path, "r", encoding="utf-8-sig", errors="replace") as file:
                 file.seek(self.last_position)
                 new_lines = file.readlines()
                 if new_lines:
                     self.text_append("".join(new_lines))
                     self.last_position = file.tell()
+
         except FileNotFoundError:
             self.logger.warning("Файл логов не найден, переподключаем FileSystemWatcher.")
-            self.file_watcher.removePath(self.log_file_path)
+            if self.log_file_path in self.file_watcher.files():
+                self.file_watcher.removePath(self.log_file_path)
             self.file_watcher.addPath(self.log_file_path)
         except Exception as e:
             self.logger.error(f"Ошибка при чтении файла логов: {e}")
             self.log_area.append(f"Ошибка при чтении файла логов: {e}")
+        finally:
+            self._is_checking_log = False
 
     def update_logs(self):
         """Обновление логов при изменении файла."""
@@ -1876,7 +2012,6 @@ class Assistant(QMainWindow):
         self.raise_()
         self.setFocus()
 
-        # Центрирование (как в трее)
         screen_geometry = self.screen().availableGeometry()
         self.move(
             (screen_geometry.width() - self.width()) // 2,
@@ -1972,9 +2107,8 @@ class Assistant(QMainWindow):
     def run_assist(self):
         """Запуск ассистента"""
         self.is_assistant_running = True
-        self.buttons["start"].setText("Остановить работу")
-        # self.start_button.setText("Остановить работу")  # Меняем текст кнопки
-        self.log_area.append("Ассистент запущен...")  # Добавляем запись в лог
+        self.sidebar.update_element_text("start", "Остановить работу")
+        self.log_area.append("Ассистент запущен...")
 
         # Запуск ассистента в отдельном потоке
         self.assistant_thread = threading.Thread(target=self.run_script)
@@ -1983,8 +2117,7 @@ class Assistant(QMainWindow):
     def stop_assist(self, reaction=True):
         """Остановка ассистента"""
         self.is_assistant_running = False
-        self.buttons["start"].setText("Старт ассистента")
-        # self.start_button.setText("Старт ассистента")
+        self.sidebar.update_element_text("start", "Старт ассистента")
         debug_logger.info("[Ассистент остановлен]")
         if reaction:
             debug_logger.info("Реакция на выключение ассистента...")
@@ -2165,6 +2298,7 @@ class Assistant(QMainWindow):
             for text in self.get_audio():
                 if not self.is_assistant_running:
                     break
+                self.command_handled = False
                 debug_logger.info(f"[last_unrecognized_command]---> {self.last_unrecognized_command}")
                 current_time = time.time()
                 
@@ -2478,6 +2612,7 @@ class Assistant(QMainWindow):
                             debug_logger.info(f"[clean_target] {clean_target}")
 
                             if default_list:
+                                self.command_handled = True
                                 if action_type == 'open':
                                     default_commands[default_list][0]()
                                 elif action_type == 'close':
@@ -2522,8 +2657,12 @@ class Assistant(QMainWindow):
                                             }
                                             trigger_react = True
                                             break
+                                        
+                                if app_processed or folder_processed:
+                                    self.command_handled = True
 
                     if trigger_react:
+                        self.command_handled = True
                         self.show_supply_notice(text)
                         self.get_reaction(name="what_folder", trace="Реакт из триггера")
                         debug_logger.info(f"Сработал триггер реакции. Отправлено уведомление ---> {text}")
@@ -2591,8 +2730,8 @@ class Assistant(QMainWindow):
                             continue
 
                 # Обработка плеера
-                if self.is_keyword_player or has_assistant_name:
-
+                if not self.command_handled and (self.is_keyword_player or has_assistant_name):
+                    debug_logger.info("Успешное условие для управления плеером")
                     # Ищем первое подходящее действие (в порядке приоритета: пауза, след, пред)
                     for word in words:
                         if self.find_closest_command(word, self.keywords_playpause, threshold=80):
@@ -3435,43 +3574,57 @@ class Assistant(QMainWindow):
                 self.show_widget()  # Запускаем анимацию открытия
 
         except Exception as e:
-            debug_logger.error(f"Ошибка при открытии настроек: {e}")
-            self.show_message(f"Ошибка при открытии настроек команд: {str(e)}", "Ошибка", "error")
+            debug_logger.error(f"Ошибка при открытии mutable_panel: {e}")
+            self.show_message(f"Ошибка при открытии mutable_panel: {str(e)}", "Ошибка", "error")
 
     def get_size_widget(self, widget):
         width = widget.width()
         height = widget.height()
         size = widget.size()
 
-    def show_widget(self):
-        """Открывает панель настроек: сначала сжимаем, потом расширяем с изменяемой панелью"""
-        # Анимация сжатия левой панели
-        self._load_current_panel()
-        self.show_layout(self.compact_layout)
-        self.show_compact_buttons()
-        self.help_widget.show()
-        self.get_size_widget(self.left_container)
+    # def show_widget(self):
+    #     """Открывает панель настроек: сначала сжимаем, потом расширяем с изменяемой панелью"""
+    #     # Анимация сжатия левой панели
+    #     self._load_current_panel()
+    #     # self.show_layout(self.compact_layout)
+    #     # self.show_compact_buttons()
+    #     self.help_widget.show()
+    #     self.get_size_widget(self.left_container)
 
+    #     self.animation.stop()
+    #     self.animation.setPropertyName(b"maximumWidth")
+    #     self.animation.setStartValue(200)
+    #     self.animation.setEndValue(1)
+    #     self.animation.setDuration(400)
+    #     self.animation.setEasingCurve(QEasingCurve.Type.InBack)
+    #     # После сжатия — начинаем расширение с панелью настроек
+    #     self.animation.finished.connect(self._expand_mutable_panel)
+    #     self.animation.start()
+    
+    def show_widget(self):
+        # self._current_panel = 'settings'
+        self._load_current_panel()
+        self.help_widget.show()
+
+        # Сразу анимируем раскрытие mutable_panel
         self.animation.stop()
-        self.animation.setPropertyName(b"maximumWidth")
-        self.animation.setStartValue(200)
-        self.animation.setEndValue(1)
-        self.animation.setDuration(400)
-        self.animation.setEasingCurve(QEasingCurve.Type.InBack)
-        # После сжатия — начинаем расширение с панелью настроек
-        self.animation.finished.connect(self._expand_mutable_panel)
+        self.mutable_panel.show()
+        self.animation.setStartValue(1)
+        self.animation.setEndValue(self._get_panel_width())
+        self.animation.setDuration(500)
+        self.animation.setEasingCurve(QEasingCurve.Type.InCubic)
         self.animation.start()
 
     def _expand_mutable_panel(self):
         """Вызывается после сжатия: показываем панель и загружаем нужный контент"""
-        self.left_buttons_panel.hide()
+        # self.left_buttons_panel.hide()
         self.animation.finished.disconnect(self._expand_mutable_panel)
         self.mutable_panel.show()
 
         self.animation.setStartValue(1)
         self.animation.setEndValue(self._get_panel_width())
-        self.animation.setDuration(400)
-        self.animation.setEasingCurve(QEasingCurve.Type.OutBack)
+        self.animation.setDuration(500)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.animation.start()
 
     def _clear_mutable_panel(self):
@@ -3507,48 +3660,20 @@ class Assistant(QMainWindow):
                 self._animate_content_switch(self._load_commands_panel)
             else:
                 self._load_commands_panel()
-
+    
     def hide_widget(self):
-        """Закрывает панель настроек"""
-        # Сброс эффектов
-        for item in self.btn_svg_list:
-            btn = item['button']
-            btn.setGraphicsEffect(None)
-            btn.setVisible(False)
         self.help_widget.hide()
-        self.get_size_widget(self.mutable_panel)
-        # Сжимаем
         self.animation.stop()
-        self.animation.setPropertyName(b"maximumWidth")
-        self.animation.setStartValue(self._get_panel_width())
+        self.animation.setStartValue(self.mutable_panel.width())
         self.animation.setEndValue(1)
-        self.animation.setDuration(400)
-        self.animation.setEasingCurve(QEasingCurve.Type.InBack)
-        self.animation.finished.connect(self._restore_buttons_panel)
+        self.animation.setDuration(500)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.animation.finished.connect(self._on_panel_hidden)
         self.animation.start()
 
-    def show_compact_buttons(self):
-        for item in self.btn_svg_list:
-            btn = item['button']
-            btn.setVisible(True)
-
-    def _restore_buttons_panel(self):
-        """Восстанавливаем основную панель"""
-        try:
-            self.animation.finished.disconnect(self._restore_buttons_panel)
-        except:
-            pass
-
+    def _on_panel_hidden(self):
+        self.animation.finished.disconnect()
         self.mutable_panel.hide()
-        self.left_buttons_panel.show()
-
-        # Восстанавливаем ширину
-        self.animation.setPropertyName(b"maximumWidth")
-        self.animation.setStartValue(1)
-        self.animation.setEndValue(220)
-        self.animation.setDuration(400)
-        self.animation.setEasingCurve(QEasingCurve.Type.OutBack)
-        self.animation.start()
 
     def _animate_content_switch(self, new_content_callback):
         """Анимация смены контента в видимой панели"""
@@ -3558,8 +3683,8 @@ class Assistant(QMainWindow):
         self.animation.setPropertyName(b"maximumWidth")
         self.animation.setStartValue(self._get_panel_width())
         self.animation.setEndValue(1)
-        self.animation.setDuration(350)
-        self.animation.setEasingCurve(QEasingCurve.Type.InBack)
+        self.animation.setDuration(500)
+        self.animation.setEasingCurve(QEasingCurve.Type.InCubic)
         self.get_size_widget(self.mutable_panel)
 
         # После сжатия - загружаем новый контент и расширяем
@@ -3577,12 +3702,31 @@ class Assistant(QMainWindow):
         self.animation.setStartValue(1)
         self.animation.setEndValue(self._get_panel_width())
         self.animation.setDuration(350)
-        self.animation.setEasingCurve(QEasingCurve.Type.OutBack)
+        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.animation.start()
 
+    # def _get_panel_width(self):
+    #     """Возвращает ширину панели"""
+    #     return 360
     def _get_panel_width(self):
-        """Возвращает ширину панели в зависимости от текущего контента"""
-        return 360
+        """Возвращает ширину панели с пропорциональным масштабированием"""
+        min_panel_width = 400
+        base_window_width = 920
+        max_panel_width = 550
+        
+        current_width = self.central_widget.width()
+        
+        if current_width <= base_window_width:
+            return min_panel_width
+        
+        # Пропорция: на каждые 2px увеличения окна панель увеличивается на 1px
+        scale_factor = 0.25  # 1:2
+        additional_width = (current_width - base_window_width) * scale_factor
+        
+        calculated_width = min_panel_width + int(additional_width)
+        
+        # Ограничиваем максимальным значением
+        return min(calculated_width, max_panel_width)
 
     def _load_settings_panel(self):
         """Инициализация виджетов настроек с SVG на вкладках"""
@@ -3629,7 +3773,7 @@ class Assistant(QMainWindow):
             return container
 
         tab_bar.setTabButton(0, QTabBar.ButtonPosition.LeftSide,
-                             create_centered_svg_tab(self.icon_settings_path))
+                             create_centered_svg_tab(self.icon_main_settings_path))
         tab_bar.setTabButton(1, QTabBar.ButtonPosition.LeftSide,
                              create_centered_svg_tab(self.icon_advance_settings_path))
         tab_bar.setTabButton(2, QTabBar.ButtonPosition.LeftSide,
@@ -3925,11 +4069,11 @@ class Assistant(QMainWindow):
             self.log_area.append(f"Ошибка при очистке логов: {e}")
 
     def check_start_win(self):
-        """Переключает состояние и меняет цвет иконки"""
+        """Меняет цвет иконки"""
         if self.toggle_start:
-            self.update_svg_color(self.start_svg, self.color_path)
+            self.style_manager.apply_color_svg(self.start_svg, strength=0.95)
         else:
-            self.update_svg_contrast_color(self.start_svg)
+            self.style_manager.apply_color_svg(self.start_svg, strength=0.95, specified_color="#ffffff")
 
     def check_start_widget(self):
         if self.is_widget:
@@ -3941,94 +4085,9 @@ class Assistant(QMainWindow):
 
         if self.toggle_start:
             self.add_to_autostart()
-            self.update_svg_color(self.start_svg, self.color_path)
         else:
             self.remove_from_autostart()
-            self.update_svg_contrast_color(self.start_svg)
-
-    def update_svg_color(self, svg_widget: CustomSvgWidget, style_file: str) -> None:
-        """Обновляет цвет SVG, учитывая градиенты и контрастность"""
-        svg_template = '''<?xml version="1.0" encoding="utf-8"?>
-        <svg fill="{color}" width="20px" height="20px" viewBox="0 0 24 24"
-             xmlns="http://www.w3.org/2000/svg">
-            <path d="m9.84 12.663v9.39l-9.84-1.356v-8.034zm0-10.72v9.505h-9.84v-8.145zm14.16 
-            10.72v11.337l-13.082-1.803v-9.534zm0-12.663v11.452h-13.082v-9.649z"/>
-        </svg>'''
-
-        def extract_primary_color(color_value: str) -> str:
-            """Извлекает основной цвет (первый цвет градиента или HEX)"""
-            if not color_value:
-                return "#FFFFFF"
-
-            # Ищем градиент
-            gradient_match = re.search(r"qlineargradient\([^)]+stop:0\s+(#[0-9a-fA-F]+)", color_value)
-            if gradient_match:
-                return gradient_match.group(1)
-
-            # Ищем обычный HEX-цвет
-            hex_match = re.search(r"#[0-9a-fA-F]{3,6}", color_value)
-            return hex_match.group(0) if hex_match else "#FFFFFF"
-
-        try:
-            # 1. Загружаем стили
-            with open(style_file) as f:
-                styles = json.load(f)
-
-            # 2. Извлекаем цвета с поддержкой градиентов
-            border_color = extract_primary_color(
-                styles.get("TitleBar", {}).get("border-bottom", "")
-            )
-
-            bg_color = extract_primary_color(
-                styles.get("QWidget", {}).get("background-color", "")
-            )
-            base_bg_color = QColor(bg_color)
-
-            # 3. Вычисляем яркость фона (формула восприятия яркости)
-            brightness = (0.299 * base_bg_color.red() +
-                          0.587 * base_bg_color.green() +
-                          0.114 * base_bg_color.blue()) / 255
-
-            # 4. Выбираем контрастный цвет
-            final_color = "#369EFF" if brightness > 0.5 else border_color
-
-            # 5. Генерируем SVG с новым цветом
-            svg_widget.load(svg_template.format(color=final_color).encode('utf-8'))
-
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении цвета SVG: {e}")
-            debug_logger.error(f"Ошибка при обновлении цвета SVG: {e}")
-            # Fallback на белый цвет при ошибке
-            svg_widget.load(svg_template.format(color="#FFFFFF").encode('utf-8'))
-
-    def update_svg_contrast_color(self, svg_widget: CustomSvgWidget) -> None:
-        """Автоматически устанавливает контрастный цвет для SVG"""
-        # 1. Определяем цвет фона основного окна
-        bg_color = self.central_widget.palette().window().color()
-
-        # 2. Вычисляем яркость фона (формула восприятия яркости)
-        brightness = (0.299 * bg_color.red() +
-                      0.587 * bg_color.green() +
-                      0.114 * bg_color.blue()) / 255
-
-        # 3. Выбираем контрастный цвет
-        contrast_color = "#545454" if brightness > 0.5 else "#FFFFFF"
-
-        # 4. Обновляем SVG
-        try:
-            svg_template = '''<?xml version="1.0" encoding="utf-8"?>
-                        <svg fill="{color}" width="20px" height="20px" viewBox="0 0 24 24"
-                             xmlns="http://www.w3.org/2000/svg">
-                            <path d="m9.84 12.663v9.39l-9.84-1.356v-8.034zm0-10.72v9.505h-9.84v-8.145zm14.16 
-                            10.72v11.337l-13.082-1.803v-9.534zm0-12.663v11.452h-13.082v-9.649z"/>
-                        </svg>'''
-            colored_svg = svg_template.format(color=contrast_color)
-            svg_widget.load(bytes(colored_svg, 'utf-8'))
-        except Exception as e:
-            # Fallback - используем эффект цвета
-            effect = QGraphicsColorizeEffect()
-            effect.setColor(QColor(contrast_color))
-            svg_widget.setGraphicsEffect(effect)
+        self.check_start_win()
 
     def add_to_autostart(self):
         """Добавление программы в автозапуск через планировщик задач"""
@@ -4337,10 +4396,10 @@ class ChangelogWindow(QDialog):
         title_layout.addWidget(link_label)
         title_layout.addStretch()
         
-        title_label = QLabel("История изменений")
+        title_label = setup_custom_font_label("История изменений", font_style="Comfortaa", weight="Medium")
         title_label.setStyleSheet("background: transparent;")
         title_label.setObjectName("TitleLabel")
-        title_label.setFixedSize(150, 20)
+        title_label.setFixedSize(160, 20)
         title_layout.addWidget(title_label)
 
         title_layout.addStretch()

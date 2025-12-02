@@ -198,6 +198,9 @@ class SmartWidget(QWidget):
             self.pin_svg.load(self.active_pin_path)
             self.style_manager.apply_color_svg(self.pin_svg, strength=0.95)
         self.setWindowFlags(base_flags)
+        
+        self.style_manager.apply_color_svg(self.resize_svg, strength=0.95, specified_color="#FFFFFF")
+        self.style_manager.apply_color_svg(self.close_svg, strength=0.95, specified_color="#FFFFFF")
 
         # Для перетаскивания
         self.old_pos = None
@@ -287,7 +290,7 @@ class SmartWidget(QWidget):
         # Основной контент
         self.main_container = QWidget()
         self.main_container.setObjectName("MainContainer")
-        self.background_color = self.style_manager.get_transparent_background_from_border(opacity=180, darken_factor=600)
+        self.background_color = self.style_manager.get_transparent_background_from_border(opacity=200, darken_factor=600)
         self.main_container.setStyleSheet(f"""
                 #MainContainer {{
                     background: {self.background_color};
@@ -1462,7 +1465,7 @@ class SmartWidget(QWidget):
     def update_background_style(self):
         """Применяет/обновляет стиль фона"""
         try:
-            self.background_color = self.style_manager.get_transparent_background_from_border(opacity=160, darken_factor=800)
+            self.background_color = self.style_manager.get_transparent_background_from_border(opacity=200, darken_factor=800)
             self.main_container.setStyleSheet(f"""
                 #MainContainer {{
                     background: {self.background_color};
@@ -1509,6 +1512,8 @@ class SmartWidget(QWidget):
 
         self.style_manager.apply_color_svg(self.pin_svg, strength=0.95)
         self.style_manager.apply_color_svg(self.lock_svg, strength=0.95)
+        self.style_manager.apply_color_svg(self.resize_svg, strength=0.95, specified_color="#FFFFFF")
+        self.style_manager.apply_color_svg(self.close_svg, strength=0.95, specified_color="#FFFFFF")
         
         self.update_background_style()
         
