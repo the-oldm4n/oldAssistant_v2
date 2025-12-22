@@ -1,29 +1,29 @@
 # -*- mode: python ; coding: utf-8 -*-
-version_file = 'G:/PycharmProjects/oldAssistant_v2/version.txt'
+version_file = 'F:/PyCharmProjects/oldAssistant_v2/version.txt'
 
 a = Analysis(
     ['main.py'],
-    pathex=['G:/PycharmProjects/oldAssistant_v2'],
+    pathex=['F:/PyCharmProjects/oldAssistant_v2'],
     binaries=[
-        (r'G:\PycharmProjects\oldAssistant_v2\.venv\Lib\site-packages\vosk\libvosk.dll', 'vosk'),
-        (r'G:\PycharmProjects\oldAssistant_v2\.venv\Lib\site-packages\vgamepad\win\vigem\client\x64\ViGEmClient.dll',
+        (r'F:\PyCharmProjects\oldAssistant_v2\venv\Lib\site-packages\vosk\libvosk.dll', 'vosk'),
+        (r'F:\PyCharmProjects\oldAssistant_v2\venv\Lib\site-packages\vgamepad\win\vigem\client\x64\ViGEmClient.dll',
         'vgamepad/win/vigem/client/x64')
     ],
     datas=[
-        ('G:/PycharmProjects/oldAssistant_v2/app.manifest', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/version.txt', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/icon_assist.ico', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/logging_config.py', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/owl.svg', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/user_settings', 'user_settings'),
-        ('G:/PycharmProjects/oldAssistant_v2/bin', 'bin'),
-        ('G:/PycharmProjects/oldAssistant_v2/config.ini', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/path_builder.py', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/Update.exe', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/swap-updater.exe', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/README.md', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/LICENSE.md', '.'),
-        ('G:/PycharmProjects/oldAssistant_v2/THIRD-PARTY-LICENSES.md', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/app.manifest', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/version.txt', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/icon_assist.ico', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/logging_config.py', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/owl.svg', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/user_settings', 'user_settings'),
+        ('F:/PyCharmProjects/oldAssistant_v2/bin', 'bin'),
+        ('F:/PyCharmProjects/oldAssistant_v2/config.ini', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/path_builder.py', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/Update.exe', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/swap-updater.exe', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/README.md', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/LICENSE.md', '.'),
+        ('F:/PyCharmProjects/oldAssistant_v2/THIRD-PARTY-LICENSES.md', '.'),
     ],
     hiddenimports=['vosk', 'pyaudio'],
     hookspath=[],
@@ -52,7 +52,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['icon_assist.ico'],
-    manifest="G:/PycharmProjects/oldAssistant_v2/app.manifest",
+    manifest="F:/PyCharmProjects/oldAssistant_v2/app.manifest",
     uac_admin=True,
     version=version_file,
 )

@@ -1,9 +1,13 @@
 import json
 import os
+import secrets
+import string
+import uuid
 import sounddevice as sd
 import winshell
-from PySide6.QtGui import QFontDatabase, QFont
-
+import time
+from bin.apply_color_methods import ApplyColor
+from bin.custom_svg_widget import CustomSvgWidget
 from bin.custom_widgets import CustomToggle
 from bin.lists import fonts_list, default_keywords_data, setup_custom_font_label
 from bin.signals import color_signal, widget_btns_signal, update_presets_signal
@@ -12,11 +16,11 @@ from bin.choose_color_window import ColorSettingsWindow
 from bin.widget_window import WindowStateManager
 from path_builder import get_path
 from logging_config import logger, debug_logger
-from PySide6.QtCore import Signal, QTimer, QEvent
-from PySide6.QtWidgets import QFileDialog, QLineEdit, QSlider, QComboBox, QWidget, QHBoxLayout, QScrollArea
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QCheckBox, QApplication, QFrame, QPushButton, QListWidgetItem,
-                               QInputDialog, QMenu, QMessageBox, QListWidget, QDialog)
-from PySide6.QtCore import Qt
+from PySide6.QtCore import *
+from PySide6.QtWidgets import *
+from PySide6.QtGui import *
+from PySide6.QtSvg import *
+from PySide6.QtSvgWidgets import *
 
 speakers = dict(Персик="persik", Джарвис="jarvis", Пласид='placide', Бестия='rogue',
                 Джонни='johnny', СанСаныч='sanych', Санбой='sanboy', Woman='tigress', Стейтем='stathem')
@@ -1217,6 +1221,38 @@ class DraggableCheckbox(QCheckBox):
         self.setCursor(Qt.CursorShape.ArrowCursor)
         self.original_pos = None
 
+        # Добавляем кастомные атрибуты
+        self.is_custom = False
+        self.custom_data = None
+        self.custom_id = None
+        
+        # Контекстное меню для кастомных кнопок
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
+    
+    def show_context_menu(self, pos):
+        """Показывает контекстное меню только для кастомных кнопок"""
+        if not self.is_custom:
+            return
+            
+        menu = QMenu(self)
+        
+        delete_action = QAction("Удалить кнопку", self)
+        delete_action.triggered.connect(self.delete_custom)
+        menu.addAction(delete_action)
+        
+        menu.exec(self.mapToGlobal(pos))
+    
+    def delete_custom(self):
+        """Удаляет кастомную кнопку"""
+        # Находим родительский SettingsWidgetPanel
+        parent = self.parent()
+        while parent and not hasattr(parent, 'delete_custom_button_by_id'):
+            parent = parent.parent()
+        
+        if parent and hasattr(parent, 'delete_custom_button_by_id'):
+            parent.delete_custom_button_by_id(self.custom_id)
+
     def set_drag_mode(self, enabled):
         self.drag_mode_enabled = enabled
         if enabled:
@@ -1523,6 +1559,7 @@ class SettingsWidgetPanel(QWidget):
         self.init_ui()
         self.load_saved_font()
         self.load_buttons_settings()
+        # self.load_custom_buttons()
         
     def showEvent(self, event):
         """При показе панели настраиваем help system"""
@@ -1566,7 +1603,7 @@ class SettingsWidgetPanel(QWidget):
 
         # Создаем контейнер для перетаскивания
         self.drag_container = DragContainer()
-        self.drag_container.setMinimumHeight(300)
+        self.drag_container.setProperty("helpId", "drag_toggle_btn")
         self.drag_container.setStyleSheet("background: transparent")
         self.drag_container.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.drag_container.layout.setSpacing(10)
@@ -1575,8 +1612,13 @@ class SettingsWidgetPanel(QWidget):
         drag_layout.addWidget(self.drag_container)
 
         # Создаем чекбоксы
-        self.create_checkboxes()
+        # self.create_checkboxes()
         layout.addLayout(drag_layout)
+
+        self.add_custom_btn = QPushButton("Добавить кастомную кнопку")
+        self.add_custom_btn.setProperty("helpId", "add_custom_btn")
+        self.add_custom_btn.clicked.connect(self.show_create_custom_widget)
+        layout.addWidget(self.add_custom_btn)
         
         # Создание виджетов
         font_layout = QHBoxLayout()
@@ -1595,11 +1637,11 @@ class SettingsWidgetPanel(QWidget):
         layout.addLayout(font_layout)
         self.setup_font_selector()
         
-        self.toggles_label = QLabel("Прочие параметры")
-        self.toggles_label.setStyleSheet("background: transparent; font-weight: bold; font-size: 15px")
+        self.toggles_label = setup_custom_font_label("Прочие параметры", font_style="Comfortaa", weight="Medium")
+        self.toggles_label.setStyleSheet("background: transparent; font-size: 16px")
         layout.addWidget(self.toggles_label)
         
-        self.snow_panel_checkbox = QCheckBox("Частицы снега на панели")
+        self.snow_panel_checkbox = CustomToggle("Частицы снега на панели")
         self.snow_panel_checkbox.setStyleSheet("background: transparent;")
         self.snow_panel_checkbox.setToolTip("Показывать снег на панели")
         self.snow_panel_checkbox.setChecked(self.is_snow)
@@ -1687,11 +1729,9 @@ class SettingsWidgetPanel(QWidget):
             }}
         """
 
-        # ✅ Убедимся, что objectName установлен
         if self.font_preview_label.objectName() != "preview_clock":
             self.font_preview_label.setObjectName("preview_clock")
 
-        # ✅ Применяем стили к preview_label
         self.font_preview_label.setStyleSheet(styles)
 
     def change_font_preview(self, font_name):
@@ -1804,91 +1844,600 @@ class SettingsWidgetPanel(QWidget):
         """Получить данные о кнопках в порядке их расположения"""
         buttons_data = {}
 
-        # Проходим по layout в текущем порядке
         for i in range(self.drag_container.layout.count()):
             widget = self.drag_container.layout.itemAt(i).widget()
-            if widget and hasattr(widget, 'text'):
-                # Находим ключ этого чекбокса
+            
+            if widget and isinstance(widget, DraggableCheckbox):
+                # Находим ключ
                 for key, checkbox in self.checkboxes.items():
                     if checkbox == widget:
                         buttons_data[key] = checkbox.isChecked()
                         break
 
         return buttons_data
+    
+    def reorder_checkboxes_by_buttons(self, buttons_order):
+        """Переставляет чекбоксы в порядке из buttons"""
+        # Удаляем все из layout
+        for i in reversed(range(self.drag_container.layout.count())):
+            widget = self.drag_container.layout.itemAt(i).widget()
+            if widget:
+                self.drag_container.layout.removeWidget(widget)
+        
+        # Добавляем обратно в порядке из buttons
+        for key in buttons_order.keys():  # Порядок важен!
+            if key in self.checkboxes:
+                checkbox = self.checkboxes[key]
+                self.drag_container.layout.addWidget(checkbox)
+
+    # def load_buttons_settings(self):
+    #     """Загрузить настройки кнопок из файла (порядок и состояния)"""
+    #     try:
+    #         with open(self.widget_state, 'r', encoding='utf-8') as f:
+    #             settings_data = json.load(f)
+
+    #         if "buttons" not in settings_data:
+    #             return False
+
+    #         buttons_data = settings_data["buttons"]
+
+    #         # Удаляем все чекбоксы из layout
+    #         for i in reversed(range(self.drag_container.layout.count())):
+    #             widget = self.drag_container.layout.itemAt(i).widget()
+    #             if widget and hasattr(widget, 'text'):
+    #                 self.drag_container.layout.removeWidget(widget)
+
+    #         # Добавляем чекбоксы в порядке из файла и устанавливаем состояния
+    #         for key, state in buttons_data.items():
+    #             if key in self.checkboxes:
+    #                 checkbox = self.checkboxes[key]
+    #                 checkbox.setChecked(state)
+    #                 self.drag_container.layout.addWidget(checkbox)
+
+    #         return True
+
+    #     except FileNotFoundError:
+    #         debug_logger.error(f"Файл {self.widget_state} не найден")
+    #         return False
+    #     except json.JSONDecodeError:
+    #         debug_logger.error(f"Ошибка чтения JSON из {self.widget_state}")
+    #         return False
 
     def load_buttons_settings(self):
-        """Загрузить настройки кнопок из файла (порядок и состояния)"""
         try:
             with open(self.widget_state, 'r', encoding='utf-8') as f:
                 settings_data = json.load(f)
 
-            if "buttons" not in settings_data:
-                return False
+            default_buttons = settings_data.get("default_buttons", {})
+            buttons_states = settings_data.get("buttons", {})  # Переименовал: это состояния!
+            custom_buttons = settings_data.get("custom_buttons", [])
 
-            buttons_data = settings_data["buttons"]
-
-            # Удаляем все чекбоксы из layout
+            # Очищаем
+            self.checkboxes.clear()
             for i in reversed(range(self.drag_container.layout.count())):
                 widget = self.drag_container.layout.itemAt(i).widget()
-                if widget and hasattr(widget, 'text'):
-                    self.drag_container.layout.removeWidget(widget)
+                if widget:
+                    widget.setParent(None)
 
-            # Добавляем чекбоксы в порядке из файла и устанавливаем состояния
-            for key, state in buttons_data.items():
+            # 1. Создаем ВСЕ возможные кнопки
+            
+            # Стандартные кнопки
+            for key, btn_data in default_buttons.items():
+                text = btn_data.get('tooltip', key)
+                checkbox = DraggableCheckbox(text)
+                self.checkboxes[key] = checkbox
+            
+            # Кастомные кнопки
+            for custom_data in custom_buttons:
+                key = f"custom_{custom_data['id']}"
+                checkbox = DraggableCheckbox(custom_data['name'])
+                checkbox.is_custom = True
+                checkbox.custom_data = custom_data
+                checkbox.custom_id = custom_data['id']
+                self.checkboxes[key] = checkbox
+
+            # 2. Обновляем buttons_states чтобы включить ВСЕ кнопки
+            updated_buttons_states = buttons_states.copy()
+            
+            for key in self.checkboxes.keys():
+                if key not in updated_buttons_states:
+                    updated_buttons_states[key] = True  # Новые кнопки ВКЛЮЧЕНЫ по умолчанию
+            
+            # Если добавились новые кнопки - сохраняем
+            if updated_buttons_states != buttons_states:
+                settings_data["buttons"] = updated_buttons_states
+                with open(self.widget_state, 'w', encoding='utf-8') as f:
+                    json.dump(settings_data, f, indent=4, ensure_ascii=False)
+            
+            # 3. Добавляем ВСЕ чекбоксы в layout и устанавливаем состояния
+            # Порядок: сначала стандартные как в default_buttons, потом кастомные
+            
+            # Сначала стандартные в порядке из default_buttons
+            for key in default_buttons.keys():
                 if key in self.checkboxes:
                     checkbox = self.checkboxes[key]
+                    state = updated_buttons_states.get(key, True)
+                    checkbox.setChecked(state)
+                    self.drag_container.layout.addWidget(checkbox)
+            
+            # Потом кастомные в порядке из custom_buttons
+            for custom_data in custom_buttons:
+                key = f"custom_{custom_data['id']}"
+                if key in self.checkboxes:
+                    checkbox = self.checkboxes[key]
+                    state = updated_buttons_states.get(key, True)
                     checkbox.setChecked(state)
                     self.drag_container.layout.addWidget(checkbox)
 
+            if buttons_states:
+                self.reorder_checkboxes_by_buttons(buttons_states)
             return True
 
-        except FileNotFoundError:
-            debug_logger.error(f"Файл {self.widget_state} не найден")
+        except Exception as e:
+            debug_logger.error(f"Ошибка загрузки кнопок: {e}")
+            import traceback
+            traceback.print_exc()
             return False
-        except json.JSONDecodeError:
-            debug_logger.error(f"Ошибка чтения JSON из {self.widget_state}")
-            return False
+        
+    def default_list(self):
+        data = {
+            "default_buttons": {
+                "turnoff_check": {
+                    "tooltip": "Выключение компьютера",
+                    "icon_rel_path": "power.svg"
+                },
+                "settings_check": {
+                    "tooltip": "Открыть настройки",
+                    "icon_rel_path": "settings.svg"
+                },
+                "screenshot_check": {
+                    "tooltip": "Сделать скриншот",
+                    "icon_rel_path": "camera.svg"
+                },
+                "open_youtube": {
+                    "tooltip": "Запустить YouTube",
+                    "icon_rel_path": "logo-youtube.svg"
+                },
+                "microphone_check": {
+                    "tooltip": "Управление микрофоном в Discord",
+                    "icon_rel_path": "mic_on.svg"
+                },
+                "links_check": {
+                    "tooltip": "Открыть папку с ярлыками",
+                    "icon_rel_path": "shortcut.svg"
+                },
+                "resize_check": {
+                    "tooltip": "Развернуть окно ассистента",
+                    "icon_rel_path": "open_main.svg"
+                }
+            }
+        }
+        return data
 
     def set_default_buttons_settings(self):
-        """Установить стандартные настройки кнопок (все активны, стандартный порядок)"""
-        # Удаляем все чекбоксы из layout
-        for i in reversed(range(self.drag_container.layout.count())):
-            widget = self.drag_container.layout.itemAt(i).widget()
-            if widget and hasattr(widget, 'text'):
-                self.drag_container.layout.removeWidget(widget)
-
-        # Стандартный порядок чекбоксов
-        default_order = [
-            "turnoff_check",
-            "settings_check",
-            "screenshot_check",
-            "open_youtube",
-            "microphone_check",
-            "links_check",
-            "resize_check",
-        ]
-
-        # Добавляем в стандартном порядке и включаем все чекбоксы
-        for key in default_order:
-            if key in self.checkboxes:
-                checkbox = self.checkboxes[key]
-                checkbox.setChecked(True)  # Все активны
-                self.drag_container.layout.addWidget(checkbox)
-
-        self.save_order()
+        try:
+            with open(self.widget_state, 'r', encoding='utf-8') as f:
+                settings_data = json.load(f)
+            
+            default_buttons = settings_data.get("default_buttons", {})
+            custom_buttons = settings_data.get("custom_buttons", [])
+            
+            # Создаем дефолтные состояния
+            new_buttons = {}
+            
+            # Стандартные = True
+            for key in default_buttons.keys():
+                new_buttons[key] = True
+            
+            # Кастомные = False
+            for custom_data in custom_buttons:
+                key = f"custom_{custom_data['id']}"
+                new_buttons[key] = False
+            
+            # Сохраняем
+            settings_data["buttons"] = new_buttons
+            with open(self.widget_state, 'w', encoding='utf-8') as f:
+                json.dump(settings_data, f, indent=4, ensure_ascii=False)
+            
+            # Перезагружаем
+            self.load_buttons_settings()
+            
+        except Exception as e:
+            debug_logger.error(f"Ошибка сброса настроек: {e}")
 
     def save_order(self):
-        order = self.get_checkbox_order()
+        try:
+            with open(self.widget_state, 'r', encoding='utf-8') as f:
+                existing_data = json.load(f)
+            
+            existing_data["buttons"] = self.get_buttons_data()
+
+            if "custom_buttons" not in existing_data:
+                current_custom_buttons = []
+                for key, checkbox in self.checkboxes.items():
+                    if key.startswith('custom_') and hasattr(checkbox, 'custom_data'):
+                        current_custom_buttons.append(checkbox.custom_data)
+                existing_data["custom_buttons"] = current_custom_buttons
+            
+            with open(self.widget_state, 'w', encoding='utf-8') as f:
+                json.dump(existing_data, f, indent=4, ensure_ascii=False)
+            
+            QTimer.singleShot(100, widget_btns_signal.buttons_updated.emit)
+            
+        except Exception as e:
+            debug_logger.error(f"Ошибка сохранения порядка: {e}")
+
+    def show_create_custom_widget(self):
+        """Показывает виджет создания кастомной кнопки"""
+        all_commands = {**self.assistant.default_commands, **self.assistant.commands}
+        self.create_widget = CustomBtnForPanel(
+            parent=self,
+            commands=all_commands
+        )
+        self.create_widget.custom_button_created.connect(self.add_custom_button)
+        self.create_widget.show()
+
+    def load_custom_buttons(self):
+        """Загружает сохраненные кастомные кнопки"""
+        try:
+            with open(self.widget_state, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            custom_buttons = data.get('custom_buttons', [])
+            
+            # Добавляем кастомные кнопки
+            for button_data in custom_buttons:
+                self.add_custom_button(button_data)
+                
+        except Exception as e:
+            debug_logger.error(f"Ошибка загрузки кастомных кнопок: {e}")
+
+    def add_custom_button(self, button_data):
+        """Добавляет кастомную кнопку в список"""
+        key = f"custom_{button_data['id']}"
+        
+        checkbox = DraggableCheckbox(button_data['name'])
+        
+        # Устанавливаем кастомные атрибуты
+        checkbox.is_custom = True
+        checkbox.custom_data = button_data
+        checkbox.custom_id = button_data['id']
+        
+        self.checkboxes[key] = checkbox
+        self.drag_container.layout.addWidget(checkbox)
+        
+        # self.save_order()
+
+    def delete_custom_button_by_id(self, custom_id):
+        """Удаляет кастомную кнопку по ID"""
+        key = f"custom_{custom_id}"
+        
+        if key in self.checkboxes:
+            checkbox = self.checkboxes[key]
+            
+            # Удаляем из layout
+            self.drag_container.layout.removeWidget(checkbox)
+            checkbox.deleteLater()
+            
+            # Удаляем из словаря
+            del self.checkboxes[key]
+            
+            # Удаляем из JSON
+            self.remove_btn_from_json(custom_id)
+            
+            self.save_order()
+
+
+    def remove_btn_from_json(self, custom_id):
+        """Удаляет кастомную кнопку из JSON файла"""
+        try:
+            with open(self.widget_state, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Получаем список кастомных кнопок
+            custom_buttons = data.get('custom_buttons', [])
+            
+            # Фильтруем, оставляем только те, у которых id не совпадает
+            if isinstance(custom_buttons, list):
+                data['custom_buttons'] = [
+                    btn for btn in custom_buttons 
+                    if btn.get('id') != custom_id
+                ]
+            elif isinstance(custom_buttons, dict):
+                # Если вдруг сохранено как словарь
+                if custom_id in custom_buttons:
+                    del custom_buttons[custom_id]
+            
+            # Сохраняем обратно
+            with open(self.widget_state, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=4, ensure_ascii=False)
+                
+        except Exception as e:
+            debug_logger.error(f"Ошибка удаления кастомной кнопки из JSON: {e}")
+
+
+class CustomBtnForPanel(QDialog):
+    """Виджет для создания кастомной кнопки"""
+    custom_button_created = Signal(dict)
+
+    def __init__(self, parent=None, commands=None):
+        super().__init__(parent)
+        self.parent_widget = parent
+        self.drag_pos = None
+        self.custom_icons_folder = get_path("bin", "icons", "script-icons")
+        self.icon_close_path = get_path("bin", "icons", "close.svg")
+        self.widget_state = get_path("user_settings", "widget_state.json")
+        self.commands = commands or []  # Список команд из JSON
+        self.style_manager = ApplyColor()
+        self.color_path = self.style_manager.color_path
+        self.styles = self.style_manager.load_styles()
+        self.init_ui()
+        self.load_svg_list()
+        self.apply_styles()
+
+    def title_bar_mouse_press(self, event):
+        """Обработка нажатия мыши на заголовок"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def title_bar_mouse_move(self, event):
+        """Обработка перемещения мыши при удерживании на заголовке"""
+        if self.drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
+            # Получаем новую позицию основного окна
+            new_pos = event.globalPos() - self.drag_pos
+            self.move(new_pos)
+
+            event.accept()
+
+    def title_bar_mouse_release(self, event):
+        """Обработка отпускания кнопки мыши"""
+        self.drag_pos = None
+        event.accept()
+
+    def apply_styles(self):
+        if hasattr(self, 'close_svg'):
+                self.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#ff0000")
+    
+    def init_ui(self):
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setFixedSize(350, 300)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.container = QWidget(self)
+        self.container.setObjectName("WindowContainer")
+        self.container.setGeometry(0, 0, self.width(), self.height())
+
+        # Кастомный заголовок
+        self.title_bar = QWidget(self.container)
+        self.title_bar.setObjectName("TitleBar")
+        self.title_bar.setFixedHeight(40)
+        self.title_bar.setGeometry(1, 1, self.width() - 2, 35)
+        self.title_layout = QHBoxLayout(self.title_bar)
+        self.title_layout.setContentsMargins(10, 5, 10, 5)
+        self.title_layout.setSpacing(5)
+
+        self.title_bar.mousePressEvent = self.title_bar_mouse_press
+        self.title_bar.mouseMoveEvent = self.title_bar_mouse_move
+        self.title_bar.mouseReleaseEvent = self.title_bar_mouse_release
+
+        self.title_label = setup_custom_font_label("Создание кастомной кнопки", font_style="Comfortaa", weight="Medium")
+        self.title_label.setStyleSheet("background: transparent; font-size:16px;")
+        self.title_layout.addWidget(self.title_label)
+
+        self.close_btn = QPushButton("", self.title_bar)
+        self.close_btn.setFixedSize(30, 30)
+        self.close_btn.setObjectName("CloseButton")
+        self.close_btn.clicked.connect(self.close)
+        self.close_svg = CustomSvgWidget(self.icon_close_path, self.close_btn)
+        self.close_svg.setFixedSize(24, 24)
+        self.close_svg.move(3, 3)
+        self.close_svg.setStyleSheet("background: transparent;")
+        self.title_layout.addWidget(self.close_btn)
+
+        # Основной контент
+        self.content_widget = QWidget(self.container)
+        self.content_widget.setGeometry(1, 36, self.width() - 2, self.height() - 37)
+        self.content_widget.setObjectName("ContentWidget")
+
+        self.main_content_layout = QVBoxLayout(self.content_widget)
+        self.main_content_layout.setContentsMargins(15, 15, 15, 15)
+        self.main_content_layout.setSpacing(5)
+
+        # Выпадающий список SVG с иконками
+        icon_layout = QHBoxLayout()
+
+        self.preview_svg = CustomSvgWidget("")
+        self.preview_svg.setFixedSize(30, 30)
+        icon_layout.addWidget(self.preview_svg) 
+
+        self.icon_combo = NonClosingComboBox()
+        self.icon_combo.currentIndexChanged.connect(self.update_preview)
+        icon_layout.addWidget(self.icon_combo)
+
+        self.main_content_layout.addLayout(icon_layout)
+
+        self.name_label = setup_custom_font_label("Назначение кнопки", font_style="Comfortaa", weight="Medium")
+        self.name_label.setStyleSheet("background: transparent; font-style: 14px;")
+        self.main_content_layout.addWidget(self.name_label)
+
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("Например: Запуск скрипта")
+        self.main_content_layout.addWidget(self.name_input)
+        
+        # Выбор команды
+        self.command_label = setup_custom_font_label("Команда:", font_style="Comfortaa", weight="Medium")
+        self.command_label.setStyleSheet("background: transparent; font-style: 14px;")
+        self.main_content_layout.addWidget(self.command_label)
+
+        self.command_combo = QComboBox()
+        self.command_combo.addItems(self.commands)
+        self.main_content_layout.addWidget(self.command_combo)
+
+        action_layout = QHBoxLayout()
+        
+        lbl_action = QLabel("Действие:")
+        lbl_action.setStyleSheet("background: transparent;")
+        action_layout.addWidget(lbl_action)
+        
+        self.cmb_action = QComboBox()
+        self.cmb_action.addItems(["open", "close"])
+        action_layout.addWidget(self.cmb_action)
+        
+        self.main_content_layout.addLayout(action_layout)
+
+        # Label для ошибок
+        self.error_label = QLabel()
+        self.error_label.setStyleSheet("color: red; font-size: 11px; background-color: transparent; height: 15px;")
+        self.main_content_layout.addWidget(self.error_label)
+
+        self.main_content_layout.addStretch()
+        
+        # Кнопки
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+
+        self.open_script_folder = QPushButton("Папка с иконками")
+        self.open_script_folder.clicked.connect(self.open_folder)
+        self.open_script_folder.setStyleSheet("padding-left: 10px; padding-right: 10px;")
+        btn_layout.addWidget(self.open_script_folder)
+
+        btn_layout.addStretch()
+
+        self.create_btn = QPushButton("Создать")
+        self.create_btn.clicked.connect(self.save_button)
+        self.create_btn.setStyleSheet("padding-left: 10px; padding-right: 10px;")
+        btn_layout.addWidget(self.create_btn)
+        
+        self.cancel_btn = QPushButton("Отмена")
+        self.cancel_btn.setStyleSheet("padding-left: 10px; padding-right: 10px;")
+        self.cancel_btn.clicked.connect(self.close)
+        btn_layout.addWidget(self.cancel_btn)
+        
+        self.main_content_layout.addLayout(btn_layout)
+    
+    def load_svg_list(self):
+        """Загружает SVG файлы из папки"""
+        self.icon_combo.clear()
+
+        if os.path.exists(self.custom_icons_folder):
+            svg_files = []
+            
+            # Собираем все SVG файлы
+            for file in sorted(os.listdir(self.custom_icons_folder)):
+                if file.lower().endswith('.svg'):
+                    svg_files.append(file)
+            
+            # Если есть SVG файлы
+            if svg_files:  # <-- ИСПРАВЬ: проверяем svg_files, а не os.path.exists
+                for svg_file in svg_files:
+                    icon_name = os.path.splitext(svg_file)[0]
+                    icon_path = os.path.join(self.custom_icons_folder, svg_file)
+                    
+                    # Добавляем в комбобокс
+                    self.icon_combo.addItem(icon_name, icon_path)
+            else:
+                # Если папка пуста
+                self.icon_combo.addItem("(нет SVG файлов)", "")
+        else:
+            # Если папки не существует
+            self.icon_combo.addItem("(папка не найдена)", "")
+
+    def update_preview(self, index):
+        """Обновляет превью выбранной иконки"""
+        icon_path = self.icon_combo.itemData(index)
+        
+        if icon_path and os.path.exists(icon_path):
+            try:
+                # Создаем QSvgWidget для покраски
+                self.preview_svg.load(icon_path)
+
+                self.style_manager.apply_color_svg(self.preview_svg, strength=0.9)
+
+                self.preview_svg.update()
+                
+            except Exception as e:
+                debug_logger.error(f"Ошибка загрузки превью: {e}")
+                self.preview_svg.load("")
+        else:
+            # Очищаем превью
+            self.preview_svg.load("")
+
+    def show_error(self, message):
+        """Показывает сообщение об ошибке."""
+        self.error_label.setText(message)
+        self.error_label.setVisible(True)
+
+    def open_folder(self):
+        path = get_path("bin", "icons", "script-icons")
+
+        if os.path.exists(path) and os.path.isdir(path):
+            os.startfile(path)
+        else:
+            # Если папка не существует, создаем её
+            try:
+                os.makedirs(path)
+                logger.info(f'Папка "{path}" была создана.')
+                debug_logger.info(f'Папка "{path}" была создана.')
+                os.startfile(path)
+            except Exception as e:
+                logger.error(f'Ошибка при создании папки: {e}')
+                debug_logger.error(f'Ошибка при создании папки: {e}')
+    
+    def save_button(self):
+        """Создает объект кастомной кнопки"""
+        name = self.name_input.text().strip()
+        if not name:
+            self.show_error("Введите название кнопки")
+            return
+        
+        icon_path = self.icon_combo.currentData()
+        name_command = self.command_combo.currentText()
+        
+        # Проверяем, что команда выбрана
+        if not name_command:
+            self.show_error("Выберите команду")
+            return
+        
+        # Получаем полные данные команды из словаря команд
+        command_data = self.commands.get(name_command)
+    
+        if not command_data:
+            self.show_error("Ошибка: команда не найдена в словаре")
+            return
+        
+        move_command = self.cmb_action.currentText()
+        
+        # Создаем объект кастомной кнопки
+        custom_button_data = {
+            'id': self.generate_short_uuid(8),
+            'name': name,
+            'icon_path': icon_path if icon_path else "",
+            'name_command': name_command,
+            'type_command': command_data.get('type', 'unknown'),
+            'move_command': move_command,
+            'command_data': command_data
+        }
+
+        self.save_btn_data(custom_button_data)
+        
+        self.custom_button_created.emit(custom_button_data)
+        self.close()
+
+    def save_btn_data(self, custom_data):
         with open(self.widget_state, 'r', encoding='utf-8') as f:
             existing_data = json.load(f)
 
-        # Добавляем данные о кнопках (порядок сохранится в словаре)
-        existing_data["buttons"] = self.get_buttons_data()
+        if 'custom_buttons' not in existing_data:
+            existing_data['custom_buttons'] = []
+        elif isinstance(existing_data['custom_buttons'], dict):
+            existing_data['custom_buttons'] = [existing_data['custom_buttons']]
 
-        existing_data["font_family"] = self.font_combo.currentText()
+        existing_data['custom_buttons'].append(custom_data)
 
-        # Сохраняем обратно
         with open(self.widget_state, 'w', encoding='utf-8') as f:
             json.dump(existing_data, f, indent=4, ensure_ascii=False)
 
-        QTimer.singleShot(100, widget_btns_signal.buttons_updated.emit)
+    def generate_short_uuid(self, length=8):
+        """Генерирует короткий уникальный ID заданной длины"""
+        alphabet = string.ascii_lowercase + string.digits
+        return ''.join(secrets.choice(alphabet) for _ in range(length))

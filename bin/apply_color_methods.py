@@ -1,10 +1,11 @@
 import json
 import re
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPixmap, QPainter, QLinearGradient
-from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QGraphicsColorizeEffect
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtSvg import *
+from PySide6.QtSvgWidgets import *
+from PySide6.QtWidgets import *
 
 from bin.custom_svg_widget import CustomSvgWidget
 from logging_config import debug_logger
@@ -149,6 +150,10 @@ class ApplyColor():
             debug_logger.error(f"Ошибка извлечения цвета: {e}")
         return "#BB05CC"
     
+    def get_gradient_darker(self):
+        color_or_gradient = self.get_color_from_border("border")
+        return self.adjust_gradient_border(color_or_gradient, only_first_color=False)
+    
     def apply_progressbar(self, key=None, widget=None, style="solid"):
         """
         Применяет стиль к прогресс-бару
@@ -258,6 +263,26 @@ class ApplyColor():
         except:
             pass
         return "#05B8CC"
+    
+    def get_gradient_colors(self, gradient_string):
+        """Извлекает все цвета из градиента и возвращает их список в порядке следования"""
+        try:
+            import re
+            colors = []
+            # Ищем все значения stop с цветами
+            stops = re.findall(r'stop:([\d.]+)\s+([^,)]+)', gradient_string)
+            
+            if stops:
+                # Сортируем стопы по их позиции (первое число)
+                sorted_stops = sorted(stops, key=lambda x: float(x[0]))
+                
+                # Извлекаем только цвета в правильном порядке
+                colors = [stop[1].strip() for stop in sorted_stops]
+                
+            return colors if colors else ["#05B8CC"]
+            
+        except Exception:
+            return ["#05B8CC"]
 
     def setup_circular_colors(self, widget, color_or_gradient):
         """Автоматически настраивает цвета для кругового прогрессбара"""
@@ -343,15 +368,26 @@ class ApplyColor():
                 }}
             """
 
-    def adjust_gradient_border(self, gradient):
+    def adjust_gradient_border(self, gradient, only_first_color=True):
         """Создает темную версию градиента для border"""
-        # Для простоты используем первый цвет градиента, затемненный
-        first_color = self.get_first_gradient_color(gradient)
-        return self.adjust_color(first_color, brightness=-30)
+        colors = self.get_gradient_colors(gradient)
+        
+        if not colors:
+            colors = ["#05B8CC"]
+        
+        if only_first_color:
+            # Один цвет
+            return self.adjust_color(colors[0], brightness=-30)
+        else:
+            # Все цвета с использованием list comprehension
+            return [self.adjust_color(color, brightness=-30) for color in colors]
+
 
     def adjust_gradient_background(self, gradient):
         """Создает очень темную версию градиента для background"""
-        first_color = self.get_first_gradient_color(gradient)
+        # first_color = self.get_first_gradient_color(gradient)
+        colors = self.get_gradient_colors(gradient)
+        first_color = colors[0] if colors else "#05B8CC"
         return self.adjust_color(first_color, brightness=-80)
     
     def get_snow_color(self):

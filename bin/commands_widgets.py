@@ -1,12 +1,16 @@
 import json
 import os
 import re
-
-from PySide6.QtCore import Qt, QStringListModel
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QFileDialog, QPushButton, QLineEdit, QLabel, QComboBox, \
-    QVBoxLayout, QWidget, QDialog, QFrame, QStackedWidget, QHBoxLayout, QListWidget, QListWidgetItem, \
-    QCompleter, QDialogButtonBox, QMessageBox, QMenu, QApplication
+import uuid
+import time
+import subprocess
+import pythoncom
+import win32com.client
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
+from bin.apply_color_methods import ApplyColor
+from bin.custom_svg_widget import CustomSvgWidget
 from bin.lists import setup_custom_font_label
 from bin.shortcut_monitor import ShortcutMonitor
 from bin.signals import commands_signal
@@ -78,6 +82,7 @@ class CreateCommandsWidget(QWidget):
 
         # Контейнер для динамических форм
         self.form_container = QStackedWidget()
+        self.form_container.setObjectName("CreateCommandsWidgets")
         self.form_container.hide()
         layout.addWidget(self.form_container)
 
@@ -548,11 +553,63 @@ class CommandsWidget(QWidget):
 
     def show_context_menu(self, position):
         """Показывает контекстное меню"""
-        # Проверяем, есть ли элемент под курсором
         item = self.commands_list.itemAt(position)
         if item is not None:
-            # Показываем контекстное меню только если кликнули на элемент
-            self.context_menu.exec_(self.commands_list.mapToGlobal(position))
+            current_text = item.text()
+            
+            # Извлекаем ключ команды
+            if " : " in current_text:
+                key = current_text.split(" : ")[0]
+
+                is_script = False
+                if key in self.assistant.commands:
+                    cmd_data = self.assistant.commands[key]
+                    if isinstance(cmd_data, dict) and cmd_data.get('type') == 'script':
+                        is_script = True
+
+                context_menu = QMenu(self)
+
+                # Только для скриптов
+                if is_script:
+                    edit_script_action = context_menu.addAction("Редактировать сценарий")
+                    edit_script_action.triggered.connect(lambda: self.edit_script(key))
+                
+                # Для всех команд
+                edit_action = context_menu.addAction("Изменить команду")
+                edit_action.triggered.connect(self.edit_command)
+                
+                delete_action = context_menu.addAction("Удалить")
+                delete_action.triggered.connect(self.delete_command)
+
+                context_menu.exec_(self.commands_list.mapToGlobal(position))
+
+    def edit_script(self, script_key):
+        """Редактирование скрипта"""
+        if script_key not in self.assistant.commands:
+            return
+        
+        script_data = self.assistant.commands[script_key]
+        if not isinstance(script_data, dict) or script_data.get('type') != 'script':
+            return
+        
+        # Открываем диалог редактирования скрипта
+        dialog = EditScriptDialog(
+            script_key=script_key,
+            script_data=script_data,
+            commands_manager=self.assistant.commands_manager,
+            parent=self
+        )
+        
+        if dialog.exec_() == QDialog.DialogCode.Accepted:
+            # Обновляем скрипт
+            updated_data = dialog.get_updated_script_data()
+            self.assistant.commands[script_key] = updated_data
+
+            with open(get_path('user_settings', 'commands.json'), 'w', encoding='utf-8') as file:
+                json.dump(self.assistant.commands, file, ensure_ascii=False, indent=4)
+
+            self.update_commands_list()
+            self.assistant.show_notification_message(f"Сценарий '{script_key}' обновлен")
 
     def edit_command(self):
         """Редактирование выбранной команды"""
@@ -563,11 +620,9 @@ class CommandsWidget(QWidget):
         item = selected_items[0]
         current_text = item.text()
 
-        # Разделяем ключ и значение
         if " : " in current_text:
             current_key, current_value = current_text.split(" : ", 1)
 
-            # Создаем диалог редактирования
             dialog = EditCommandDialog(
                 current_key=current_key,
                 current_value=current_value,
@@ -578,7 +633,6 @@ class CommandsWidget(QWidget):
             if dialog.exec_() == QDialog.DialogCode.Accepted:
                 new_key = dialog.new_key
 
-                # Обновляем команду в словаре
                 if current_key in self.assistant.commands:
                     command_value = self.assistant.commands[current_key]
                     del self.assistant.commands[current_key]
@@ -591,14 +645,50 @@ class CommandsWidget(QWidget):
         """Обновляет список команд"""
         self.commands_list.clear()
 
-        if not isinstance(self.assistant.commands, dict):
-            debug_logger.error("Команды должны быть словарем")
-            self.assistant.show_message("Некорректный формат команд", "Ошибка", "error")
-            return
+        for key, command_data in self.assistant.commands.items():
+            if isinstance(command_data, dict) and 'name' in command_data:
+                name = command_data.get('name', '')
+                _type = command_data.get('type', '')
+                desc = command_data.get('desc', '')
 
-        for key, value in self.assistant.commands.items():
-            item_text = f"{key} : {value}"
+                if _type == "script":
+                    item_text = f"{key} : [{_type}], {desc}"
+                else:
+                    item_text = f"{key} : [{_type}], {name}"
+            else:
+                item_text = f"{key} : ???"
+            
             item = QListWidgetItem(item_text)
+
+            if isinstance(command_data, dict):
+                tooltip_text = f"Команда: {key}\n"
+                tooltip_text += f"Имя: {command_data.get('name', '')}\n"
+                tooltip_text += f"Описание: {command_data.get('desc', '')}\n"
+                tooltip_text += f"Тип: {command_data.get('type', 'неизвестно')}"
+                
+                if command_data.get('type') == "script":
+                    actions = command_data.get('actions', [])
+                    tooltip_text += "\n\nДействия:"
+                    for i, action in enumerate(actions, 1):
+                        cmd_key = action.get('command_key', '???')
+                        delay = action.get('delay', 0)
+                        move = action.get('move', 'open')
+                        args = action.get('args', '')
+                        
+                        tooltip_text += f"\n{i}. {cmd_key}"
+                        if move == "open":
+                            move_on = "Открыть"
+                        elif move =="close":
+                            move_on = "Закрыть"
+                        else:
+                            move_on = ""
+                        tooltip_text += f" ({move_on} с задержкой: {delay} сек.)"
+
+                        if args:
+                            tooltip_text += f" [{args}]"
+                
+                item.setToolTip(tooltip_text)
+            
             self.commands_list.addItem(item)
 
         self.select_last_item()
@@ -1030,3 +1120,1167 @@ class EditCommandDialog(QDialog):
             self.move(event.globalPos() - self.drag_position)
             event.accept()
 
+
+class CreateScriptsWidget(QWidget):
+    def __init__(self, assistant, parent=None):
+        super().__init__(parent)
+        self.assistant = assistant
+        self.commands_manager = self.assistant.commands_manager
+        self._help_initialized = False
+        self.init_ui()
+        
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        # Заголовок
+        title = setup_custom_font_label(text="Создание сценариев запуска", font_style="Comfortaa", weight="Medium")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("background: transparent; font-size: 18px;")
+        layout.addWidget(title)
+
+        # Контейнер для кнопок выбора типа
+        btn_layout = QHBoxLayout()
+
+        # Кнопка для создания команды ярлыка
+        self.btn_shortcut = QPushButton("Обычный сценарий")
+        self.btn_shortcut.setCheckable(True)
+        self.btn_shortcut.setChecked(True)
+        self.btn_shortcut.clicked.connect(self.show_script_simple)
+        self.btn_shortcut.setProperty("helpId", "btn_script_simple")
+        btn_layout.addWidget(self.btn_shortcut)
+
+        # Кнопка для создания команды папки
+        self.btn_folder = QPushButton("Автозапуск")
+        self.btn_folder.setCheckable(True)
+        self.btn_folder.clicked.connect(self.show_script_autostart)
+        self.btn_folder.setProperty("helpId", "btn_script_autostart")
+        btn_layout.addWidget(self.btn_folder)
+
+        layout.addLayout(btn_layout)
+
+        # Контейнер для динамических форм
+        self.form_container = QStackedWidget()
+        self.form_container.setObjectName("CreateRunWidgets")
+        layout.addWidget(self.form_container)
+
+        # Создаем формы
+        self.create_forms()
+
+    def create_forms(self):
+        """Создаем все формы заранее"""
+        # Форма для простого сценария
+        self.simple_form = SimpleScriptForm(commands_manager=self.commands_manager, assistant=self.assistant)
+        self.form_container.addWidget(self.simple_form)
+        
+        # Форма для автозапуска
+        # self.autostart_form = QWidget()
+        # autostart_layout = QVBoxLayout(self.autostart_form)
+        # autostart_layout.addWidget(QLabel("Work in progress..."), alignment=Qt.AlignmentFlag.AlignTop)
+        self.autostart_form = TaskSchedulerWidget(commands_manager=self.commands_manager, assistant=self.assistant)
+        self.form_container.addWidget(self.autostart_form)
+
+    def show_script_simple(self):
+        self.form_container.setCurrentWidget(self.simple_form)
+        
+    def show_script_autostart(self):
+        self.form_container.setCurrentWidget(self.autostart_form)
+
+
+class ScriptStepWidget(QWidget):
+    """Виджет одного шага в сценарии"""
+    stepRemoved = Signal(int)
+    stepMovedUp = Signal(int)
+    stepMovedDown = Signal(int)
+    stepChanged = Signal()
+    
+    def __init__(self, step_number, available_commands, parent=None):
+        super().__init__(parent)
+        self.style_manager = ApplyColor()
+        self.step_number = step_number
+        self.available_commands = available_commands
+        self.icon_arrowup_path = get_path("bin", "icons", "arrow_up.svg")
+        self.icon_arrowdown_path = get_path("bin", "icons", "arrow_down.svg")
+        self.icon_close_path = get_path("bin", "icons", "close.svg")
+        self.init_ui()
+        self.apply_styles()
+        
+    def init_ui(self):
+        # layout = QHBoxLayout(self)
+        # layout.setContentsMargins(5, 5, 5, 5)
+        # main_widget = QWidget()
+        # layout.addWidget(main_widget)
+        # main_widget.setObjectName("ScriptStepFrame")
+
+        main_widget = QWidget()
+        main_widget.setObjectName("ScriptStepFrame")
+        layout = QHBoxLayout(main_widget)  # Layout внутри frame
+        layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Номер шага
+        lbl_number = QLabel(f"{self.step_number}.")
+        lbl_number.setStyleSheet("background: transparent;")
+        layout.addWidget(lbl_number, alignment=Qt.AlignmentFlag.AlignTop)
+
+        combo_layout = QVBoxLayout()
+
+        # Выбор команды
+        self.cmb_command = QComboBox()
+        self.cmb_command.setMinimumWidth(250)
+        self._populate_commands()
+        self.cmb_command.currentIndexChanged.connect(self.stepChanged)
+        combo_layout.addWidget(self.cmb_command)
+        
+        # Задержка
+        delay_layout = QHBoxLayout()
+
+        lbl_delay = QLabel("Задержка (сек.):")
+        lbl_delay.setStyleSheet("background: transparent;")
+        delay_layout.addWidget(lbl_delay)
+        
+        self.txt_delay = QLineEdit()
+        self.txt_delay.setFixedSize(50, 30)
+        self.txt_delay.setPlaceholderText("0.5")
+        self.txt_delay.setText("0.5")  # значение по умолчанию
+        self.txt_delay.textChanged.connect(self.stepChanged)
+
+        # Добавляем валидатор для чисел с плавающей точкой
+        regex = QRegularExpression(r'^\d{1,2}([.,]\d{0,2})?$')  # 0-99.99
+        validator = QRegularExpressionValidator(regex, self)
+        self.txt_delay.setValidator(validator)
+
+        delay_layout.addWidget(self.txt_delay)
+        combo_layout.addLayout(delay_layout)
+
+        # Аргументы       
+        self.txt_args = QLineEdit()
+        self.txt_args.setPlaceholderText("Аргументы (опционально)")
+        self.txt_args.textChanged.connect(self.stepChanged)
+        combo_layout.addWidget(self.txt_args)
+        combo_layout.addStretch()
+        layout.addLayout(combo_layout)
+
+        action_layout = QHBoxLayout()
+        
+        lbl_action = QLabel("Действие:")
+        lbl_action.setStyleSheet("background: transparent;")
+        action_layout.addWidget(lbl_action)
+        
+        self.cmb_action = QComboBox()
+        self.cmb_action.addItems(["open", "close"])
+        self.cmb_action.currentIndexChanged.connect(self.stepChanged)
+        action_layout.addWidget(self.cmb_action)
+        
+        combo_layout.addLayout(action_layout)
+        
+        # Кнопки управления
+        btns_layout = QVBoxLayout()
+        self.btn_up = QPushButton("")
+        self.btn_up.setFixedSize(30, 30)
+        self.btn_up.clicked.connect(lambda: self.stepMovedUp.emit(self.step_number))
+        
+        self.btn_up_svg = CustomSvgWidget(self.icon_arrowup_path, self.btn_up)
+        self.btn_up_svg.setFixedSize(30, 30)
+        self.btn_up_svg.setStyleSheet("background: transparent;")
+        btns_layout.addWidget(self.btn_up)
+        
+        self.btn_down = QPushButton("")
+        self.btn_down.setFixedSize(30, 30)
+        self.btn_down.clicked.connect(lambda: self.stepMovedDown.emit(self.step_number))
+        self.btn_down_svg = CustomSvgWidget(self.icon_arrowdown_path, self.btn_down)
+        self.btn_down_svg.setFixedSize(30, 30)
+        self.btn_down_svg.setStyleSheet("background: transparent;")
+        btns_layout.addWidget(self.btn_down)
+
+        btns_layout.addStretch()
+        
+        self.btn_remove = QPushButton("")
+        self.btn_remove.setFixedSize(30, 30)
+        self.btn_remove.clicked.connect(lambda: self.stepRemoved.emit(self.step_number))
+        self.btn_remove_svg = CustomSvgWidget(self.icon_close_path, self.btn_remove)
+        self.btn_remove_svg.setFixedSize(30, 30)
+        self.btn_remove_svg.setStyleSheet("background: transparent;")
+        btns_layout.addWidget(self.btn_remove)
+
+        layout.addLayout(btns_layout)
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(main_widget)
+
+    def apply_styles(self):
+        self.style_manager.apply_color_svg(self.btn_up_svg, strength=0.90)
+        self.style_manager.apply_color_svg(self.btn_down_svg, strength=0.90)
+        self.style_manager.apply_color_svg(self.btn_remove_svg, strength=0.90)
+
+    def _populate_commands(self, include_scripts=False):
+        """Заполняем список доступных команд"""
+        self.cmb_command.clear()
+        self.cmb_command.addItem("-- Выберите команду --", None)
+        
+        for key, data in self.available_commands.items():
+            # Формируем текст для отображения
+            if isinstance(data, dict):
+                desc = data.get('desc', '')
+                cmd_type = data.get('type', '')
+                if not include_scripts and cmd_type == 'script':
+                    continue
+            else:
+                desc = ''
+                cmd_type = ''
+            
+            display_text = f"{key}"
+            if desc:
+                display_text += f" - {desc}"
+            
+            self.cmb_command.addItem(display_text, key)
+    
+    def get_step_data(self):
+        """Получить данные шага"""
+        command_key = self.cmb_command.currentData()
+        if not command_key:
+            return None
+            
+        # Получаем значение задержки
+        delay_text = self.txt_delay.text().strip()
+        if not delay_text:
+            delay = 0.0
+        else:
+            try:
+                delay = float(delay_text.replace(',', '.'))
+            except ValueError:
+                delay = 0.0
+
+        move = self.cmb_action.currentText()
+        
+        return {
+            'command_key': command_key,
+            'delay': delay,
+            'move': move,
+            'args': self.txt_args.text().strip()
+        }
+    
+    def update_step_number(self, new_number):
+        """Обновить номер шага"""
+        self.step_number = new_number
+        self.findChild(QLabel).setText(f"{new_number}.")
+
+    def set_data(self, action_data):
+        """Установить данные шага"""
+        command_key = action_data.get('command_key', '')
+        delay = action_data.get('delay', 0.5)
+        move = action_data.get('move', 'open')
+        args = action_data.get('args', '')
+
+        index = self.cmb_command.findData(command_key)
+        if index >= 0:
+            self.cmb_command.setCurrentIndex(index)
+
+        action_index = self.cmb_action.findText(move)
+        if action_index >= 0:
+            self.cmb_action.setCurrentIndex(action_index)
+
+        self.txt_delay.setText(str(delay))
+
+        self.txt_args.setText(args)
+
+class SimpleScriptForm(QWidget):
+    """Форма создания простого сценария"""
+    def __init__(self, script_key=None, commands_manager=None, assistant=None, is_editor=False, parent=None):
+        super().__init__(parent)
+        self.commands_manager = commands_manager
+        self.assistant = assistant
+        self.is_editor = is_editor
+        self.editing_key = script_key
+        self.steps = []  # список виджетов шагов
+        self._help_initialized = False
+        self.init_ui()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        if not self.is_editor:
+            # Заголовок
+            lbl_title = setup_custom_font_label(text="Создание обычного сценария", font_style="Comfortaa", weight="Medium")
+            lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl_title.setStyleSheet("background: transparent; font-size: 17px;")
+            layout.addWidget(lbl_title)
+        else:
+            # Заголовок
+            lbl_title = setup_custom_font_label(text="Редактирование сценария", font_style="Comfortaa", weight="Medium")
+            lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl_title.setStyleSheet("background: transparent; font-size: 17px;")
+            layout.addWidget(lbl_title)
+        
+        # Контейнер для шагов
+        self.steps_container = QVBoxLayout()
+        self.steps_container.setSpacing(5)
+        
+        scroll_area = QScrollArea()
+        scroll_widget = QWidget()
+        scroll_area.setProperty("helpId", "steps_container")
+        scroll_widget.setLayout(self.steps_container)
+        scroll_area.setWidget(scroll_widget)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setMinimumHeight(250)
+        layout.addWidget(scroll_area)
+        
+        # Кнопка добавления шага
+        self.btn_add_step = QPushButton("+ Добавить шаг")
+        self.btn_add_step.setProperty("helpId", "+step_btn")
+        self.btn_add_step.clicked.connect(self.add_step)
+        layout.addWidget(self.btn_add_step)
+
+        
+        # Имя сценария
+        lbl_name = setup_custom_font_label(text="Название сценария:", font_style="Comfortaa", weight="Medium")
+        lbl_title.setStyleSheet("background: transparent; font-size: 15px;")
+        lbl_name.setProperty("helpId", "name_script")
+        layout.addWidget(lbl_name)
+        
+        self.txt_script_name = QLineEdit()
+        self.txt_script_name.setPlaceholderText("")
+        self.txt_script_name.setProperty("helpId", "name_script")
+        layout.addWidget(self.txt_script_name)
+        
+        # Описание
+        lbl_desc = setup_custom_font_label(text="Описание:", font_style="Comfortaa", weight="Medium")
+        lbl_desc.setStyleSheet("background: transparent; font-size: 15px;")
+        lbl_desc.setProperty("helpId", "desc_script")
+        layout.addWidget(lbl_desc)
+        
+        self.txt_script_desc = QLineEdit()
+        self.txt_script_desc.setPlaceholderText("Описание сценария (необязательно)")
+        self.txt_script_desc.setProperty("helpId", "desc_script")
+        layout.addWidget(self.txt_script_desc)
+        
+        if not self.is_editor:
+            # Кнопки сохранения/теста
+            btn_layout = QHBoxLayout()
+            
+            self.btn_test = QPushButton("Тестовый запуск")
+            self.btn_test.clicked.connect(self.test_script)
+            self.btn_test.setProperty("helpId", "test_script")
+            btn_layout.addWidget(self.btn_test)
+            
+            self.btn_save = QPushButton("Сохранить сценарий")
+            self.btn_save.clicked.connect(self.save_script)
+            self.btn_save.setProperty("helpId", "save_script")
+            btn_layout.addWidget(self.btn_save)
+            
+            layout.addLayout(btn_layout)
+        
+        # Статус
+        self.lbl_status = QLabel("")
+        self.lbl_status.setStyleSheet("background: transparent; color: #666; font-style: italic;")
+        layout.addWidget(self.lbl_status)
+        
+        if not self.is_editor:
+            # Добавляем первый шаг
+            self.add_step()
+        
+    def get_available_commands(self):
+        """Получить все доступные команды"""
+        all_commands = {**self.commands_manager.default_commands, **self.commands_manager.commands}
+        return all_commands
+        
+    def add_step(self):
+        """Добавить новый шаг"""
+        if len(self.steps) >= 10:
+            self.lbl_status.setText("Максимум 10 шагов")
+            return
+        
+        if self.steps_container.count() > 0:
+            # Убираем последний элемент (stretch)
+            self.steps_container.takeAt(self.steps_container.count() - 1)
+            
+        step_widget = ScriptStepWidget(
+            len(self.steps) + 1,
+            self.get_available_commands(),
+            self
+        )
+        
+        # Подключаем сигналы
+        step_widget.stepRemoved.connect(self.remove_step)
+        step_widget.stepMovedUp.connect(self.move_step_up)
+        step_widget.stepMovedDown.connect(self.move_step_down)
+        step_widget.stepChanged.connect(self.update_status)
+        
+        self.steps.append(step_widget)
+        self.steps_container.addWidget(step_widget)
+        self.update_step_numbers()
+        self.update_status()
+        self.steps_container.addStretch()
+        
+    def remove_step(self, step_number, force=False):
+        """Удалить шаг"""
+        if len(self.steps) <= 1 and not force:
+            self.lbl_status.setText("Должен быть хотя бы один шаг")
+            return False
+            
+        widget = self.steps[step_number - 1]
+        self.steps_container.removeWidget(widget)
+        widget.deleteLater()
+        self.steps.pop(step_number - 1)
+        self.update_step_numbers()
+        self.update_status()
+        return True
+        
+    def move_step_up(self, step_number):
+        """Переместить шаг вверх"""
+        if step_number <= 1:
+            return
+            
+        # Меняем виджеты местами
+        self.steps[step_number - 1], self.steps[step_number - 2] = \
+            self.steps[step_number - 2], self.steps[step_number - 1]
+        
+        self.update_step_numbers()
+        self.update_status()
+        
+    def move_step_down(self, step_number):
+        """Переместить шаг вниз"""
+        if step_number >= len(self.steps):
+            return
+            
+        # Меняем виджеты местами
+        self.steps[step_number - 1], self.steps[step_number] = \
+            self.steps[step_number], self.steps[step_number - 1]
+        
+        self.update_step_numbers()
+        self.update_status()
+        
+    def update_step_numbers(self):
+        """Обновить номера всех шагов"""
+        for i, step_widget in enumerate(self.steps, 1):
+            step_widget.update_step_number(i)
+            
+    def update_status(self):
+        """Обновить статусную строку"""
+        total_steps = len(self.steps)
+        
+        # Суммируем задержки из QLineEdit
+        total_delay = 0.0
+        for step in self.steps:
+            try:
+                # Получаем текст из поля и преобразуем в float
+                delay_text = step.txt_delay.text().strip()
+                if delay_text:
+                    # Заменяем запятую на точку для корректного преобразования
+                    delay_text = delay_text.replace(',', '.')
+                    total_delay += float(delay_text)
+            except (ValueError, AttributeError):
+                pass  # Игнорируем ошибки преобразования
+        
+        self.lbl_status.setText(f"Шагов: {total_steps}, Общее время: {total_delay:.1f} сек")
+        
+    def get_script_data(self):
+        """Получить данные сценария из формы"""
+        steps_data = []
+        for step_widget in self.steps:
+            step_data = step_widget.get_step_data()
+            if step_data:
+                steps_data.append(step_data)
+                
+        if not steps_data:
+            return None
+            
+        return {
+            'name': self.txt_script_name.text().strip(),
+            'desc': self.txt_script_desc.text().strip(),
+            "type": "script",
+            'actions': steps_data
+        }
+        
+    def validate_script(self, script_data):
+        """Валидация данных сценария"""
+        if not script_data['name']:
+            return False, "Введите имя сценария"
+            
+        if len(script_data['actions']) == 0:
+            return False, "Добавьте хотя бы один шаг"
+        
+        # В режиме редактора пропускаем проверку, если имя не меняется
+        if self.is_editor and self.editing_key:
+            # Если имя не изменилось - пропускаем проверку
+            if script_data['name'] == self.editing_key:
+                return True, ""
+            
+            # Если имя изменилось - проверяем уникальность нового имени
+            if script_data['name'] in self.commands_manager.commands:
+                return False, f"Команда '{script_data['name']}' уже существует"
+        else:
+            # Обычная проверка для нового скрипта
+            if script_data['name'] in self.commands_manager.commands:
+                return False, f"Команда '{script_data['name']}' уже существует"
+            
+        return True, ""
+        
+    def test_script(self):
+        """Тестовый запуск сценария"""
+        script_data = self.get_script_data()
+        if not script_data:
+            self.lbl_status.setText("Нет данных для теста")
+            return
+            
+        valid, error = self.validate_script(script_data)
+        if not valid:
+            self.lbl_status.setText(error)
+            return
+            
+        self.lbl_status.setText("Тестовый запуск...")
+
+        temp_script_key = f"__test_{uuid.uuid4().hex[:8]}"
+        
+        # Вычисляем общую задержку скрипта
+        total_delay = 0
+        actions = script_data.get('actions', [])
+        for action in actions:
+            total_delay += action.get('delay', 0)
+        
+        # Добавляем 5 секунд на выполнение команд
+        cleanup_delay_ms = int((total_delay + 5) * 1000)
+        debug_logger.info(f"Общая задержка скрипта: {total_delay}с, очистка через {cleanup_delay_ms}мс")
+        
+        try:
+            # Временно сохраняем в commands_manager
+            self.commands_manager.commands[temp_script_key] = script_data
+            debug_logger.info(f"Тестовый скрипт сохранен как: {temp_script_key}")
+            
+            # Запоминаем время начала
+            self._test_start_time = time.time()
+            
+            # Выполняем тестовый скрипт
+            self.commands_manager.execute_script(temp_script_key)
+            
+            # Очищаем через вычисленное время
+            QTimer.singleShot(cleanup_delay_ms, lambda: self._cleanup_temp_script(temp_script_key))
+            
+        except Exception as e:
+            debug_logger.error(f"Ошибка запуска теста: {e}")
+            self._cleanup_temp_script(temp_script_key)
+            self.lbl_status.setText(f"Ошибка: {e}")
+
+    def _cleanup_temp_script(self, temp_key):
+        """Очистка временного скрипта"""
+        if temp_key in self.commands_manager.commands:
+            del self.commands_manager.commands[temp_key]
+            elapsed = getattr(self, '_test_start_time', None)
+            if elapsed:
+                elapsed = time.time() - self._test_start_time
+                debug_logger.info(f"Тестовый скрипт удален: {temp_key} (выполнялся {elapsed:.1f}с)")
+            else:
+                debug_logger.info(f"Тестовый скрипт удален: {temp_key}")
+        
+    def save_script(self):
+        """Сохранить сценарий"""
+        script_data = self.get_script_data()
+        if not script_data:
+            self.lbl_status.setText("Нет данных для сохранения")
+            return
+            
+        valid, error = self.validate_script(script_data)
+        if not valid:
+            self.lbl_status.setText(error)
+            return
+            
+        # Формируем структуру для сохранения
+        script_structure = {
+            'name': script_data['name'],
+            'desc': script_data['desc'],
+            'type': 'script',
+            'actions': script_data['actions']
+        }
+        
+        # Сохраняем в менеджере команд
+        self.commands_manager.commands[script_data['name']] = script_structure
+        self.commands_manager.save_commands()
+        
+        self.assistant.show_notification_message(f"Сценарий '{script_data['name']}' сохранен!")
+        commands_signal.commands_updated.emit()
+        self.clear_form()
+        
+    def clear_form(self):
+        """Очистить форму"""
+        # Оставляем только первый шаг
+        while len(self.steps) > 1:
+            self.remove_step(len(self.steps))
+        
+        # Сбрасываем значения первого шага
+        if self.steps:
+            self.steps[0].cmb_command.setCurrentIndex(0)
+            self.steps[0].txt_delay.setText("0.5")  # вместо setValue
+            self.steps[0].txt_args.clear()
+        
+        self.txt_script_name.clear()
+        self.txt_script_desc.clear()
+        self.update_status()
+
+    def load_script_data(self, script_data):
+        """Загрузить данные скрипта в форму"""
+        self.txt_script_desc.setText(script_data.get('desc', ''))
+
+        actions = script_data.get('actions', [])
+
+        for i, action in enumerate(actions):
+            self.add_step()
+
+            if self.steps:
+                last_step = self.steps[-1]
+                last_step.set_data(action)
+
+
+class EditScriptDialog(QDialog):
+    """Диалог редактирования скрипта"""
+    def __init__(self, script_key, script_data, commands_manager, parent=None):
+        super().__init__(parent)
+        self.script_key = script_key
+        self.original_data = script_data.copy()
+        self.commands_manager = commands_manager
+
+        self.form = SimpleScriptForm(script_key=self.script_key, commands_manager=self.commands_manager, is_editor=True)
+
+        self.form.load_script_data(script_data)
+        self.form.txt_script_name.setText(script_key)
+        
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedSize(500, 650)
+
+        dialog_layout = QVBoxLayout(self)
+        dialog_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.main_widget = QWidget(self)
+        self.main_widget.setObjectName("WindowContainer")
+        content_layout = QVBoxLayout(self.main_widget)
+        content_layout.setContentsMargins(15, 15, 15, 15)
+
+        content_layout.addWidget(self.form)
+
+        btn_layout = QHBoxLayout()
+        
+        btn_test = QPushButton("Тестовый запуск")
+        btn_test.setStyleSheet("padding-left: 10px; padding-right: 10px;")
+        btn_test.clicked.connect(self.test_script)
+        btn_layout.addWidget(btn_test)
+        
+        btn_layout.addStretch()
+
+        btn_save = QPushButton("Сохранить")
+        btn_save.setStyleSheet("padding-left: 10px; padding-right: 10px;")
+        btn_save.clicked.connect(self.save)
+        btn_layout.addWidget(btn_save)
+        
+        btn_cancel = QPushButton("Отмена")
+        btn_cancel.setStyleSheet("padding-left: 10px; padding-right: 10px;")
+        btn_cancel.clicked.connect(self.reject)
+        btn_layout.addWidget(btn_cancel)
+
+        content_layout.addLayout(btn_layout)
+        dialog_layout.addWidget(self.main_widget)
+
+    
+    def test_script(self):
+        """Тестовый запуск скрипта"""
+        self.form.test_script()
+    
+    def save(self):
+        """Сохранить изменения"""
+        new_data = self.form.get_script_data()
+        if new_data:
+            self.original_data.update(new_data)
+            self.accept()
+    
+    def get_updated_script_data(self):
+        """Получить обновленные данные скрипта"""
+        return self.original_data
+    
+
+class TaskSchedulerWidget(QWidget):
+    def __init__(self, commands_manager=None, assistant=None, parent=None):
+        super().__init__(parent)
+        self.commands_manager = commands_manager
+        self.assistant = assistant
+        self.links_file = get_path("user_settings", "links.json")
+        self.links = self.load_links()
+        self._help_initialized = False
+        self.setObjectName("TaskSchedulerWidget")
+        self.init_ui()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._help_initialized and hasattr(self.assistant, 'install_event_filter_recursive'):
+            self.assistant.install_event_filter_recursive(self)
+            self._help_initialized = True
+
+    def init_ui(self):
+        """Инициализация интерфейса"""
+        layout = QVBoxLayout()
+        
+        # Заголовок
+        title_label = setup_custom_font_label(text="Создание задачи в планировщике", font_style="Comfortaa", weight="Medium")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("background: transparent; font-size: 17px;")
+        layout.addWidget(title_label)
+
+        content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(5, 5, 5, 5)
+        content_layout.setSpacing(10)
+        
+        # Название задачи
+        lbl_name = setup_custom_font_label(text="Название задачи:", font_style="Comfortaa", weight="Medium")
+        lbl_name.setStyleSheet("background: transparent; font-size: 14px;")
+        lbl_name.setProperty("helpId", "task_field_name")
+        content_layout.addWidget(lbl_name)
+
+        self.task_name_edit = QLineEdit()
+        self.task_name_edit.setPlaceholderText("Новая задача")
+        self.task_name_edit.setProperty("helpId", "task_field_name")
+        content_layout.addWidget(self.task_name_edit)
+        
+        # Выбор ярлыка
+        lbl_link = setup_custom_font_label(text="Ярлык:", font_style="Comfortaa", weight="Medium")
+        lbl_link.setStyleSheet("background: transparent; font-size: 14px;")
+        lbl_link.setProperty("helpId", "task_field_link")
+        content_layout.addWidget(lbl_link)
+
+        self.shortcut_combo = QComboBox()
+        self.shortcut_combo.setEditable(False)
+        self.populate_shortcuts()
+        self.shortcut_combo.setProperty("helpId", "task_field_link")
+        content_layout.addWidget(self.shortcut_combo)
+        
+        # Задержка запуска
+        lbl_delay = setup_custom_font_label(text="Задержка:", font_style="Comfortaa", weight="Medium")
+        lbl_delay.setStyleSheet("background: transparent; font-size: 14px;")
+        content_layout.addWidget(lbl_delay)
+
+        self.delay_spinbox = QSpinBox()
+        self.delay_spinbox.setRange(0, 300)
+        self.delay_spinbox.setValue(10)
+        self.delay_spinbox.setSuffix(" сек")
+        self.delay_spinbox.setProperty("helpId", "task_field_spinbox")
+        content_layout.addWidget(self.delay_spinbox)
+        
+        # Аргументы для запуска
+        lbl_args = setup_custom_font_label(text="Аргументы:", font_style="Comfortaa", weight="Medium")
+        lbl_args.setStyleSheet("background: transparent; font-size: 14px;")
+        lbl_args.setProperty("helpId", "task_field_args")
+        content_layout.addWidget(lbl_args)
+
+        self.arguments_edit = QLineEdit()
+        self.arguments_edit.setPlaceholderText("Например: --minimized")
+        self.arguments_edit.setProperty("helpId", "task_field_args")
+        content_layout.addWidget(self.arguments_edit)
+        
+        # Описание задачи
+        lbl_desc = setup_custom_font_label(text="Описание:", font_style="Comfortaa", weight="Medium")
+        lbl_desc.setStyleSheet("background: transparent; font-size: 14px;")
+        lbl_desc.setProperty("helpId", "task_field_desc")
+        content_layout.addWidget(lbl_desc)
+
+        self.description_edit = QLineEdit()
+        self.description_edit.setPlaceholderText("Описание задачи (опционально)")
+        self.description_edit.setProperty("helpId", "task_field_desc")
+        content_layout.addWidget(self.description_edit)
+
+        layout.addLayout(content_layout)
+
+        self.create_btn = QPushButton("Создать задачу")
+        self.create_btn.clicked.connect(self.create_task)
+        self.create_btn.setStyleSheet("padding-left: 10px; padding-right: 10px;")
+        self.create_btn.setProperty("helpId", "task_btn_create")
+        layout.addWidget(self.create_btn)
+        # Кнопки
+        button_layout = QHBoxLayout()
+
+        self.test_btn = QPushButton("Тест запуска")
+        self.test_btn.clicked.connect(self.test_shortcut)
+        self.test_btn.setStyleSheet("padding-left: 10px; padding-right: 10px;")
+        self.test_btn.setProperty("helpId", "task_btn_test")
+        button_layout.addWidget(self.test_btn)
+        
+        self.refresh_btn = QPushButton("Обновить список")
+        self.refresh_btn.clicked.connect(self.refresh_shortcuts)
+        self.refresh_btn.setStyleSheet("padding-left: 10px; padding-right: 10px;")
+        self.refresh_btn.setProperty("helpId", "task_btn_refresh")
+        button_layout.addWidget(self.refresh_btn)
+
+        self.open_folder = QPushButton("Ярлыки")
+        self.open_folder.clicked.connect(self.assistant.open_folder_shortcuts)
+        self.open_folder.setProperty("helpId", "task_btn_open_folder")
+        button_layout.addWidget(self.open_folder)
+        
+        # Статус
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet("background: transparent; font-size: 14px;")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setProperty("helpId", "task_field_status")
+        layout.addWidget(self.status_label)
+
+        layout.addStretch()
+
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+
+    def show_status(self, message, color="green"):
+        """Показывает сообщение об ошибке."""
+        self.status_label.setText(message)
+        self.status_label.setStyleSheet(f"background: transparent; font-size: 14px; color: {color}")
+        self.status_label.setVisible(True)
+
+    def status_label_clear(self):
+        """Очистка лейбла ошибок"""
+        self.status_label.setText("")
+        self.status_label.setVisible(False)
+
+    def load_links(self):
+        """Загрузка ярлыков из JSON файла"""
+        try:
+            if os.path.exists(self.links_file):
+                with open(self.links_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            else:
+                # Создаем папки, если их нет
+                os.makedirs(os.path.dirname(self.links_file), exist_ok=True)
+                # Создаем пустой файл
+                with open(self.links_file, 'w', encoding='utf-8') as f:
+                    json.dump({}, f)
+                return {}
+        except Exception as e:
+            debug_logger.error(f"Ошибка загрузки файла ярлыков: {e}")
+            return {}
+    
+    def populate_shortcuts(self):
+        """Заполнение выпадающего списка ярлыками"""
+        self.shortcut_combo.clear()
+        self.shortcut_combo.addItem("-- Выберите ярлык --", None)
+        
+        for display_name, file_path in self.links.items():
+            if os.path.exists(file_path):
+                self.shortcut_combo.addItem(display_name, file_path)
+    
+    def refresh_shortcuts(self):
+        """Обновить список ярлыков"""
+        self.commands_manager.search_links()
+        self.links = self.load_links()
+        self.populate_shortcuts()
+        self.show_status("Список ярлыков обновлен")
+    
+    def get_shortcut_info(self, lnk_path):
+        """Получение информации из ярлыка .lnk"""
+        try:
+            import win32com.client
+            shell = win32com.client.Dispatch("WScript.Shell")
+            shortcut = shell.CreateShortCut(lnk_path)
+            
+            return {
+                'target_path': shortcut.TargetPath,
+                'working_dir': shortcut.WorkingDirectory,
+                'arguments': shortcut.Arguments,
+                'description': shortcut.Description
+            }
+        except Exception as e:
+            debug_logger.error(f"Ошибка чтения ярлыка {lnk_path}: {e}")
+            return None
+    
+    def test_shortcut(self):
+        """Тестовый запуск выбранного ярлыка"""
+        lnk_path = self.shortcut_combo.currentData()
+        
+        if not lnk_path:
+            self.show_status("Выберите ярлык из списка", color="red")
+            return
+        
+        shortcut_info = self.get_shortcut_info(lnk_path)
+        if not shortcut_info:
+            self.show_status(f"Не удалось прочитать ярлык:\n{lnk_path}", color="red")
+            return
+        
+        try:
+            # Формируем команду для запуска
+            cmd = f'"{shortcut_info["target_path"]}"'
+            if shortcut_info["arguments"]:
+                cmd += f' {shortcut_info["arguments"]}'
+            if self.arguments_edit.text():
+                cmd += f' {self.arguments_edit.text()}'
+            
+            # Запускаем процесс
+            working_dir = shortcut_info["working_dir"] if shortcut_info["working_dir"] else os.path.dirname(shortcut_info["target_path"])
+            
+            subprocess.Popen(
+                cmd,
+                cwd=working_dir,
+                shell=True
+            )
+            
+            self.show_status(f"Запущено: {os.path.basename(shortcut_info['target_path'])}")
+            
+        except Exception as e:
+            self.show_status(f"Не удалось запустить программу:\n{str(e)}", color="red")
+    
+    def create_task(self):
+        """Создание задачи в планировщике Windows"""
+        # Проверка обязательных полей
+        task_name = self.task_name_edit.text().strip()
+        if not task_name:
+            self.show_status("Введите название задачи", color="red")
+            return
+        
+        lnk_path = self.shortcut_combo.currentData()
+        if not lnk_path:
+            self.show_status("Выберите ярлык из списка", color="red")
+            return
+        
+        # Получаем информацию из ярлыка
+        shortcut_info = self.get_shortcut_info(lnk_path)
+        if not shortcut_info:
+            self.show_status("Не удалось прочитать информацию из ярлыка", color="red")
+            return
+        
+        # Подготавливаем данные
+        target_path = shortcut_info["target_path"]
+        working_dir = shortcut_info["working_dir"] or os.path.dirname(target_path)
+        shortcut_args = shortcut_info["arguments"] or ""
+        user_args = self.arguments_edit.text().strip()
+        
+        # Объединяем аргументы
+        all_args = shortcut_args
+        if user_args:
+            if all_args:
+                all_args += " " + user_args
+            else:
+                all_args = user_args
+        
+        delay = self.delay_spinbox.value()
+        description = self.description_edit.text().strip()
+
+        if self.check_task_exists(task_name):
+            debug_logger.info(f"Задача найдена")
+            self.show_status(f"Найдена задача с выбранным именем. Измените название задачи.", color="red")
+            return
+        
+        try:
+            # Создаем задачу в планировщике
+            success = self.create_scheduled_task(
+                task_name=task_name,
+                target_path=target_path,
+                working_dir=working_dir,
+                arguments=all_args,
+                delay_seconds=delay,
+                description=description
+            )
+            
+            if success:
+                self.show_status(f"Задача '{task_name}' создана успешно!")
+                
+                # Очистка полей после успешного создания
+                self.task_name_edit.clear()
+                self.arguments_edit.clear()
+                self.description_edit.clear()
+            else:
+                self.show_status("Ошибка при создании задачи", color="red")
+                
+        except Exception as e:
+            self.show_status(f"Не удалось создать задачу:\n{str(e)}", color="red")
+    
+    def create_scheduled_task(self, task_name, target_path, working_dir, 
+                            arguments="", delay_seconds=0, description=""):
+        """Создание задачи в планировщике Windows с правильными типами"""
+        try:
+            # Инициализируем COM в этом потоке
+            import pythoncom
+            pythoncom.CoInitialize()
+            
+            # Подключаемся к планировщику
+            scheduler = win32com.client.Dispatch('Schedule.Service')
+            scheduler.Connect()
+            
+            # Получаем корневую папку
+            root_folder = scheduler.GetFolder('\\')
+            
+            # Создаем новую задачу
+            task_def = scheduler.NewTask(0)
+            
+            # === НАСТРОЙКА ОПИСАНИЯ ===
+            reg_info = task_def.RegistrationInfo
+            reg_info.Description = description or f"Автозапуск: {task_name}"
+            reg_info.Author = "Assistant App"
+            
+            # === НАСТРОЙКА ТРИГГЕРА (при входе в систему) ===
+            triggers = task_def.Triggers
+            trigger = triggers.Create(9)  # 9 = TASK_TRIGGER_LOGON
+            
+            trigger.Id = "LogonTrigger"
+            trigger.Delay = f"PT{delay_seconds}S"  # Формат ISO 8601
+            
+            # === НАСТРОЙКА ДЕЙСТВИЯ (запуск программы) ===
+            action = task_def.Actions.Create(0)  # 0 = TASK_ACTION_EXEC
+            action.ID = "RunProgram"
+            action.Path = target_path
+            
+            if working_dir and os.path.exists(working_dir):
+                action.WorkingDirectory = working_dir
+            
+            if arguments:
+                action.Arguments = arguments
+            
+            # === НАСТРОЙКА ПРАВ ДОСТУПА ===
+            principal = task_def.Principal
+            principal.UserId = ""  # Текущий пользователь
+            principal.LogonType = 3  # TASK_LOGON_INTERACTIVE_TOKEN = 3
+            principal.RunLevel = 1   # TASK_RUNLEVEL_LUA = 1 (обычные права)
+            
+            # === НАСТРОЙКА ПАРАМЕТРОВ ===
+            settings = task_def.Settings
+            settings.Enabled = True
+            settings.Hidden = False
+            settings.AllowDemandStart = True
+            settings.AllowHardTerminate = True
+            settings.StartWhenAvailable = False
+            settings.RunOnlyIfIdle = False
+            settings.StopIfGoingOnBatteries = False
+            settings.DisallowStartIfOnBatteries = False
+            settings.ExecutionTimeLimit = "PT0H0M0S"  # Без лимита
+            settings.RestartCount = 0
+            settings.RestartInterval = ""
+            settings.MultipleInstances = 0  # TASK_INSTANCES_IGNORE_NEW = 0
+            settings.Priority = 7  # Обычный приоритет
+            
+            # === РЕГИСТРАЦИЯ ЗАДАЧИ ===
+            # Важно: использовать правильные константы
+            TASK_CREATE_OR_UPDATE = 6
+            TASK_LOGON_INTERACTIVE_TOKEN = 3
+            
+            # Регистрируем задачу
+            registered_task = root_folder.RegisterTaskDefinition(
+                task_name,                     # Имя задачи
+                task_def,                      # Определение задачи
+                TASK_CREATE_OR_UPDATE,         # Флаг создания/обновления
+                "",                          # Пользователь (None = текущий)
+                "",                          # Пароль
+                TASK_LOGON_INTERACTIVE_TOKEN   # Тип входа
+            )
+            
+            debug_logger.info(f"Задача '{task_name}' зарегистрирована")
+            
+            # Проверяем, что задача действительно создана
+            try:
+                check_task = root_folder.GetTask(task_name)
+                if check_task:
+                    debug_logger.info(f"Задача '{task_name}' успешно проверена в планировщике")
+                    pythoncom.CoUninitialize()
+                    return True
+                else:
+                    debug_logger.error(f"Задача '{task_name}' не найдена после создания")
+                    pythoncom.CoUninitialize()
+                    return False
+                    
+            except Exception as verify_error:
+                debug_logger.error(f"Ошибка проверки задачи: {verify_error}")
+                
+                # Пробуем альтернативный способ проверки
+                if self.check_task_exists(task_name):
+                    debug_logger.info(f"Задача найдена альтернативным способом")
+                    pythoncom.CoUninitialize()
+                    return True
+                
+                pythoncom.CoUninitialize()
+                return False
+                
+        except Exception as e:
+            debug_logger.error(f"Ошибка создания задачи: {e}")
+
+            try:
+                pythoncom.CoUninitialize()
+            except:
+                pass
+            
+            # Пробуем создать через PowerShell как запасной вариант
+            return self.create_task_via_powershell(task_name, target_path, working_dir, 
+                                                arguments, delay_seconds, description)
+    
+    def create_task_via_powershell(self, task_name, target_path, working_dir,
+                                 arguments="", delay_seconds=0, description=""):
+        """Создание задачи через PowerShell"""
+        # Экранируем специальные символы
+        target_path_esc = target_path.replace('"', '`"')
+        working_dir_esc = working_dir.replace('"', '`"') if working_dir else ""
+        arguments_esc = arguments.replace('"', '`"')
+        description_esc = description.replace('"', '`"')
+        
+        # Формируем команду PowerShell
+        ps_command = f"""
+        $TaskName = "{task_name}"
+        $Action = New-ScheduledTaskAction -Execute "{target_path_esc}"
+        """
+        
+        if working_dir:
+            ps_command += f'\n$Action.WorkingDirectory = "{working_dir_esc}"\n'
+        
+        if arguments:
+            ps_command += f'$Action.Argument = "{arguments_esc}"\n'
+        
+        ps_command += f"""
+        $Trigger = New-ScheduledTaskTrigger -AtLogOn
+        $Trigger.Delay = "PT{delay_seconds}S"
+        
+        $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+        $Settings.ExecutionTimeLimit = "PT0S"
+        
+        $Task = New-ScheduledTask -Action $Action -Trigger $Trigger -Settings $Settings -Description "{description_esc}"
+        
+        Register-ScheduledTask -TaskName $TaskName -InputObject $Task -Force
+        """
+        
+        # Выполняем PowerShell команду
+        result = subprocess.run(
+            ["powershell", "-Command", ps_command],
+            capture_output=True,
+            text=True,
+            shell=True
+        )
+        
+        if result.returncode == 0:
+            return True
+        else:
+            raise Exception(f"PowerShell error: {result.stderr}")
+        
+    def check_task_exists(self, task_name):
+        """Проверка через существование файла задачи"""
+        try:
+            import os
+            # Путь к файлу задачи
+            task_path = f"C:\\Windows\\System32\\Tasks\\{task_name}"
+            
+            if os.path.exists(task_path):
+                debug_logger.info(f"Файл задачи найден: {task_path}")
+                return True
+            
+            # Альтернативный путь
+            alt_path = f"C:\\Windows\\Tasks\\{task_name}"
+            if os.path.exists(alt_path):
+                debug_logger.info(f"Файл задачи найден: {alt_path}")
+                return True
+                
+            debug_logger.info(f"Файл задачи не найден: {task_name}")
+            return False
+            
+        except Exception as e:
+            debug_logger.error(f"Ошибка проверки файла: {e}")
+            return False

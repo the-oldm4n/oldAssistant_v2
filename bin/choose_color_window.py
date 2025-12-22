@@ -925,6 +925,28 @@ class ColorSettingsWindow(QDialog):
 
         # Меняем местами цвета
         return self._generate_qlineargradient(color2, color1, angle)
+    
+    def get_pressed_gradient_tab_css(self, element_type, darken_amount=30):
+        """
+        Генерирует CSS для градиента в состоянии :pressed.
+        Затемняет оба цвета на заданное количество.
+        Если градиент отключен, затемняет сплошной цвет.
+        """
+        settings = self.gradient_settings[element_type]
+        if not settings['enabled']:
+            # Если градиент выключен, используем сплошной цвет и затемняем его
+            solid_color = settings.get('solid_color', "#000000")
+            return self._darken_single_color(solid_color, darken_amount)
+
+        color1 = settings.get('color1', "#000000")
+        color2 = settings.get('color2', "#ffffff")
+        angle = settings.get('angle', 0)
+
+        # Затемняем оба цвета
+        dark_color1 = self._darken_single_color(color1, darken_amount)
+        dark_color2 = self._darken_single_color(color2, darken_amount)
+
+        return self._generate_qlineargradient(dark_color1, dark_color2, angle)
 
     def get_pressed_gradient_css(self, element_type, darken_amount=30):
         """
@@ -1104,7 +1126,7 @@ class ColorSettingsWindow(QDialog):
                         "padding": "3px"
                     },
                     "QTabBar::tab:selected": {
-                        "background-color": self.get_hover_gradient_css('buttons'),
+                        "background-color": self.get_pressed_gradient_css('borders', darken_amount=50),
                         "color": self.text_color,
                         "font-size": "13px",
                         "margin": "0",
@@ -1412,6 +1434,23 @@ class ColorSettingsWindow(QDialog):
                     "UserProfileWidget::hover": {
                         "border": f"2px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
                             'enabled'] else f"2px solid {self.border_color}"
+                    },
+                    "ScriptStepFrame": {
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}"
+                    },
+                    "QSpinBox": {
+                        "background-color": "transparent",
+                        "border": f"1px solid {self.get_gradient_css('borders')}" if self.gradient_settings['borders'][
+                            'enabled'] else f"1px solid {self.border_color}",
+                        "border-radius": f"{self.border_btn_radius}px",
+                        "padding": "5px"
+                    },
+                    "CreateCommandsWidgets": {
+                        "background-color": "transparent"
+                    },
+                    "CreateRunWidgets": {
+                        "background-color": "transparent"
                     }
         }
        

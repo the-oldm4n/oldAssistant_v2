@@ -13,9 +13,6 @@ import jellyfish
 import numpy as np
 import pyaudio
 import requests
-from bin.choose_color_window import ColorSettingsWindow
-from bin.custom_svg_widget import CustomSvgWidget
-import logging
 from pathlib import Path
 import sys
 import time
@@ -28,43 +25,41 @@ import threading
 import sounddevice as sd
 import subprocess
 from vosk import Model, KaldiRecognizer
-from PySide6.QtGui import (QIcon, QCursor, QFont, QColor, QDesktopServices, QAction, QPixmap, QFontDatabase,
-QPen, QPainter, QBrush, QPainterPath)
-from PySide6.QtGui import QImage, QMouseEvent
+from PySide6.QtGui import *
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtWidgets import (QApplication, QWidget, QLineEdit, QVBoxLayout, QHBoxLayout, \
-                               QPushButton, QSystemTrayIcon, QMenu, QMessageBox, \
-                               QTextEdit, QDialog, QLabel, QTextBrowser, QMainWindow, QSizePolicy,
-                               QGraphicsColorizeEffect, QTabWidget, QSpacerItem, QTabBar)
-from PySide6.QtCore import Qt, QFileSystemWatcher, QTimer, QEvent, Signal, QPropertyAnimation, QPoint, \
-    QEasingCurve, Slot, QUrl, QThread, QRect
+from PySide6.QtWidgets import *
+from PySide6.QtCore import *
 from bin.apply_color_methods import ApplyColor
 from bin.check_update import GetManifestThread, get_update_strategy, load_changelog, VersionCheckThread
-from bin.custom_widgets import AnimatedSidebar, GlowButton, VersionLabel
+from bin.custom_widgets import AnimatedSidebar, VersionLabel
+from bin.choose_color_window import ColorSettingsWindow
+from bin.custom_svg_widget import CustomSvgWidget
 from bin.download_thread import DeltaDownloadThread, DownloadThread
 from bin.frosted_widget import GarlandDecorator, SnowOverlay
 from bin.help_widget import HelpWidget
-from bin.progress_bar_widget import CustomProgressBar, SVGProgressBar
+from bin.monitoring_log_widget import MonitorLogWidget
+from bin.progress_bar_widget import SVGProgressBar
 from bin.register_module import AuthManager
 from bin.screenshot_tool import SystemScreenshot
 from bin.signals import gui_signals, color_signal, commands_signal
 from bin.toast_notification import ToastNotification, SimpleNotice, SupplyNotice
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from bin.widget_window import SmartWidget
-from bin.commands_widgets import CreateCommandsWidget, CommandsWidget, ProcessLinksWidget
-from bin.other_options_widgets import CensorCounterWidget, CheckUpdateWidget, DebugLoggerWidget, \
-    RelaxWidget
-from bin.utils import get_config_value, set_config_value, update_version, CommandsManager
+from bin.commands_widgets import CreateCommandsWidget, CommandsWidget, CreateScriptsWidget, ProcessLinksWidget
+from bin.other_options_widgets import CensorCounterWidget, CheckUpdateWidget, DebugLoggerWidget
+from bin.config_manager import get_config_value, set_config_value, update_version
+from bin.commands_manager import CommandsManager
 from bin.function_list_main import *
-from path_builder import get_path
 from bin.audio_control import controller
 from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel, SpeechHookManagerWidget
 from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react
-from logging_config import logger, debug_logger
 from bin.lists import get_audio_paths, commands_list, default_keywords_data, setup_custom_font_label, setup_global_font
+from path_builder import get_path
+from logging_config import logger, debug_logger
+
 
 build_ini = get_config_value("app", "build")
-version_file = "2.1.5"
+version_file = "2.2.0"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -124,17 +119,16 @@ class Assistant(QMainWindow):
         self.memory_timer.timeout.connect(self.check_memory_with_cleanup)
         self.memory_timer.start(10000)  # 10 секунд
 
-    def check_memory_with_cleanup(self):
+    def check_memory_with_cleanup(self, limit_mb=800):
         """Проверка памяти с автоматической очисткой"""
-        if not self.check_memory_usage(limit_mb=800):
+        if not self.check_memory_usage(limit_mb):
             debug_logger.warning("Превышен лимит памяти")
-            self.show_notification_message("Превышен лимит оперативной памяти (800Мб), требуется перезагрузка")
+            self.show_notification_message(f"Прозошла утечка памяти. Превышен лимит ({limit_mb}Мб).")
 
     def __init__(self):
         super().__init__()
         self.start_ipc_server()
         self.version = self.get_version()
-        # self.ps = "Powered by theoldman"
         self.label_version = VersionLabel(version=self.version)
         self.latest_version_url = None
         self.latest_version = None
@@ -168,10 +162,8 @@ class Assistant(QMainWindow):
         commands_signal.commands_updated.connect(self.save_commands)
         self.update_checked.connect(self.handle_update_status)
         self.close_child_windows.connect(self.hide_widget)
-        self.last_position = 0
         self.MEMORY_LIMIT_MB = 1024
         self.log_file_path = get_path('assistant.log')
-        self.init_logger()
         self.svg_file_path = get_path("owl.svg")
         self.install_icons()
         self.changelog_file_path = get_path('update', 'changelog.md')
@@ -211,7 +203,7 @@ class Assistant(QMainWindow):
         self.setup_memory_monitor()
         self.save_settings_signal.connect(self.restart_bot)
         self.type_version = "stable"
-        self.commands = self.load_commands()
+        self.commands = self.commands_manager.commands
         self.audio_paths = get_audio_paths(self.speaker)
         self.default_commands = commands_list
         self.auth = AuthManager(domain)
@@ -233,8 +225,6 @@ class Assistant(QMainWindow):
         self.check_autostart()
         self.check_start_win()
         self.check_start_widget()
-        self.init_file_watcher()
-        self.load_existing_logs()
         # Прятать ли программу в трей
         if self.is_min_tray:
             # Показ окна при первом запуске(для отладки)
@@ -251,6 +241,10 @@ class Assistant(QMainWindow):
         if self.apply_keywords_for_values():
             self.run_assist()
         self.toggle_update_button()
+        if self.isVisible():
+            self.log_area.start_active_mode()
+        else:
+            self.log_area.start_background_mode()
         QTimer.singleShot(5000, lambda: self.check_update_app())
         self.update_checker = QTimer()
         self.update_checker.timeout.connect(self.check_update_app)
@@ -372,6 +366,7 @@ class Assistant(QMainWindow):
         self.update_light_path = get_path("bin", "icons", "update_light.svg")
         self.icon_main_settings_path = get_path("bin", "icons", "main_settings.svg")
         self.icon_clear_logs_path = get_path("bin", "icons", "clear_log.svg")
+        self.icon_scripts_path = get_path("bin", "icons", "scripts.svg")
         
     def icons_data(self):
         icon_paths = {
@@ -612,12 +607,12 @@ class Assistant(QMainWindow):
             self.right_layout.addWidget(self.label_version, alignment=Qt.AlignmentFlag.AlignRight)
 
             # Логи
-            self.log_area = QTextEdit()
+            self.log_area = MonitorLogWidget(log_file_path=self.log_file_path)
             self.log_area.setObjectName("LogArea")
             self.log_area.setReadOnly(True)
             self.log_area.setFont(QFont("Consolas"))
             self.log_area.setStyleSheet("font-size: 16px")
-            
+
             self.help_widget = HelpWidget()
             self.help_widget.hide()
             
@@ -643,7 +638,7 @@ class Assistant(QMainWindow):
             self.clear_logs_button.setStyleSheet("background: transparent;")
             self.clear_logs_button.setToolTip("Очистить логи")
             self.clear_logs_button.setFixedSize(40, 40)
-            self.clear_logs_button.clicked.connect(self.clear_logs)
+            self.clear_logs_button.clicked.connect(self.log_area.clear_logs)
             self.clear_logs_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self.clear_logs_svg = CustomSvgWidget(self.icon_clear_logs_path, self.clear_logs_button)
             self.clear_logs_svg.setFixedSize(40, 40)
@@ -987,6 +982,7 @@ class Assistant(QMainWindow):
         # Принудительная перерисовка
         self.update()
         self.repaint()
+        self.log_area.start_active_mode()
         
         debug_logger.debug(f"After force_show: isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}")
         
@@ -1118,12 +1114,12 @@ class Assistant(QMainWindow):
          
     def on_profile_click(self, event):
         """Обработчик клика по профилю"""
-        debug_logger.info("👤 Клик по профилю пользователя")
+        debug_logger.info("Клик по профилю пользователя")
         menu = QMenu(self)
 
-        menu.addAction("👤 Профиль", self.open_user_profile)
-        menu.addAction("🔄 Обновить данные", self.refresh_user_data)
-        menu.addAction("🚪 Выйти", self.logout_user)  # ⚠️ КНОПКА ВЫХОДА
+        menu.addAction("Профиль", self.open_user_profile)
+        # menu.addAction("Обновить данные", self.refresh_user_data)
+        menu.addAction("Выйти", self.logout_user)
         
         # Показываем меню под виджетом профиля
         menu.exec(self.user_profile_widget.mapToGlobal(
@@ -1746,99 +1742,6 @@ class Assistant(QMainWindow):
         QTimer.singleShot(500, lambda: self.update_app(type_version=self.type_version,
                                                        batch_update=self.is_batch_update))
 
-    def init_logger(self):
-        """Инициализация логгера."""
-        # Используем ваш конфиг логов
-        self.logger = logging.getLogger("assistant")
-
-    def init_file_watcher(self):
-        """Инициализация FileSystemWatcher для отслеживания изменений файла логов."""
-        self.file_watcher = QFileSystemWatcher([self.log_file_path])
-        self.file_watcher.fileChanged.connect(self.check_log)
-
-    def _check_log_file_size(self, max_lines=100):
-        """Проверяет, превышает ли файл логов max_lines строк. Если да — очищает его."""
-        try:
-            if not os.path.exists(self.log_file_path):
-                return
-
-            with open(self.log_file_path, "r", encoding="utf-8-sig", errors="replace") as file:
-                lines = file.readlines()
-
-            if len(lines) > max_lines:
-                # Очищаем файл и оставляем только последние 10 строк
-                with open(self.log_file_path, "w", encoding="utf-8") as file:
-                    file.writelines(lines[-10:])
-                self.log_area.clear()  # Очищаем QTextEdit
-                self.last_position = 0  # Сбрасываем позицию чтения
-                self.logger.info("Файл логов превысил лимит, очищен.")
-        except Exception as e:
-            self.logger.error(f"Ошибка при проверке размера логов: {e}")
-
-    def load_existing_logs(self):
-        """Загрузка всех записей из файла логов при запуске."""
-        try:
-            if not os.path.exists(self.log_file_path):
-                self.logger.info("Файл логов не найден. Создаем новый.")
-                with open(self.log_file_path, "w", encoding="utf-8"):
-                    pass  # Создаем пустой файл
-            else:
-                self._check_log_file_size()  # Проверяем и чистим, если нужно
-
-            with open(self.log_file_path, "r", encoding="utf-8-sig", errors="replace") as file:
-                existing_logs = file.read()
-                self.log_area.setPlainText(existing_logs)
-                self.last_position = file.tell()
-        except Exception as e:
-            self.logger.error(f"Ошибка при чтении файла логов: {e}")
-            self.log_area.append(f"Ошибка при чтении файла логов: {e}")
-
-    def check_log(self):
-        """Проверка файла на наличие новых данных."""
-        if self._is_checking_log:
-            return
-        self._is_checking_log = True
-
-        try:
-            # Если файл удалён — переподключаем watcher и выходим
-            if not os.path.exists(self.log_file_path):
-                self.logger.warning("Файл логов не найден. Пытаемся переподключиться...")
-                if self.log_file_path in self.file_watcher.files():
-                    self.file_watcher.removePath(self.log_file_path)
-                self.file_watcher.addPath(self.log_file_path)
-                return
-
-            # Проверяем размер (ограничение лога)
-            self._check_log_file_size()
-
-            # Читаем новые данные
-            with open(self.log_file_path, "r", encoding="utf-8-sig", errors="replace") as file:
-                file.seek(self.last_position)
-                new_lines = file.readlines()
-                if new_lines:
-                    self.text_append("".join(new_lines))
-                    self.last_position = file.tell()
-
-        except FileNotFoundError:
-            self.logger.warning("Файл логов не найден, переподключаем FileSystemWatcher.")
-            if self.log_file_path in self.file_watcher.files():
-                self.file_watcher.removePath(self.log_file_path)
-            self.file_watcher.addPath(self.log_file_path)
-        except Exception as e:
-            self.logger.error(f"Ошибка при чтении файла логов: {e}")
-            self.log_area.append(f"Ошибка при чтении файла логов: {e}")
-        finally:
-            self._is_checking_log = False
-
-    def update_logs(self):
-        """Обновление логов при изменении файла."""
-        self.check_log()
-
-    def text_append(self, text):
-        """Добавление текста в QTextEdit с автоматической прокруткой."""
-        self.log_area.append(text)
-        self.log_area.verticalScrollBar().setValue(self.log_area.verticalScrollBar().maximum())
-
     def check_or_create_folder(self):
         folder_path = get_path('user_settings', "links for assist")
 
@@ -1855,41 +1758,13 @@ class Assistant(QMainWindow):
                 logger.error(f'Ошибка при создании папки для хранения ярлыков: {e}')
                 debug_logger.error(f'Ошибка при создании папки для хранения ярлыков: {e}')
 
-    def reload_commands(self):
-        self.load_commands()
-
     def load_commands(self):
         """Загружает команды из JSON-файла."""
-        file_path = get_path('user_settings', 'commands.json')
-        try:
-            if not os.path.exists(file_path):
-                logger.info(f"Файл {file_path} не найден.")
-                debug_logger.debug(f"Файл {file_path} не найден.")
-                return {}
-
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read().strip()
-                if not content:
-                    return {}
-                return json.loads(content)
-        except json.JSONDecodeError:
-            logger.error(f"Ошибка: файл {file_path} содержит некорректный JSON.")
-            debug_logger.error(f"Ошибка: файл {file_path} содержит некорректный JSON.")
-            return {}
-        except Exception as e:
-            logger.error(f"Ошибка при загрузке команд из файла {file_path}: {e}")
-            debug_logger.error(f"Ошибка при загрузке команд из файла {file_path}: {e}")
-            return {}
+        self.commands_manager.load_commands()
 
     def save_commands(self):
         """Централизованное сохранение команд"""
-        try:
-            path = get_path('user_settings', 'commands.json')
-            with open(path, 'w', encoding='utf-8') as file:
-                json.dump(self.commands, file, ensure_ascii=False, indent=4)
-
-        except Exception as e:
-            logger.error(f"Ошибка сохранения команд: {e}")
+        self.commands_manager.save_commands()
 
     def load_settings(self):
         """Загружает настройки из settings.json."""
@@ -2017,9 +1892,11 @@ class Assistant(QMainWindow):
             (screen_geometry.width() - self.width()) // 2,
             (screen_geometry.height() - self.height()) // 2
         )
+        self.log_area.start_active_mode()
 
     def custom_hide(self):
         self.close_child_windows.emit()
+        self.log_area.start_background_mode()
         self.hide()
 
     def changeEvent(self, event):
@@ -2027,11 +1904,13 @@ class Assistant(QMainWindow):
         if event.type() == QEvent.Type.WindowStateChange:
             if self.windowState() & Qt.WindowState.WindowMinimized:
                 self.hide()
+                self.log_area.start_background_mode()
         super().changeEvent(event)
 
     def closeEvent(self, event):
         """Обработка закрытия окна"""
         if self.is_force_close:
+            self.log_area.stop_monitoring()
             self.close_child_windows.emit()
 
             if self.is_assistant_running:
@@ -2043,6 +1922,7 @@ class Assistant(QMainWindow):
 
     def on_shutdown(self):
         try:
+            self.log_area.stop_monitoring()
             self.force_close()
         except Exception as e:
             debug_logger.error(f"Ошибка при закрытии приложения: {e}")
@@ -2051,6 +1931,7 @@ class Assistant(QMainWindow):
         """Закрытие приложения."""
         if self.is_assistant_running:
             self.stop_assist()
+            self.log_area.stop_monitoring()
             QTimer.singleShot(2500, self.force_close) # Время для проигрывания аудио перед закрытием
         else:
             self.force_close()
@@ -2058,6 +1939,7 @@ class Assistant(QMainWindow):
     def force_close(self):
         """Принудительное закрытие, игнорируя все подтверждения"""
         self.is_force_close = True
+        self.log_area.stop_monitoring()
         self.close()
 
         # Гарантированное завершение через 100 мс
@@ -2282,7 +2164,7 @@ class Assistant(QMainWindow):
             'виджет': (self._open_widget_signal, self._close_widget_signal),
             "микрофон": (self.toggle_mute_discord, self.toggle_mute_discord),
             "микро": (self.toggle_mute_discord, self.toggle_mute_discord),
-            "ютуб": (lambda: self.start_default_command("ютуб", "open"), None)
+            "ютуб": (lambda: self.start_default_command("ютуб", "open", "url"), None)
         }
         default_commands_keys = list(default_commands.keys())
 
@@ -2434,9 +2316,18 @@ class Assistant(QMainWindow):
                                 else:
                                     # Пробуем кастомные команды
                                     restored_command = f"{action_type} {suggested_cmd}"
-                                    app_processed = self.handle_app_command(restored_command, action_type)
-                                    folder_processed = self.handle_folder_command(restored_command, action_type)
-                                    if app_processed or folder_processed:
+
+                                    type_processed = self.commands_manager.get_type_command(restored_command)
+                                    if type_processed == "shortcut" or type_processed == "url":
+                                        self.handle_app_command(restored_command, action_type)
+                                    elif type_processed == "folder":
+                                        self.handle_folder_command(restored_command, action_type)
+                                    elif type_processed == "script":
+                                        self.handle_script_command(restored_command, action_type)
+
+                                    # app_processed = self.handle_app_command(restored_command, action_type)
+                                    # folder_processed = self.handle_folder_command(restored_command, action_type)
+                                    if type_processed != "":
                                         any_executed = True
 
                             if any_executed:
@@ -2531,11 +2422,19 @@ class Assistant(QMainWindow):
                                 restored_command = f"{action_type} {custom_list}"
                                 debug_logger.info(f"Восстановленная команда: {restored_command}")
 
-                                # Пытаемся обработать как приложение и как папку
-                                app_processed = self.handle_app_command(restored_command, action_type)
-                                folder_processed = self.handle_folder_command(restored_command, action_type)
+                                type_processed = self.commands_manager.get_type_command(restored_command)
+                                if type_processed == "shortcut" or type_processed == "url":
+                                    self.handle_app_command(restored_command, action_type)
+                                elif type_processed == "folder":
+                                    self.handle_folder_command(restored_command, action_type)
+                                elif type_processed == "script":
+                                    self.handle_script_command(restored_command, action_type)
+                                else:
+                                # # Пытаемся обработать как приложение и как папку
+                                # app_processed = self.handle_app_command(restored_command, action_type)
+                                # folder_processed = self.handle_folder_command(restored_command, action_type)
 
-                                if not folder_processed and not app_processed:
+                                # if not folder_processed and not app_processed:
                                     logger.warning(f"Команда не обработана: {restored_command}")
                                     debug_logger.warning(f"Команда не обработана: {restored_command}")
                                     self.get_reaction(name="what_folder",
@@ -2583,7 +2482,7 @@ class Assistant(QMainWindow):
                     elif self.find_closest_command(clean_target, self.keywords_shutdown):
                         self.get_confirm_shutdown(clean_target, text, action_type)
                         continue
-                    elif self.find_closest_command(clean_target, self.keywords_restart):
+                    elif self.find_closest_command(clean_target, self.keywords_restart, threshold=90):
                         self.get_confirm_shutdown(clean_target, text, action_type, is_shutdown=False)
                         continue
 
@@ -2620,10 +2519,14 @@ class Assistant(QMainWindow):
                                         default_commands[default_list][1]()
                             else:
                                 # Пытаемся обработать команду
-                                app_processed = self.handle_app_command(command, action_type)
-                                folder_processed = self.handle_folder_command(command, action_type)
-
-                                if not app_processed and not folder_processed:
+                                type_processed = self.commands_manager.get_type_command(clean_target)
+                                if type_processed == "shortcut" or type_processed == "url":
+                                    self.handle_app_command(clean_target, action_type)
+                                elif type_processed == "folder":
+                                    self.handle_folder_command(clean_target, action_type)
+                                elif type_processed == "script":
+                                    self.handle_script_command(clean_target, action_type)
+                                else:
                                     if clean_target:
                                         debug_logger.info(f"[clean_target] {clean_target}")
 
@@ -2658,7 +2561,7 @@ class Assistant(QMainWindow):
                                             trigger_react = True
                                             break
                                         
-                                if app_processed or folder_processed:
+                                if type_processed != "":
                                     self.command_handled = True
 
                     if trigger_react:
@@ -3395,44 +3298,94 @@ class Assistant(QMainWindow):
             # Можно попробовать повторно через 10 сек
             QTimer.singleShot(10000, self.restart_audio_stream)
 
+    # def handle_app_command(self, text, action):
+    #     """Обработка команд для приложений"""
+    #     for keyword, filename in self.commands.items():
+    #         if keyword in text:
+    #             if (not filename.endswith('.lnk') and not filename.endswith('.url')
+    #                     and not self.commands_manager.is_url_string(filename)):
+    #                 return False  # Прекращаем обработку, если это папка
+    #             self.commands_manager.handler_links(filename, action)  # Вызываем обработчик ярлыков
+    #             return True  # Возвращаем True, если команда была успешно обработана
+    #     return False  # Возвращаем False, если команда не была найдена
+
+    # def handle_folder_command(self, text, action):
+    #     """Обработка команд для папок"""
+    #     for keyword, folder_path in self.commands.items():
+    #         if keyword in text:
+    #             if (folder_path.endswith('.lnk') or folder_path.endswith('.url')
+    #                     or self.commands_manager.is_url_string(folder_path)):
+    #                 return False  # Прекращаем обработку, если это файл приложения
+    #             if self.commands_manager.handler_folder(folder_path, action):  # Вызываем обработчик папок
+    #                 return True  # Возвращаем True, если команда была успешно обработана
+    #     return False  # Возвращаем False, если команда не была найдена
+
     def handle_app_command(self, text, action):
-        """Обработка команд для приложений"""
-        for keyword, filename in self.commands.items():
+        """Обработка команд для приложений, ярлыков и ссылок"""
+        debug_logger.error(f"Вызван обработчик команд для ярлыков и ссылок: {text}, {action}")
+        all_commands = {**self.default_commands, **self.commands}
+        for keyword, command_data in all_commands.items():
             if keyword in text:
-                if (not filename.endswith('.lnk') and not filename.endswith('.url')
-                        and not self.commands_manager.is_url_string(filename)):
-                    return False  # Прекращаем обработку, если это папка
-                self.commands_manager.handler_links(filename, action)  # Вызываем обработчик ярлыков
-                return True  # Возвращаем True, если команда была успешно обработана
-        return False  # Возвращаем False, если команда не была найдена
+
+                value = command_data.get('name', '') if isinstance(command_data, dict) else command_data
+
+                self.commands_manager.handler_links(value, action)
+                return True
+        return False
 
     def handle_folder_command(self, text, action):
         """Обработка команд для папок"""
-        for keyword, folder_path in self.commands.items():
+        debug_logger.error(f"Вызван обработчик команд для папок: {text}, {action}")
+        all_commands = {**self.default_commands, **self.commands}
+        for keyword, command_data in all_commands.items():
             if keyword in text:
-                if (folder_path.endswith('.lnk') or folder_path.endswith('.url')
-                        or self.commands_manager.is_url_string(folder_path)):
-                    return False  # Прекращаем обработку, если это файл приложения
-                if self.commands_manager.handler_folder(folder_path, action):  # Вызываем обработчик папок
-                    return True  # Возвращаем True, если команда была успешно обработана
-        return False  # Возвращаем False, если команда не была найдена
+                value = command_data.get('name', '') if isinstance(command_data, dict) else command_data
 
-    def handler_default_command(self, command, action):
-        for keyword, filename in self.default_commands.items():
+                if self.commands_manager.handler_folder(value, action):
+                    return True
+        return False
+    
+    def handle_script_command(self, script_key, action):
+        """Обработка скрипт-команд"""
+        try:
+            # Просто запускаем скрипт
+            self.commands_manager.execute_script(script_key, action)
+            return True
+        except Exception as e:
+            debug_logger.error(f"Ошибка при запуске сценария: {e}")
+            return False
+        
+    def handle_system_command(self, command, action):
+        debug_logger.error(f"Вызван обработчик команд для запуска системных: {command}, {action}")
+        data_commands = self.default_commands
+
+        for keyword, command_data in data_commands.items():
             if keyword in command:
-                if (not filename.endswith('.lnk') and not filename.endswith('.url')
-                        and not self.commands_manager.is_url_string(filename)):
-                    return False  # Прекращаем обработку, если это папка
-                self.commands_manager.handler_links(filename, action)  # Вызываем обработчик ярлыков
-                return True  # Возвращаем True, если команда была успешно обработана
-        return False  # Возвращаем False, если команда не была найдена
+                value = command_data.get('name', '') if isinstance(command_data, dict) else command_data
+
+                if self.commands_manager.handler_system_commands(value, action):
+                    return True
+        return False
+
+    def global_handler_command(self, command, action, type_command):
+        if type_command == "shortcut" or type_command == "url":
+            self.handle_app_command(command, action)
+        elif type_command == "folder":
+            self.handle_folder_command(command, action)
+        elif type_command == "script":
+            self.handle_script_command(command, action)
+        elif type_command == "system":
+            self.handle_system_command(command, action)
+        else:
+            self.show_notification_message("Тип команды передан некорректно!")
 
     def toggle_mute_discord(self):
         toggle = ToggleMuteDiscord()
         toggle.main()
 
-    def start_default_command(self, command, action):
-        self.handler_default_command(command, action)
+    def start_default_command(self, command, action, type_command):
+        debug_logger.info(f"[start_default_command] Получены аргументы: {command}, {action}, {type_command}")
+        self.global_handler_command(command, action, type_command)
         debug_logger.info(f"[start_default_command] Команда {command} выполнена с действием {action}")
 
     def _open_widget_signal(self):
@@ -3710,17 +3663,17 @@ class Assistant(QMainWindow):
     #     return 360
     def _get_panel_width(self):
         """Возвращает ширину панели с пропорциональным масштабированием"""
-        min_panel_width = 400
+        min_panel_width = 420
         base_window_width = 920
-        max_panel_width = 550
+        max_panel_width = 570
         
         current_width = self.central_widget.width()
         
         if current_width <= base_window_width:
             return min_panel_width
         
-        # Пропорция: на каждые 2px увеличения окна панель увеличивается на 1px
-        scale_factor = 0.25  # 1:2
+        # Пропорция
+        scale_factor = 0.25
         additional_width = (current_width - base_window_width) * scale_factor
         
         calculated_width = min_panel_width + int(additional_width)
@@ -3790,8 +3743,8 @@ class Assistant(QMainWindow):
         self.tabs.setTabToolTip(4, "Настройки виджет-панели")
 
         self.mutable_layout.addWidget(self.tabs)
-        self.mutable_layout.addSpacerItem(QSpacerItem(self._get_panel_width(), 1,
-                                                      QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed))
+        # self.mutable_layout.addSpacerItem(QSpacerItem(self._get_panel_width(), 1,
+        #                                               QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed))
 
         if isinstance(self.tabs.widget(0), SettingsWidget):
             self.tabs.widget(0).voice_changed.connect(self.update_voice)
@@ -3832,10 +3785,12 @@ class Assistant(QMainWindow):
         new_com_widget = CreateCommandsWidget(self)
         added_com_widget = CommandsWidget(self)
         process_links_widget = ProcessLinksWidget(self)
+        create_scripts_widget = CreateScriptsWidget(self)
 
         self.tabs.addTab(new_com_widget, "")
         self.tabs.addTab(added_com_widget, "")
         self.tabs.addTab(process_links_widget, "")
+        self.tabs.addTab(create_scripts_widget, "")
 
         tab_bar = self.tabs.tabBar()
 
@@ -3856,14 +3811,16 @@ class Assistant(QMainWindow):
         tab_bar.setTabButton(0, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_create_command_path))
         tab_bar.setTabButton(1, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_added_commands_path))
         tab_bar.setTabButton(2, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_process_link_path))
+        tab_bar.setTabButton(3, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_scripts_path))
 
         self.tabs.setTabToolTip(0, "Создание новых команд")
         self.tabs.setTabToolTip(1, "Список ваших команд")
         self.tabs.setTabToolTip(2, "Процессы ярлыков")
+        self.tabs.setTabToolTip(3, "Создание сценариев запуска")
 
         self.mutable_layout.addWidget(self.tabs)
-        self.mutable_layout.addSpacerItem(QSpacerItem(self._get_panel_width() + 30, 1, QSizePolicy.Policy.Fixed,
-                                                      QSizePolicy.Policy.Fixed))
+        # self.mutable_layout.addSpacerItem(QSpacerItem(self._get_panel_width() + 30, 1, QSizePolicy.Policy.Fixed,
+        #                                               QSizePolicy.Policy.Fixed))
 
     def other_options(self):
         """Открывает встроенную панель 'Прочее'"""
@@ -3902,7 +3859,6 @@ class Assistant(QMainWindow):
         self.tabs.addTab(CensorCounterWidget(self), "")
         self.tabs.addTab(CheckUpdateWidget(self), "")
         self.tabs.addTab(DebugLoggerWidget(self), "")
-        self.tabs.addTab(RelaxWidget(self), "")
 
         # Добавляем вкладку для открытия папки
         folder_tab = QWidget()
@@ -3927,18 +3883,16 @@ class Assistant(QMainWindow):
         tab_bar.setTabButton(0, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_censor_path))
         tab_bar.setTabButton(1, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_updates_path))
         tab_bar.setTabButton(2, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_logs_path))
-        tab_bar.setTabButton(3, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_relax_path))
-        tab_bar.setTabButton(4, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_screenshot_path))
+        tab_bar.setTabButton(3, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_screenshot_path))
 
         self.tabs.setTabToolTip(0, "Счетчик цензуры")
         self.tabs.setTabToolTip(1, "Обновления")
         self.tabs.setTabToolTip(2, "Подробные логи")
-        self.tabs.setTabToolTip(3, "Релакс?")
-        self.tabs.setTabToolTip(4, "Папка скриншотов")
+        self.tabs.setTabToolTip(3, "Папка скриншотов")
 
         # Обработчик переключения вкладок
         def on_tab_changed(index):
-            if index == 4:  # Если выбрана вкладка "Папка скриншотов"
+            if index == 3:  # Если выбрана вкладка "Папка скриншотов"
                 self.open_folder_screenshots()
                 self.tabs.setCurrentIndex(0)
 
@@ -3946,8 +3900,8 @@ class Assistant(QMainWindow):
 
         # Добавляем в layout
         self.mutable_layout.addWidget(self.tabs)
-        self.spacer = QSpacerItem(self._get_panel_width(), 1, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.mutable_layout.addSpacerItem(self.spacer)
+        # self.spacer = QSpacerItem(self._get_panel_width(), 1, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        # self.mutable_layout.addSpacerItem(self.spacer)
 
     def guide_options(self):
         """Открывает панель гайдов"""
@@ -4056,17 +4010,6 @@ class Assistant(QMainWindow):
         self.audio_paths = get_audio_paths(self.speaker)  # Обновляем пути к аудиофайлам
         logger.info(f"Голос изменен на: {new_voice}")
         debug_logger.info(f"Голос изменен на: {new_voice}")
-
-    def clear_logs(self):
-        """Очистка файла логов и текстового поля"""
-        log_file_path = get_path('assistant.log')  # Используем правильный путь к логам
-        try:
-            with open(log_file_path, 'w', encoding='utf-8') as file:
-                file.write("")  # Записываем пустую строку
-            self.log_area.clear()
-            self.last_position = 0  # Сбрасываем позицию последнего прочитанного байта
-        except Exception as e:
-            self.log_area.append(f"Ошибка при очистке логов: {e}")
 
     def check_start_win(self):
         """Меняет цвет иконки"""
@@ -4394,6 +4337,11 @@ class ChangelogWindow(QDialog):
         link_label.setOpenExternalLinks(True)
         link_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
         title_layout.addWidget(link_label)
+
+        ps = QLabel("Powered by theoldman")
+        ps.setStyleSheet("background: transparent; font-size: 12px;")
+        title_layout.addWidget(ps)
+
         title_layout.addStretch()
         
         title_label = setup_custom_font_label("История изменений", font_style="Comfortaa", weight="Medium")
@@ -4782,11 +4730,39 @@ class CheckThread(QThread):
 
     def check_main_files(self, files_weight):
         files_to_check = (
-            "apply_color_methods.py", "audio_control.py", "check_update.py", "choose_color_window.py",
-            "commands_widgets.py", "custom_svg_widget.py", "download_thread.py", "function_list_main.py",
-            "lists.py", "other_options_widgets.py", "progress_bar_widget.py",  "register_module.py",
-            "screenshot_tool.py", "settings_widgets.py", "signals.py", "speak_functions.py", "toast_notification.py",
-            "toggle_mute_discord.py", "utils.py", "widget_window.py")
+            "apply_color_methods.py",
+            "audio_control.py", 
+            "check_update.py",
+            "choose_color_window.py", 
+            "commands_manager.py",
+            "commands_widgets.py",
+            "config_manager.py",
+            "custom_svg_widget.py",
+            "custom_widgets.py",
+            "default_commands_data.py",
+            "default_keywords.json",
+            "download_thread.py",
+            "frosted_widget.py",
+            "function_list_main.py",
+            "game_mode_func.py",
+            "help_widget.py",
+            "lists.py",
+            "logo.svg",
+            "monitoring_log_widget.py",
+            "other_options_widgets.py",
+            "progress_bar_widget.py",
+            "register_module.py",
+            "request_module.py",
+            "run_scripts_thread.py",
+            "screenshot_tool.py",
+            "settings_widgets.py",
+            "shortcut_monitor.py",
+            "signals.py",
+            "speak_functions.py",
+            "toast_notification.py",
+            "toggle_mute_discord.py",
+            "widget_window.py"
+        )
 
         total_files = len(files_to_check)
         step_per_file = files_weight / total_files if total_files else 0

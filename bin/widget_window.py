@@ -38,7 +38,7 @@ class WindowStateManager:
     def load_state(self):
         """Загружает состояние окна из JSON файла"""
         try:
-            with open(self.config_path, 'r') as f:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
                 state = json.load(f)
                 # Объединяем с default_state для обратной совместимости
                 return {**self.default_state, **state}
@@ -52,7 +52,7 @@ class WindowStateManager:
             # Создаем папку, если ее нет
             os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
 
-            with open(self.config_path, 'w') as f:
+            with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(state, f, indent=4)
         except IOError as e:
             debug_logger.error(f"Ошибка сохранения состояния: {e}")
@@ -290,7 +290,7 @@ class SmartWidget(QWidget):
         # Основной контент
         self.main_container = QWidget()
         self.main_container.setObjectName("MainContainer")
-        self.background_color = self.style_manager.get_transparent_background_from_border(opacity=200, darken_factor=600)
+        self.background_color = self.style_manager.get_transparent_background_from_border(opacity=210, darken_factor=600)
         self.main_container.setStyleSheet(f"""
                 #MainContainer {{
                     background: {self.background_color};
@@ -449,95 +449,105 @@ class SmartWidget(QWidget):
         return title_bar
 
     def create_main_buttons(self, vertical=False):
-        widget = QWidget()
-        widget.setStyleSheet("background: transparent;")
+        self.btns_panel_widget = QWidget()
+        self.btns_panel_widget.setStyleSheet("background: transparent;")
         layout_class = QVBoxLayout if vertical else QHBoxLayout
-        buttons_layout = layout_class(widget)
+        buttons_layout = layout_class(self.btns_panel_widget)
         buttons_layout.setContentsMargins(0, 0, 0, 0)
         buttons_layout.setSpacing(0)
 
-        # Сохраняем ссылку на layout для управления видимостью
         self.buttons_layout = buttons_layout
-        self.buttons_widget = widget
-        self.buttons_visible = True  # Флаг видимости кнопок
+        self.buttons_widget = self.btns_panel_widget
+        self.buttons_visible = True
 
-        # Соответствие ключей чекбоксов и кнопок
-        checkbox_to_button_map = {
-            'turnoff_check': 'power_btn',
-            'settings_check': 'settings_btn',
-            'screenshot_check': 'screen_btn',
-            'microphone_check': 'mic_toggle_btn',
-            'links_check': 'link_btn',
-            'resize_check': 'open_main_btn',
-            'open_youtube': 'open_youtube'
-        }
-
+        # Стандартные кнопки
         buttons_config = {
-            'power_btn': {
+            'turnoff_check': {
                 'icon': self.power_path,
                 'tooltip': 'Выключить Компьютер',
                 'action': self.shutdown_system
             },
-            'settings_btn': {
+            'settings_check': {
                 'icon': self.settings_path,
                 'tooltip': 'Открыть настройки',
                 'action': self.open_settings
             },
-            'screen_btn': {
+            'screenshot_check': {
                 'icon': self.camera_path,
                 'tooltip': 'Скриншот области',
                 'action': self.assistant.capture_area
             },
-            'mic_toggle_btn': {
+            'open_youtube': {
+                'icon': self.youtube_path,
+                'tooltip': 'Запустить YouTube',
+                'action': lambda: self.assistant.start_default_command("ютуб", "open", "url")
+            },
+            'microphone_check': {
                 'icon': self.mic_on_path,
                 'tooltip': 'Переключить мут в Discord',
                 'action': self.toggle_mute
             },
-            'link_btn': {
+            'links_check': {
                 'icon': self.shortcut_path,
                 'tooltip': 'Открыть папку с ярлыками',
                 'action': self.assistant.open_folder_shortcuts
             },
-            'open_main_btn': {
+            'resize_check': {
                 'icon': self.open_main_path,
                 'tooltip': 'Развернуть основное окно',
                 'action': self.open_main_window
-            },
-            'open_youtube': {
-                'icon': self.youtube_path,
-                'tooltip': 'Запустить YouTube',
-                'action': lambda: self.assistant.start_default_command("ютуб", "open")
             }
         }
 
-        # Загружаем порядок и состояния из файла
         try:
             with open(self.widget_state, 'r', encoding='utf-8') as f:
                 settings_data = json.load(f)
 
-            if "buttons" in settings_data:
-                # Создаем список ВИДИМЫХ кнопок в порядке из файла
-                ordered_buttons = []
-                for checkbox_key, is_visible in settings_data["buttons"].items():
-                    if checkbox_key in checkbox_to_button_map and is_visible:
-                        button_key = checkbox_to_button_map[checkbox_key]
-                        if button_key in buttons_config:
-                            ordered_buttons.append(button_key)
-            else:
-                # Если нет настроек, все кнопки видимы в стандартном порядке
-                ordered_buttons = list(buttons_config.keys())
-        except:
-            # Если ошибка чтения файла, все кнопки видимы в стандартном порядке
-            ordered_buttons = list(buttons_config.keys())
+            buttons_order = settings_data.get("buttons", {})
+            custom_buttons = settings_data.get("custom_buttons", [])
+            
+        except Exception as e:
+            debug_logger.error(f"Ошибка чтения настроек: {e}")
+            buttons_order = {}
+            custom_buttons = []
 
-        # Создаем только ВИДИМЫЕ кнопки в нужном порядке
-        for btn_name in ordered_buttons:
-            config = buttons_config[btn_name]
+        # Добавляем кастомные кнопки в buttons_config
+        for custom_btn_data in custom_buttons:
+            custom_id = custom_btn_data['id']
+            checkbox_key = f"custom_{custom_id}"
+
+            def create_action(data):
+                name = data['name_command']
+                move = data.get('move_command', 'open')
+                cmd_type = data['type_command']
+                return lambda: self.assistant.start_default_command(name, move, cmd_type)
+            
+            buttons_config[checkbox_key] = {
+                'icon': custom_btn_data['icon_path'],
+                'tooltip': custom_btn_data['name'],
+                'action': create_action(custom_btn_data.copy()),
+                'is_custom': True,
+                'custom_data': custom_btn_data
+            }
+
+        # Создаем кнопки в порядке из buttons_order
+        for checkbox_key, is_visible in buttons_order.items():
+            if not is_visible:
+                continue  # Пропускаем скрытые
+                
+            if checkbox_key not in buttons_config:
+                continue  # Пропускаем несуществующие
+                
+            config = buttons_config[checkbox_key]
             btn = QPushButton()
             btn.setObjectName("BTNonPanel")
             btn.setFixedSize(40, 40)
             btn.setToolTip(config['tooltip'])
-            self.back_btn_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=200)
+            
+            self.back_btn_color = self.style_manager.get_transparent_background_from_border(
+                opacity=220, darken_factor=200
+            )
+            
             btn.setStyleSheet(f"""
                 QPushButton {{
                     background: transparent;
@@ -548,19 +558,24 @@ class SmartWidget(QWidget):
                     border-radius: 5px;
                 }}
             """)
+            
             svg = CustomSvgWidget(config['icon'], btn)
             svg.setFixedSize(30, 30)
             svg.move(5, 5)
-            self.buttons_data[btn_name] = {'button': btn, 'svg': svg}
+            
+            # Сохраняем ссылку
+            btn_key = checkbox_key.replace('_check', '_btn') if not checkbox_key.startswith('custom_') else f'custom_{checkbox_key.replace("custom_", "")}_btn'
+            self.buttons_data[btn_key] = {'button': btn, 'svg': svg}
+            
             self.style_manager.apply_color_svg(svg, strength=0.90)
             btn.clicked.connect(config['action'])
-            setattr(self, btn_name, btn)
+            setattr(self, btn_key, btn)
             buttons_layout.addWidget(btn)
 
         if vertical:
             buttons_layout.addStretch()
 
-        return widget
+        return self.btns_panel_widget
 
     def create_audio_controls(self):
         widget = QWidget()
@@ -986,11 +1001,10 @@ class SmartWidget(QWidget):
             toggle = ToggleMuteDiscord()
             if toggle.main():
                 self.is_muted = not self.is_muted
-                svg = self.buttons_data['mic_toggle_btn']['svg']
+                svg = self.buttons_data['microphone_btn']['svg']
                 # Меняем иконку в зависимости от состояния
                 if self.is_muted:
                     svg.load(self.mic_off_path)
-                    self.is_muted = True
                 else:
                     # Возвращаем стандартную иконку
                     svg.load(self.mic_on_path)
@@ -1135,8 +1149,8 @@ class SmartWidget(QWidget):
                 self.animation.stop()
 
             old_geometry = self.geometry()
-            new_width = 90 if not self.is_compact else 300
-            new_height = 300 if not self.is_compact else 350
+            new_width = 90 if not self.is_compact else max(300, self.buttons_widget.height() + 20) # 20px это отступы
+            new_height = self.buttons_widget.width() + 115 if not self.is_compact else 300 # 115px отступы и другие виджеты
 
             # Сохраняем правый край
             right_edge = old_geometry.x() + old_geometry.width()
@@ -1465,7 +1479,7 @@ class SmartWidget(QWidget):
     def update_background_style(self):
         """Применяет/обновляет стиль фона"""
         try:
-            self.background_color = self.style_manager.get_transparent_background_from_border(opacity=200, darken_factor=800)
+            self.background_color = self.style_manager.get_transparent_background_from_border(opacity=210, darken_factor=800)
             self.main_container.setStyleSheet(f"""
                 #MainContainer {{
                     background: {self.background_color};

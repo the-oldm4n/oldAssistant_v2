@@ -1,5 +1,5 @@
 ﻿import requests
-from bin.utils import get_config_value
+from bin.config_manager import get_config_value
 
 
 # Получаем версию из конфига

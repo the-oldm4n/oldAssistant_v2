@@ -33,7 +33,7 @@
         "padding": "3px"
     },
     "QTabBar::tab:selected": {
-        "background-color": "qlineargradient(x1:0.85, y1:0.85, x2:0.15, y2:0.15, stop:0 #3F0925, stop:1 #000000)",
+        "background-color": "#bc1441",
         "color": "#ffffff",
         "font-size": "13px",
         "margin": "0",
@@ -308,5 +308,20 @@
     },
     "UserProfileWidget::hover": {
         "border": "2px solid #ee4673"
+    },
+    "ScriptStepFrame": {
+        "border": "1px solid #ee4673"
+    },
+    "QSpinBox": {
+        "background-color": "transparent",
+        "border": "1px solid #ee4673",
+        "border-radius": "3px",
+        "padding": "5px"
+    },
+    "CreateCommandsWidgets": {
+        "background-color": "transparent"
+    },
+    "CreateRunWidgets": {
+        "background-color": "transparent"
     }
 }

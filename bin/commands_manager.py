@@ -1,7 +1,6 @@
 """
 Функции для запуска и закрытия программ и игр
 """
-import configparser
 import json
 import os
 import re
@@ -11,18 +10,19 @@ import subprocess
 import threading
 import time
 import webbrowser
-from pathlib import Path
 from urllib.parse import urlparse
 import psutil
 import pygetwindow as gw
 from win32com.client import Dispatch
-from bin.lists import get_audio_paths
+from bin.lists import get_audio_paths, commands_list
+from bin.default_commands_data import system_commands_data
+from bin.run_scripts_thread import ScriptExecutionThread
 from logging_config import logger, debug_logger
 from bin.speak_functions import thread_react, thread_react_detail
 from path_builder import get_path
+from PySide6.QtCore import QObject
 
-
-class CommandsManager():
+class CommandsManager(QObject):
     def __init__(self):
         super().__init__()
         self.settings_file_path = get_path('user_settings', 'settings.json')
@@ -30,7 +30,263 @@ class CommandsManager():
         self.speaker = None
         self.audio_paths = None
         self.steam_path = None
+        self._script_threads = {}
         self.update_vaults()
+        self.default_commands = commands_list
+        self.commands_file_path = get_path("user_settings", "commands.json")
+        self.process_names_path = get_path('user_settings', 'process_names.json')
+        self.commands = self.load_commands()
+        converted = self.reduction_commands()
+        debug_logger.info(f"Преобразование в новый формат команд: {converted}")
+
+    def load_commands(self):
+        """Загрузка команд из файла"""
+        if not os.path.exists(self.commands_file_path):
+            return {}
+        try:
+            with open(self.commands_file_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            return {}
+
+    def save_commands(self):
+        """Сохранение команд в файл"""
+        with open(self.commands_file_path, 'w', encoding='utf-8') as f:
+            json.dump(self.commands, f, ensure_ascii=False, indent=4)
+
+    def get_type_command(self, command_key):
+        """
+        Получить тип команды по ключу
+        """
+        if command_key not in self.commands:
+            return ""
+        
+        command_data = self.commands[command_key]
+        
+        # Если это словарь и есть поле type
+        if isinstance(command_data, dict):
+            return command_data.get('type', '')
+        
+        # Если строка или другой формат - тип неизвестен
+        return ""
+    
+    def execute_script(self, script_key, action="open", callback=None):
+        """Запуск скрипта"""
+        debug_logger.info(f"[SCRIPT] Запуск: {script_key}")
+        
+        # Останавливаем предыдущий если есть
+        if script_key in self._script_threads:
+            self.stop_script(script_key)
+        
+        # Создаем поток
+        thread = ScriptExecutionThread(self, script_key, action)
+        
+        # Подключаем сигналы для callback если нужно
+        if callback:
+            thread.step_started.connect(
+                lambda step, total: callback(step, total, "started")
+            )
+            thread.step_completed.connect(
+                lambda step, total, success: callback(step, total, "completed" if success else "failed")
+            )
+            thread.script_finished.connect(
+                lambda success: callback(0, 0, "finished" if success else "stopped")
+            )
+        
+        thread.script_error.connect(
+            lambda msg: debug_logger.info(f"[SCRIPT ERROR] {msg}")
+        )
+        
+        # Сохраняем
+        self._script_threads[script_key] = thread
+        
+        # Запускаем
+        thread.start()
+        if action == "open":
+            thread_react(self.audio_paths['start_script'])
+        else:
+            thread_react(self.audio_paths['close_folder'])
+        return True
+        
+    def _handle_script_command(self, cmd_type, value, action, move, args):
+        """Обработчик команды из скрипта (выполняется в основном потоке!)"""
+        debug_logger.info(f"[MAIN] Выполняю команду из скрипта: {cmd_type} -> {value}")
+        
+        if cmd_type == 'folder':
+            self.handler_folder(value, move, react=False)
+        elif cmd_type == 'links' or cmd_type == 'url':
+            self.handler_links(value, move, added_args=args, react=False)
+        elif cmd_type == 'system':
+            self.handler_system_commands(value, move, react=False)
+        else:
+            debug_logger.info(f"[MAIN] Неверный тип команды: {cmd_type}")
+            
+    def stop_script(self, script_key):
+        """Остановить скрипт"""
+        if script_key in self._script_threads:
+            thread = self._script_threads[script_key]
+            thread.stop()
+            thread.wait()
+            del self._script_threads[script_key]
+            return True
+        return False
+
+    def reduction_commands(self):
+        """
+        Преобразование команд в новую структуру.
+        Возвращает количество преобразованных команд.
+        """
+        if not self.commands:
+            return 0
+        
+        converted_count = 0
+        new_commands = {}
+        
+        for key, value in self.commands.items():
+            # Если уже в новом формате, пропускаем
+            if isinstance(value, dict) and 'name' in value and 'desc' in value:
+                new_commands[key] = value
+                continue
+            
+            # Преобразуем старый формат в новый
+            converted_item = self._convert_item(key, value)
+            new_commands[key] = converted_item
+            converted_count += 1
+        
+        self.commands = new_commands
+        self.save_commands()
+        return converted_count
+    
+    def _convert_item(self, key, value):
+        """Преобразование одного элемента"""
+        if not isinstance(value, str):
+            value = str(value)
+        
+        item_type = self._detect_type(value)
+        
+        if item_type == "url":
+            description = self._get_link_description(value)
+        elif item_type == "shortcut":
+            description = self._get_shortcut_description(value)
+        elif item_type == "folder":
+            description = self._get_folder_description(value)
+        else:
+            description = "unknown"
+        
+        return {
+            "name": value,
+            "desc": description,
+            "type": item_type
+        }
+    
+    def _detect_type(self, value):
+        """Определение типа элемента"""
+        value_lower = value.lower().strip()
+
+        if value_lower.startswith(('http://', 'https://', 'ftp://', 'ftps://')):
+            return "url"
+
+        shortcut_extensions = ['.lnk', '.url']
+
+        ext = os.path.splitext(value_lower)[1]
+        if ext in shortcut_extensions:
+            return "shortcut"
+
+        if self._is_folder_path(value):
+            return "folder"
+        
+        return "unknown"
+    
+    def _is_file_path(self, value):
+        """Проверка, является ли значение путем к файлу"""
+        # Проверяем наличие расширения файла
+        if '.' in os.path.basename(value) and len(os.path.splitext(value)[1]) <= 5:
+            # Проверяем наличие диска или абсолютный путь
+            if ((':' in value and '\\' in value) or 
+                ('/' in value and len(value) > 1 and value[1] != ':') or
+                value.startswith('\\\\')):  # UNC путь
+                return True
+        return False
+    
+    def _is_folder_path(self, value):
+        """Проверка, является ли значение путем к папке"""
+        # Проверяем наличие разделителей пути
+        if '\\' in value or '/' in value:
+            # Исключаем файлы с расширениями
+            if '.' in os.path.basename(value) and len(os.path.splitext(value)[1]) <= 5:
+                return False
+            return True
+        
+        # Проверяем наличие диска (C:, D: и т.д.)
+        if len(value) >= 2 and value[1] == ':' and value.endswith('/'):
+            return True
+            
+        return False
+    
+    def _is_executable_path(self, value):
+        """Проверка, является ли путь исполняемым файлом"""
+        executable_extensions = [
+            '.exe', '.com', '.msi', '.msp', '.msu', '.app', '.jar',
+            '.py', '.rb', '.pl', '.php', '.run', '.out', '.elf'
+        ]
+        ext = os.path.splitext(value.lower())[1]
+        return ext in executable_extensions
+    
+    def _get_link_description(self, url):
+        """Получение описания для ссылки"""
+        try:
+            parsed_url = urlparse(url)
+            domain = parsed_url.netloc.replace('www.', '')
+            # Если порт указан, убираем его
+            if ':' in domain:
+                domain = domain.split(':')[0]
+            return f"Ссылка {domain}"
+        except:
+            return "Ссылка"
+    
+    def _get_shortcut_description(self, shortcut_path):
+        """Получение описания для ярлыка"""
+        name = os.path.basename(shortcut_path)
+
+        return f"Ярлык {name}"
+    
+    def _get_folder_description(self, folder_path):
+        """Получение описания для папки"""
+        folder_name = os.path.basename(folder_path.rstrip('/\\'))
+        if not folder_name:
+            folder_name = os.path.basename(os.path.dirname(folder_path.rstrip('/\\')))
+        return f"Папка {folder_name}"
+    
+    def _get_file_description(self, file_path):
+        """Получение описания для файла"""
+        file_name = os.path.basename(file_path)
+        return f"Файл {file_name}"
+
+    def add_command(self, key, value, description=None, type_override=None):
+        """Добавление новой команды"""
+        if type_override:
+            item_type = type_override
+        else:
+            item_type = self._detect_type(value)
+        
+        if not description:
+            if item_type == "ссылка":
+                description = self._get_link_description(value)
+            elif item_type == "ярлык":
+                description = self._get_shortcut_description(value)
+            elif item_type == "папка":
+                description = self._get_folder_description(value)
+            elif item_type == "файл":
+                description = self._get_file_description(value)
+            else:
+                description = ""
+        
+        self.commands[key] = {
+            "name": value,
+            "desc": description,
+            "type": item_type
+        }
+        self.save_commands()
 
     def load_settings(self):
         """Загрузка настроек из файла"""
@@ -105,22 +361,13 @@ class CommandsManager():
             processes.append(proc.info['name'])
         return processes
 
-
-# def find_new_processes(before_processes, after_processes):
-#     """Находит все новые процессы, которые появились после запуска программы."""
-#     before_set = set(before_processes)
-#     after_set = set(after_processes)
-#     new_processes = after_set - before_set  # Находим разницу
-#     return list(new_processes)  # Возвращаем все новые процессы
-
     def save_process_names(self, shortcut_name, process_names):
         """Сохраняет имена процессов в файл, обновляя данные, если они уже существуют."""
         try:
             new_data = {shortcut_name: process_names}
-            process_names_file = get_path('user_settings', 'process_names.json')
 
-            if os.path.exists(process_names_file):
-                with open(process_names_file, 'r', encoding='utf-8') as file:
+            if os.path.exists(self.process_names_path):
+                with open(self.process_names_path, 'r', encoding='utf-8') as file:
                     try:
                         existing_data = json.load(file)  # Читаем весь JSON
                     except json.JSONDecodeError:
@@ -138,7 +385,7 @@ class CommandsManager():
             if not found:
                 existing_data.append(new_data)
 
-            with open(process_names_file, 'w', encoding='utf-8') as file:
+            with open(self.process_names_path, 'w', encoding='utf-8') as file:
                 json.dump(existing_data, file, indent=4, ensure_ascii=False)
                 file.write('\n')
 
@@ -148,13 +395,52 @@ class CommandsManager():
             logger.error(f"Ошибка при сохранении имен процессов: {e}")
             debug_logger.error(f"Ошибка при сохранении имен процессов: {e}")
 
+    def remove_process_names(self, shortcut_name):
+        """
+        Удаляет запись о процессах для удаленного ярлыка.
+        
+        :param shortcut_name: Имя файла ярлыка (например, 'chrome.lnk')
+        """
+        try:
+            if not os.path.exists(self.process_names_path):
+                logger.debug(f"Файл процессов не найден: {self.process_names_path}")
+                return False
+            
+            # Читаем текущие данные
+            with open(self.process_names_path, 'r', encoding='utf-8') as file:
+                try:
+                    existing_data = json.load(file)
+                except json.JSONDecodeError:
+                    existing_data = []
+            
+            # Ищем и удаляем запись
+            initial_length = len(existing_data)
+            existing_data = [entry for entry in existing_data if shortcut_name not in entry]
+            
+            # Если что-то удалили - сохраняем
+            if len(existing_data) < initial_length:
+                with open(self.process_names_path, 'w', encoding='utf-8') as file:
+                    json.dump(existing_data, file, indent=4, ensure_ascii=False)
+                    file.write('\n')
+                
+                logger.info(f"Процессы для удаленного ярлыка '{shortcut_name}' удалены из файла.")
+                debug_logger.info(f"Процессы для удаленного ярлыка '{shortcut_name}' удалены.")
+                return True
+            else:
+                logger.debug(f"Запись для ярлыка '{shortcut_name}' не найдена в файле процессов.")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Ошибка при удалении процессов для ярлыка '{shortcut_name}': {e}")
+            debug_logger.error(f"Ошибка при удалении процессов: {e}")
+            return False
+
     def get_process_names_from_file(self, shortcut_name):
         """Возвращает список имен процессов для указанного ярлыка из файла."""
         try:
             process_names = []
-            process_names_file = get_path('user_settings', 'process_names.json')
-            if os.path.exists(process_names_file):
-                with open(process_names_file, 'r', encoding='utf-8') as file:
+            if os.path.exists(self.process_names_path):
+                with open(self.process_names_path, 'r', encoding='utf-8') as file:
                     try:
                         data = json.load(file)
                         for entry in data:
@@ -196,34 +482,57 @@ class CommandsManager():
         Поиск ярлыков по ключевой папке
         Получение и сохранение имени ярлыков в json
         """
-        root_folder = get_path('user_settings', "links for assist")  # Полный путь к папке с ярлыками
+        root_folder = get_path('user_settings', "links for assist")
         root_links = get_path('user_settings', "links.json")
-
-        # Очистка файла links.json перед началом поиска
+        
+        old_shortcuts = {}
+        if os.path.exists(root_links):
+            try:
+                with open(root_links, 'r', encoding='utf-8') as file:
+                    old_shortcuts = json.load(file)
+            except:
+                old_shortcuts = {}
+        
         with open(root_links, 'w', encoding='utf-8') as file:
             file.write('{}')  # Записываем пустой JSON объект
 
-        # Поиск новых ярлыков в директории
         current_shortcuts = {}
         for filename in os.listdir(root_folder):
             if filename.endswith(".lnk") or filename.endswith(".url"):
-                # Формируем полный путь к ярлыку
                 shortcut_path = os.path.join(root_folder, filename)
                 current_shortcuts[filename] = shortcut_path
 
-        # Сохраняем команды в JSON-файл
+        removed_shortcuts = set(old_shortcuts.keys()) - set(current_shortcuts.keys())
+        
+        if removed_shortcuts:
+            for shortcut_name in removed_shortcuts:
+                self.remove_process_names(shortcut_name)
+                debug_logger.info(f"Ярлык '{shortcut_name}' удален, очистка процессов.")
+
         with open(root_links, 'w', encoding='utf-8') as file:
             json.dump(current_shortcuts, file, ensure_ascii=False, indent=4)
-            debug_logger.info("Ярлыки сохранены в файле: %s", root_links)
+        
+        debug_logger.info(f"Ярлыки обновлены. Найдено: {len(current_shortcuts)}, удалено: {len(removed_shortcuts)}")
 
-    def handler_links(self, filename, action):
+
+    def handler_links(self, filename, action, added_args=None, react=True):
         """
-        Обработчик ярлыков в зависимости от их расширения
+        Обработчик ярлыков в зависимости от их расширения.
+        filename = путь к файлу;
+        action = действие (open/close);
+        react = флаг для регулировки реакции ассистента и запуска отслеживания новых процессов.
         """
-        global game_id, target_path, process_name, game_id_or_url, args_list, workdir
+        global game_id, target_path, process_name, game_id_or_url, workdir
         root_folder = get_path('user_settings', "links for assist")
         # Получаем путь к ярлыку
         shortcut_path = os.path.join(root_folder, filename)
+
+        added_args_list = []
+        if added_args:
+            added_args_list = [arg.strip() for arg in added_args.split(',') if arg.strip()]
+        
+        # Локальная переменная для всех аргументов
+        all_args = []
 
         # Обработка .lnk файлов
         if filename.endswith(".lnk"):
@@ -232,14 +541,14 @@ class CommandsManager():
                 target_path = self.fix_path(target_path)
 
                 # Правильное разбиение аргументов (учитывает кавычки)
-                args_list = shlex.split(arguments) if arguments else []
+                link_args = shlex.split(arguments) if arguments else []
+                all_args = link_args + added_args_list
 
                 process_name = self.get_process_name(target_path)
-
                 if action == 'open':
-                    self.open_link(filename, target_path, args_list, workdir)
+                    self.open_link(filename, target_path, all_args, workdir, react)
                 elif action == 'close':
-                    self.close_link(filename)
+                    self.close_link(filename, react)
             except Exception as e:
                 logger.info(f"Ошибка при извлечении пути из ярлыка {filename}: {e}")
                 debug_logger.info(f"Ошибка при извлечении пути из ярлыка {filename}: {e}")
@@ -255,9 +564,9 @@ class CommandsManager():
                     return  # Прекращаем выполнение, если не удалось извлечь URL
 
                 if action == 'open':
-                    self.open_url_link(game_id_or_url, filename)  # Передаём game_id или URL
+                    self.open_url_link(game_id_or_url, filename, react)
                 elif action == 'close':
-                    self.close_link(filename)
+                    self.close_link(filename, react)
 
             except Exception as e:
                 logger.info(f"Ошибка при чтении .url файла {filename}: {e}")
@@ -266,14 +575,14 @@ class CommandsManager():
         elif self.is_url_string(filename):
             try:
                 if action == 'open':
-                    self.open_browser_link(filename)
+                    self.open_browser_link(filename, react)
 
             except Exception as e:
                 logger.info(f"Ошибка при обработке ссылки: {filename}: {e}")
                 debug_logger.info(f"Ошибка при обработке ссылки: {filename}: {e}")
             return
 
-    def handler_folder(self, folder_path, action):
+    def handler_folder(self, folder_path, action, react=True):
         """
         Обработчик команд для открытия и закрытия папок
         :param folder_path: путь к папке
@@ -283,8 +592,8 @@ class CommandsManager():
         if action == 'open':
             try:
                 os.startfile(folder_path)
-                start_folder = self.audio_paths['start_folder']
-                thread_react(start_folder)
+                if react:
+                    thread_react(self.audio_paths['start_folder'])
                 return True
             except Exception as e:
                 logger.error(f"Не удалось открыть папку {folder_path}: {e}")
@@ -292,21 +601,20 @@ class CommandsManager():
                 return False
 
         if action == 'close':
-            windows = gw.getAllTitles()  # Получаем все заголовки открытых окон
-            folder_title = os.path.basename(folder_path)  # Получаем название папки
+            windows = gw.getAllTitles()
+            folder_title = os.path.basename(folder_path)
 
             try:
                 for title in windows:
-                    if folder_title in title:  # Проверяем, содержится ли название папки в заголовке окна
+                    if folder_title in title:
                         window_list = gw.getWindowsWithTitle(title)
-                        if window_list:  # Убедимся, что список не пуст
+                        if window_list:
                             window = window_list[0]
-                            window.close()  # Закрываем окно
-                            close_folder = self.audio_paths.get('close_folder')
-                            if close_folder:
-                                thread_react(close_folder)
+                            window.close()
+                            if react:
+                                thread_react(self.audio_paths.get('close_folder'))
                             logger.info(f"Окно '{title}' закрыто.")
-                            return True  # ✅ Успешно закрыто — выходим с True
+                            return True
                         else:
                             debug_logger.warning(f"Окно с заголовком '{title}' найдено,"
                                                  f"но не удалось получить объект.")
@@ -321,7 +629,7 @@ class CommandsManager():
                 debug_logger.error(f"Ошибка при попытке закрыть окно: {e}")
                 return False
 
-    def open_url_link(self, game_id_or_url, filename):
+    def open_url_link(self, game_id_or_url, filename, react):
         existing_processes = self.get_process_names_from_file(filename)
         try:
             if existing_processes:
@@ -332,7 +640,8 @@ class CommandsManager():
                 else:
                     subprocess.Popen([self.steam_path, '-applaunch', game_id_or_url], shell=True)
 
-                thread_react(self.audio_paths['start_folder'])
+                if react:
+                    thread_react(self.audio_paths['start_folder'])
                 return
 
             # Запускаем игру
@@ -342,9 +651,10 @@ class CommandsManager():
                 subprocess.Popen([self.steam_path, '-applaunch', game_id_or_url], shell=True)
 
             # Запускаем мониторинг в фоне
-            self.monitor_processes(filename, lambda procs, fname: self.on_monitoring_done(procs, fname, self.audio_paths))
+            if react:
+                self.monitor_processes(filename, lambda procs, fname: self.on_monitoring_done(procs, fname, self.audio_paths))
 
-            thread_react_detail(self.audio_paths['wait_load_file'])
+                thread_react_detail(self.audio_paths['wait_load_file'])
 
         except Exception as e:
             logger.error(f"Ошибка при открытии игры: {e}")
@@ -361,7 +671,7 @@ class CommandsManager():
             debug_logger.info("Новые процессы не обнаружены")
             thread_react_detail(audio_paths['error_file'])
 
-    def open_link(self, filename, target_path, arguments, workdir):
+    def open_link(self, filename, target_path, arguments, workdir, react):
         """
         Улучшенная функция для открытия ярлыков (.lnk) с фоновым мониторингом
         """
@@ -414,13 +724,15 @@ class CommandsManager():
             # Если процессы известны - просто запускаем
             if existing_processes:
                 debug_logger.info(f"Используем сохраненные процессы для '{filename}'")
-                thread_react(self.audio_paths['start_folder'])
+                if react:
+                    thread_react(self.audio_paths['start_folder'])
                 return True
 
             # Если процессов нет - запускаем мониторинг
-            thread_react_detail(self.audio_paths['wait_load_file'])
-            self.monitor_processes(filename,
-                                   lambda procs, fname: self.on_monitoring_done(procs, fname, self.audio_paths))
+            if react:
+                thread_react_detail(self.audio_paths['wait_load_file'])
+                self.monitor_processes(filename,
+                                    lambda procs, fname: self.on_monitoring_done(procs, fname, self.audio_paths))
 
             return True
 
@@ -442,7 +754,7 @@ class CommandsManager():
             thread_react_detail(self.audio_paths['error_file'])
             return False
 
-    def close_link(self, filename):
+    def close_link(self, filename, react):
         """
         Функция для закрытия программы
         :param filename: Имя файла
@@ -456,8 +768,8 @@ class CommandsManager():
             debug_logger.error("Имена процессов не найдены.")
             error_file = self.audio_paths['error_file']
             thread_react_detail(error_file)
-        close_folder = self.audio_paths['close_folder']
-        thread_react(close_folder)
+        if react:
+            thread_react(self.audio_paths['close_folder'])
         logger.info("Все процессы завершены.")
         debug_logger.info("Все процессы завершены.")
 
@@ -637,7 +949,7 @@ class CommandsManager():
 
         threading.Thread(target=_monitor, daemon=True).start()
 
-    def open_browser_link(self, url):
+    def open_browser_link(self, url, react):
         """
         Открывает ссылку в браузере с обработкой различных форматов
         """
@@ -657,7 +969,8 @@ class CommandsManager():
 
             # Открываем в браузере
             webbrowser.open(url)
-            thread_react(self.audio_paths['start_folder'])
+            if react:
+                thread_react(self.audio_paths['start_folder'])
             return True
 
         except Exception as e:
@@ -694,95 +1007,12 @@ class CommandsManager():
                 return True
 
         return False
-
-def get_config_value(section, key, default=None):
-    """Получение конкретного значения из конфига"""
-    config_path = Path(get_path("config.ini"))
-
-    if not config_path.exists():
-        config = load_default_config(config_path)
-    else:
-        config = configparser.ConfigParser()
-        config.read(config_path, encoding='utf-8')
-
-    return config.get(section, key, fallback=default)
-
-
-def set_config_value(section, key, value):
-    """Обновление значения в конфиге"""
-    config_path = Path(get_path("config.ini"))
-
-    if config_path.exists():
-        config = configparser.ConfigParser()
-        config.read(config_path, encoding='utf-8')
-    else:
-        config = load_default_config(config_path)
-
-    if not config.has_section(section):
-        config.add_section(section)
-
-    config.set(section, key, value)
-
-    with open(config_path, 'w', encoding='utf-8') as f:
-        config.write(f)
-
-
-def load_default_config(config_path):
-    """
-    Создает конфигурационный файл с настройками по умолчанию
-    Возвращает объект configparser с загруженными настройками
-    """
-    config = configparser.ConfigParser()
-
-    # Настройки по умолчанию
-    config['app'] = {
-        'version': '0.0.0',
-        'name': 'Assistant',
-        'build': 'prod'
-    }
-
-    # Создаем директорию если её нет
-    config_path = Path(config_path)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Сохраняем конфиг в файл
-    with open(config_path, 'w', encoding='utf-8') as configfile:
-        config.write(configfile)
-
-    return config
-
-
-def update_version(version_str: str):
-    numbers = version_str.split('-')[0].split('.')
-    major = numbers[0]
-    minor = numbers[1] if len(numbers) > 1 else '0'
-    patch = numbers[2] if len(numbers) > 2 else '0'
-
-    content = f"""# UTF-8
-VSVersionInfo(
-  ffi=FixedFileInfo(
-    filevers=({major}, {minor}, {patch}, 0),
-    prodvers=({major}, {minor}, {patch}, 0),
-    mask=0x3f,
-    flags=0x0,
-    OS=0x40004,
-    fileType=0x1,
-    subtype=0x0,
-    date=(0, 0)
-  ),
-  kids=[
-    StringFileInfo(
-      [
-        StringTable(
-          '040904B0',
-          [StringStruct('FileVersion', '{major}.{minor}.{patch}.0'),
-          StringStruct('ProductVersion', '{version_str}')]
-        )
-      ]
-    ),
-    VarFileInfo([VarStruct('Translation', [0x409, 1200])])
-  ]
-)"""
-
-    with open(get_path('version.txt'), 'w', encoding='utf-8') as f:
-        f.write(content)
+    
+    def handler_system_commands(self, command, action, react=True):
+        for keyword, command_data in system_commands_data.items():
+            if keyword in command:
+                method = command_data.get(action)
+                if method:
+                    method(react)
+                    return True
+        return False

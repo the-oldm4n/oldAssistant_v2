@@ -1,19 +1,13 @@
 import csv
 import os
-from itertools import chain
 from pathlib import Path
-import simpleaudio as sa
-import numpy as np
 import pandas as pd
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QFont, QColor
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QMessageBox, QLabel, QHBoxLayout, QDialog,
-                               QLineEdit, QSlider, QCheckBox, QTextEdit, QListWidget, QListWidgetItem)
-from packaging import version
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import *
 from bin.apply_color_methods import ApplyColor
-from bin.check_update import check_all_versions
 from bin.custom_svg_widget import CustomSvgWidget
-from bin.download_thread import DownloadThread, SliderProgressBar
+from bin.download_thread import DownloadThread
 from bin.progress_bar_widget import SVGProgressBar
 from logging_config import logger, debug_logger
 from path_builder import get_path
@@ -511,116 +505,3 @@ class DebuglogWindow(QDialog):
         except Exception as e:
             logger.error(f"Ошибка при чтении файла логов: {e}")
             self.log_area.append(f"Ошибка при чтении файла логов: {e}")
-
-
-class RelaxWidget(QWidget):
-    """Виджет управления звуковыми эффектами(не знаю, прикол)"""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.duration = 30
-        self.rate = 60
-        self.volume_factor = 0.5
-        self.is_playing = False  # Переменная состояния
-        self.play_obj = None  # Для хранения ссылки на объект воспроизведения
-        self.timer = QTimer(self)  # Создаем таймер
-
-        self.timer.timeout.connect(self.timer_finished)  # Подключаем сигнал таймера к методу
-
-        self.init_ui()
-
-    def init_ui(self):
-        # Поля для настройки выходного звука
-        self.duration_title = QLabel('Укажите длительность в секундах')
-        self.duration_title.setStyleSheet("background: transparent;")
-        self.duration_field = QLineEdit('30')
-
-        self.rate_title = QLabel('Укажите частоту (не рекомендую выше 450)')
-        self.rate_title.setStyleSheet("background: transparent;")
-        self.rate_field = QLineEdit('60')
-
-        self.apply_button = QPushButton('Запустить')
-        self.apply_button.clicked.connect(self.toggle_play)
-
-        # Создание QLabel для отображения значения
-        self.label = QLabel('Значение: 0.50', self)
-        self.label.setStyleSheet("background: transparent;")
-
-        # Создание горизонтального ползунка
-        self.slider = QSlider(Qt.Orientation.Horizontal, self)
-        self.slider.setStyleSheet("background: transparent;")
-        self.slider.setMinimum(0)  # Минимальное значение
-        self.slider.setMaximum(100)  # Максимальное значение
-        self.slider.setValue(50)  # Начальное значение
-        self.slider.setTickInterval(10)  # Интервал для отметок
-        self.slider.setSingleStep(1)  # Шаг при перемещении ползунка
-
-        # Подключение сигнала изменения значения ползунка к слоту
-        self.slider.valueChanged.connect(self.update_volume)
-
-        # Создание вертикального layout
-        layout = QVBoxLayout()
-        layout.addWidget(self.duration_title)
-        layout.addWidget(self.duration_field)
-        layout.addWidget(self.rate_title)
-        layout.addWidget(self.rate_field)
-        layout.addWidget(self.label)
-        layout.addWidget(self.slider)
-        layout.addStretch()
-        layout.addWidget(self.apply_button)
-
-        # Установка layout для виджета
-        self.setLayout(layout)
-
-    def update_volume(self, value):
-        # Обновление текста в QLabel
-        normalized_value = value / 100.0  # Нормализация значения от 0 до 1
-        self.volume_factor = normalized_value
-        self.label.setText(f'Значение: {normalized_value:.2f}')
-
-    def toggle_play(self):
-        # Считываем значения длительности и частоты
-        try:
-            self.duration = int(self.duration_field.text())
-            self.label.setText(f'Длительность: {self.duration} секунд')
-        except ValueError:
-            self.label.setText('Введите корректное значение для длительности')
-            return  # Выход, если значение некорректно
-
-        try:
-            self.rate = int(self.rate_field.text())
-            self.label.setText(f'Частота: {self.rate} Гц')
-        except ValueError:
-            self.label.setText('Введите корректное значение для частоты')
-            return  # Выход, если значение некорректно
-
-        if self.is_playing:
-            self.stop_sound()
-        else:
-            self.generate_sound()
-            self.apply_button.setText('Стоп')
-            self.timer.start(self.duration * 1000)  # Запускаем таймер на длительность в миллисекундах
-            self.is_playing = True  # Устанавливаем состояние воспроизведения
-
-    def stop_sound(self):
-        if self.play_obj is not None:
-            self.play_obj.stop()  # Остановка воспроизведения
-        self.apply_button.setText('Запустить')
-        self.timer.stop()  # Останавливаем таймер
-        self.is_playing = False  # Устанавливаем состояние не воспроизведения
-
-    def timer_finished(self):
-        self.stop_sound()  # Останавливаем звук, когда таймер истекает
-
-    def generate_sound(self):
-        sample_rate = 48000
-        new_frequency = self.rate
-        volume_factor = self.volume_factor
-
-        # Создаем временной массив
-        t = np.linspace(0, self.duration, int(sample_rate * self.duration), endpoint=False)
-        audio_data = np.sin(2 * np.pi * new_frequency * t)
-        audio_data = (audio_data * volume_factor * 32767).astype(np.int16)
-
-        # Воспроизведение аудио
-        self.play_obj = sa.play_buffer(audio_data, 1, 2, sample_rate)
