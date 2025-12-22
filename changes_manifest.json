@@ -1,6 +1,17 @@
 {
-  "2.2.0": {
+  "2.2.1": {
     "full_update": false,
+    "changed_files": [
+      "bin/commands_widgets.py",
+      "bin/__pycache__/commands_widgets.cpython-311.pyc",
+      "config.ini",
+      "Assistant.exe",
+      "version.txt"
+    ],
+    "deleted_files": []
+  },
+  "2.2.0": {
+    "full_update": true,
     "changed_files": [
       "numpy/_core/_multiarray_tests.cp311-win_amd64.pyd",
       "numpy/_core/_multiarray_umath.cp311-win_amd64.pyd",

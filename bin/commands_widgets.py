@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from urllib.parse import urlparse
 import uuid
 import time
 import subprocess
@@ -268,8 +269,14 @@ class AppCommandForm(QWidget):
         if not selected_name:
             self.show_error("Пожалуйста, выберите ярлык из списка!")
             return
+        
+        new_command = {
+            "name": selected_name,
+            "desc": f"Ярлык {selected_name}",
+            "type": "shortcut"
+        }
 
-        self.assistant.commands[key] = selected_name
+        self.assistant.commands[key] = new_command
         commands_signal.commands_updated.emit()
         self.assistant.show_notification_message(message=f"Команда '{key}' добавлена!")
         self.key_input.clear()
@@ -354,8 +361,15 @@ class FolderCommandForm(QWidget):
         if key in self.assistant.commands:
             self.show_error(f"Команда '{key}' уже существует!")
             return
+        
+        folder_desc = os.path.basename(os.path.dirname(folder.rstrip('/\\')))
+        new_command = {
+            "name": folder,
+            "desc": f"Папка {folder_desc}",
+            "type": "folder"
+        }
 
-        self.assistant.commands[key] = folder
+        self.assistant.commands[key] = new_command
         commands_signal.commands_updated.emit()
         self.assistant.show_notification_message(message=f"Команда '{key}' добавлена!")
         self.key_input.clear()
@@ -460,9 +474,19 @@ class UrlCommandForm(QWidget):
         if not self.is_valid_url(normalized_url):
             self.show_error("Некорректный URL!")
             return
+        
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc.replace('www.', '')
+        if ':' in domain:
+            domain = domain.split(':')[0]
 
-        # Сохраняем URL в оригинальном формате
-        self.assistant.commands[key] = url
+        new_command = {
+            "name": url,
+            "desc": f"Папка {domain}",
+            "type": "url"
+        }
+
+        self.assistant.commands[key] = new_command
         commands_signal.commands_updated.emit()
         self.assistant.show_notification_message(f"Команда '{key}' добавлена!")
         self.key_input.clear()
