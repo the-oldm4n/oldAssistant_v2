@@ -1,13 +1,14 @@
 import csv
 import os
 from pathlib import Path
-import pandas as pd
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import *
+from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget,\
+    QMainWindow, QMessageBox, QCheckBox, QTextEdit
 from bin.apply_color_methods import ApplyColor
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.download_thread import DownloadThread
+from bin.lists import setup_custom_font_label
 from bin.progress_bar_widget import SVGProgressBar
 from logging_config import logger, debug_logger
 from path_builder import get_path
@@ -65,6 +66,7 @@ class CensorCounterWidget(QWidget):
         file_path = get_path("user_settings", "censor_counter.csv")
 
         try:
+            import pandas as pd
             # Чтение данных с явным указанием формата и обработкой ошибок
             self.data = pd.read_csv(
                 file_path,
@@ -120,6 +122,7 @@ class CensorCounterWidget(QWidget):
 
     def calculate_scores(self):
         try:
+            import pandas as pd
             # Проверка, что данные загружены
             if not hasattr(self, "data") or self.data.empty:
                 self.update_labels()
@@ -371,7 +374,7 @@ class DebugLoggerWidget(QWidget):
             debug_logger.error(f"Ошибка при открытии/закрытии окна дебаг-файла: {e}")
 
 
-class DebuglogWindow(QDialog):
+class DebuglogWindow(QMainWindow):
     """
     Окно с логами
     """
@@ -379,55 +382,64 @@ class DebuglogWindow(QDialog):
         super().__init__(parent)
         self.parent_window = parent
         self.icon_close_path = get_path("bin", "icons", "close.svg")
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(1000, 600)
-        screen_geometry = self.screen().availableGeometry()
-        x = (screen_geometry.width() - self.width()) // 2
-        y = (screen_geometry.height() - self.height()) // 2
-        self.move(x, y)
-
-        # Основной контейнер с рамкой
-        container = QWidget(self)
-        container.setObjectName("WindowContainer")
-        container.setGeometry(0, 0, self.width(), self.height())
-
-        # Заголовок с крестиком
-        title_bar = QWidget(container)
-        title_bar.setObjectName("TitleBar")
-        title_bar.setGeometry(1, 1, self.width() - 2, 35)
-
-        title_layout = QHBoxLayout(title_bar)
-        title_layout.setContentsMargins(10, 5, 10, 5)
-        title_layout.setSpacing(5)
-
-        title_label = QLabel("Debug-logger")
-        title_label.setStyleSheet("background: transparent;")
-        title_label.setObjectName("TitleLabel")
-        title_label.setFixedSize(150, 20)
-        title_layout.addWidget(title_label)
-        title_layout.addStretch()
-
-        close_btn = QPushButton("")
-        close_btn.setObjectName("CloseButton")
-        close_btn.setFixedSize(25, 25)
-        close_btn.clicked.connect(self.close)
-        self.close_svg = CustomSvgWidget(self.icon_close_path, close_btn)
-        self.close_svg.setFixedSize(19, 19)
-        self.close_svg.move(3, 3)
-        self.close_svg.setStyleSheet("background: transparent;")
-        title_layout.addWidget(close_btn)
+        self.drag_pos = None
+        self.init_ui()
         self.parent_window.assistant.style_manager.apply_color_svg(self.close_svg, strength=0.90,
                                                                    specified_color="#FF0000")
 
-        # Основное содержимое
-        content_widget = QWidget(container)
-        content_widget.setObjectName("ContentWidget")
-        content_widget.setGeometry(1, 36, self.width() - 2, self.height() - 37)
+    def init_ui(self):
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedSize(1000, 600)
 
-        # Вертикальный layout
-        layout = QVBoxLayout(content_widget)
-        layout.setContentsMargins(10, 10, 10, 10)
+        screen_geometry = self.screen().availableGeometry()
+        self.move(
+            (screen_geometry.width() - self.width()) // 2,
+            (screen_geometry.height() - self.height()) // 2
+        )
+
+        self.central_widget = QWidget(self)
+        self.central_widget.setObjectName("WindowContainer")
+        self.setCentralWidget(self.central_widget)
+
+        root_layout = QVBoxLayout(self.central_widget)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        self.title_bar_widget = QWidget()
+        self.title_bar_widget.setObjectName("TitleBar")
+        self.title_bar_layout = QHBoxLayout(self.title_bar_widget)
+        self.title_bar_layout.setContentsMargins(10, 5, 10, 5)
+        self.title_bar_layout.setSpacing(5)
+
+        self.title_bar_widget.mousePressEvent = self.title_bar_mouse_press
+        self.title_bar_widget.mouseMoveEvent = self.title_bar_mouse_move
+        self.title_bar_widget.mouseReleaseEvent = self.title_bar_mouse_release
+
+        title_label = setup_custom_font_label("Подробные логи", font_style="Comfortaa", weight="Medium")
+        title_label.setStyleSheet("background: transparent;")
+        title_label.setObjectName("TitleLabel")
+        self.title_bar_layout.addWidget(title_label, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        self.title_bar_layout.addStretch()
+
+        close_btn = QPushButton("")
+        close_btn.setObjectName("CloseButton")
+        close_btn.setFixedSize(30, 30)
+        close_btn.clicked.connect(self.close)
+        self.close_svg = CustomSvgWidget(self.icon_close_path, close_btn)
+        self.close_svg.setFixedSize(25, 25)
+        self.close_svg.move(3, 3)
+        self.close_svg.setStyleSheet("background: transparent;")
+        self.title_bar_layout.addWidget(close_btn)
+
+        root_layout.addWidget(self.title_bar_widget)
+
+        self.content_widget = QWidget()
+        self.content_widget.setObjectName("ContentWidget")
+        main_layout = QVBoxLayout(self.content_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
 
         self.log_area = QTextEdit()
         self.log_area.setStyleSheet("background: transparent;")
@@ -436,24 +448,35 @@ class DebuglogWindow(QDialog):
         self.log_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.load_debuglog()
 
-        layout.addWidget(self.log_area)
+        main_layout.addWidget(self.log_area)
 
         # Кнопка закрытия
         close_button = QPushButton("Закрыть")
         close_button.clicked.connect(self.close)
-        layout.addWidget(close_button)
+        main_layout.addWidget(close_button)
 
-    def mousePressEvent(self, event):
-        """Перетаскивание окна за заголовок"""
-        if event.button() == Qt.MouseButton.LeftButton and event.y() < 30:
-            self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
+        root_layout.addWidget(self.content_widget)
+
+    def title_bar_mouse_press(self, event):
+        """Обработка нажатия мыши на заголовок"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Запоминаем позицию относительно главного окна
+            self.drag_pos = event.globalPosition().toPoint()
             event.accept()
 
-    def mouseMoveEvent(self, event):
-        """Перетаскивание окна за заголовок"""
-        if hasattr(self, 'drag_position') and event.buttons() == Qt.MouseButton.LeftButton:
-            self.move(event.globalPos() - self.drag_position)
+    def title_bar_mouse_move(self, event):
+        """Обработка перемещения мыши при удерживании на заголовке"""
+        if self.drag_pos is not None and event.buttons() == Qt.MouseButton.LeftButton:
+            # Вычисляем смещение и перемещаем главное окно
+            delta = event.globalPosition().toPoint() - self.drag_pos
+            self.move(self.pos() + delta)
+            self.drag_pos = event.globalPosition().toPoint()
             event.accept()
+
+    def title_bar_mouse_release(self, event):
+        """Обработка отпускания кнопки мыши"""
+        self.drag_pos = None
+        event.accept()
 
     def load_debuglog(self):
         path = get_path("log", "debug_assist.log")

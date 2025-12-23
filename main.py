@@ -25,10 +25,14 @@ import threading
 import sounddevice as sd
 import subprocess
 from vosk import Model, KaldiRecognizer
-from PySide6.QtGui import *
+from PySide6.QtGui import QCursor, QIcon, QFont, QDesktopServices, QAction, QPixmap, QPainter, QMouseEvent,\
+    QFontDatabase, QPainterPath, QImage
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtWidgets import *
-from PySide6.QtCore import *
+from PySide6.QtWidgets import QMainWindow, QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QApplication, QWidget,\
+    QDialog, QGraphicsColorizeEffect, QSizePolicy, QSystemTrayIcon, QMenu, QMessageBox, QTabBar, QTabWidget,\
+    QSpacerItem, QTextBrowser, QLineEdit
+from PySide6.QtCore import Signal, QTimer, Qt, QEasingCurve, QPropertyAnimation, QRect, QEvent, QUrl, QPoint, Slot,\
+    QThread, QThreadPool
 from bin.apply_color_methods import ApplyColor
 from bin.check_update import GetManifestThread, get_update_strategy, load_changelog, VersionCheckThread
 from bin.custom_widgets import AnimatedSidebar, VersionLabel
@@ -48,7 +52,7 @@ from bin.widget_window import SmartWidget
 from bin.commands_widgets import CreateCommandsWidget, CommandsWidget, CreateScriptsWidget, ProcessLinksWidget
 from bin.other_options_widgets import CensorCounterWidget, CheckUpdateWidget, DebugLoggerWidget
 from bin.config_manager import get_config_value, set_config_value, update_version
-from bin.commands_manager import CommandsManager
+from bin.commands_manager import main_commands_manager
 from bin.function_list_main import *
 from bin.audio_control import controller
 from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel, SpeechHookManagerWidget
@@ -59,7 +63,7 @@ from logging_config import logger, debug_logger
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.1"
+version_file = "2.2.0"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -159,7 +163,7 @@ class Assistant(QMainWindow):
         gui_signals.close_widget_signal.connect(self.close_widget)
         color_signal.color_changed.connect(self.update_colors)
         self.supply_notice_signal.connect(self._handle_supply_notice)
-        commands_signal.commands_updated.connect(self.save_commands)
+        commands_signal.commands_reloaded.connect(self.reload_commands)
         self.update_checked.connect(self.handle_update_status)
         self.close_child_windows.connect(self.hide_widget)
         self.MEMORY_LIMIT_MB = 1024
@@ -194,7 +198,7 @@ class Assistant(QMainWindow):
         self.is_snow = None
         self.is_garland = None
         self.install_settings()
-        self.commands_manager = CommandsManager()
+        self.commands_manager = main_commands_manager
         self.audio_stream = None
         self.last_audio_time = None  # Время последнего НЕтихого пакета
         self.silence_timer = QTimer()  # Таймер для проверки тишины
@@ -249,7 +253,6 @@ class Assistant(QMainWindow):
         self.update_checker = QTimer()
         self.update_checker.timeout.connect(self.check_update_app)
         self.update_checker.start(3600000)  # Чек обновлений раз в 60 минут (3600000)
-        
 
     def handle_init_result(self, success):
         """Обработчик результата инициализации"""
@@ -663,7 +666,6 @@ class Assistant(QMainWindow):
             root_layout.addWidget(self.content_widget)
 
             # === Анимация ширины ===
-            # self.animation = QPropertyAnimation(self.left_container, b"geometry")
             self.animation = QPropertyAnimation(self.mutable_panel, b"maximumWidth")
             self.animation.setDuration(500)
             self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -1537,10 +1539,11 @@ class Assistant(QMainWindow):
             self.toggle_update_button()
             self.update_label.setText("Поиск обновления...")
 
-            self.thread = VersionCheckThread()
-            self.thread.version_checked.connect(self.handle_version_check)
-            self.thread.check_failed.connect(self.handle_check_failed)
-            self.thread.start()
+            task = VersionCheckThread()
+            task.signals.version_checked.connect(self.handle_version_check)
+            task.signals.check_failed.connect(self.handle_check_failed)
+
+            QThreadPool.globalInstance().start(task)
 
         except Exception as e:
             self.animation_stop_load()
@@ -1758,13 +1761,9 @@ class Assistant(QMainWindow):
                 logger.error(f'Ошибка при создании папки для хранения ярлыков: {e}')
                 debug_logger.error(f'Ошибка при создании папки для хранения ярлыков: {e}')
 
-    def load_commands(self):
-        """Загружает команды из JSON-файла."""
-        self.commands_manager.load_commands()
-
-    def save_commands(self):
+    def reload_commands(self):
         """Централизованное сохранение команд"""
-        self.commands_manager.save_commands()
+        self.commands = self.commands_manager.commands
 
     def load_settings(self):
         """Загружает настройки из settings.json."""
@@ -3298,28 +3297,6 @@ class Assistant(QMainWindow):
             # Можно попробовать повторно через 10 сек
             QTimer.singleShot(10000, self.restart_audio_stream)
 
-    # def handle_app_command(self, text, action):
-    #     """Обработка команд для приложений"""
-    #     for keyword, filename in self.commands.items():
-    #         if keyword in text:
-    #             if (not filename.endswith('.lnk') and not filename.endswith('.url')
-    #                     and not self.commands_manager.is_url_string(filename)):
-    #                 return False  # Прекращаем обработку, если это папка
-    #             self.commands_manager.handler_links(filename, action)  # Вызываем обработчик ярлыков
-    #             return True  # Возвращаем True, если команда была успешно обработана
-    #     return False  # Возвращаем False, если команда не была найдена
-
-    # def handle_folder_command(self, text, action):
-    #     """Обработка команд для папок"""
-    #     for keyword, folder_path in self.commands.items():
-    #         if keyword in text:
-    #             if (folder_path.endswith('.lnk') or folder_path.endswith('.url')
-    #                     or self.commands_manager.is_url_string(folder_path)):
-    #                 return False  # Прекращаем обработку, если это файл приложения
-    #             if self.commands_manager.handler_folder(folder_path, action):  # Вызываем обработчик папок
-    #                 return True  # Возвращаем True, если команда была успешно обработана
-    #     return False  # Возвращаем False, если команда не была найдена
-
     def handle_app_command(self, text, action):
         """Обработка команд для приложений, ярлыков и ссылок"""
         debug_logger.error(f"Вызван обработчик команд для ярлыков и ссылок: {text}, {action}")
@@ -3996,7 +3973,7 @@ class Assistant(QMainWindow):
     def changelog_window(self, event):
         """Открываем окно с логами изменений"""
         dialog = ChangelogWindow(self)
-        dialog.exec()
+        dialog.show()
 
     def update_app(self, type_version=None, batch_update=False):
         """Обработка нажатия кнопки 'Установить обновление'"""
@@ -4304,79 +4281,89 @@ class UpdateApp(QDialog):
         return filename
 
 
-class ChangelogWindow(QDialog):
+class ChangelogWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.assistant = parent
+        self.drag_pos = None
+        self.init_ui()
+        self.load_changelog()
+        self.assistant.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#FF0000")
+
+    def init_ui(self):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(700, 600)
+        self.setFixedSize(450, 600)
 
-        # Основной контейнер с рамкой
-        container = QWidget(self)
-        container.setObjectName("WindowContainer")
-        container.setGeometry(0, 0, self.width(), self.height())
+        screen_geometry = self.screen().availableGeometry()
+        self.move(
+            (screen_geometry.width() - self.width()) // 2,
+            (screen_geometry.height() - self.height()) // 2
+        )
 
-        # Заголовок с крестиком
-        title_bar = QWidget(container)
-        title_bar.setObjectName("TitleBar")
-        title_bar.setGeometry(1, 1, self.width() - 2, 35)
+        self.central_widget = QWidget(self)
+        self.central_widget.setObjectName("WindowContainer")
+        self.setCentralWidget(self.central_widget)
 
-        title_layout = QHBoxLayout(title_bar)
-        title_layout.setContentsMargins(10, 5, 10, 5)
-        title_layout.setSpacing(5)
+        root_layout = QVBoxLayout(self.central_widget)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        self.title_bar_widget = QWidget()
+        self.title_bar_widget.setObjectName("TitleBar")
+        self.title_bar_layout = QHBoxLayout(self.title_bar_widget)
+        self.title_bar_layout.setContentsMargins(10, 5, 10, 5)
+        self.title_bar_layout.setSpacing(5)
+
+        self.title_bar_widget.mousePressEvent = self.title_bar_mouse_press
+        self.title_bar_widget.mouseMoveEvent = self.title_bar_mouse_move
+        self.title_bar_widget.mouseReleaseEvent = self.title_bar_mouse_release
 
         link_label = QLabel()
         link_label.setText('''
             <a href="https://owl-app.ru" 
-            style="color: white;">
+            style="color: #35E808;">
             owl-app.ru
             </a>
         ''')
         link_label.setStyleSheet("background: transparent;")
         link_label.setOpenExternalLinks(True)
         link_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        title_layout.addWidget(link_label)
+        self.title_bar_layout.addWidget(link_label)
 
-        ps = QLabel("Powered by theoldman")
-        ps.setStyleSheet("background: transparent; font-size: 12px;")
-        title_layout.addWidget(ps)
+        self.title_bar_layout.addStretch()
 
-        title_layout.addStretch()
-        
         title_label = setup_custom_font_label("История изменений", font_style="Comfortaa", weight="Medium")
         title_label.setStyleSheet("background: transparent;")
         title_label.setObjectName("TitleLabel")
-        title_label.setFixedSize(160, 20)
-        title_layout.addWidget(title_label)
+        self.title_bar_layout.addWidget(title_label)
 
-        title_layout.addStretch()
+        self.title_bar_layout.addStretch()
 
         close_btn = QPushButton("")
         close_btn.setObjectName("CloseButton")
-        close_btn.setFixedSize(25, 25)
+        close_btn.setFixedSize(30, 30)
         close_btn.clicked.connect(self.close)
         self.close_svg = CustomSvgWidget(self.assistant.icon_close_path, close_btn)
-        self.close_svg.setFixedSize(19, 19)
+        self.close_svg.setFixedSize(25, 25)
         self.close_svg.move(3, 3)
         self.close_svg.setStyleSheet("background: transparent;")
-        title_layout.addWidget(close_btn)
+        self.title_bar_layout.addWidget(close_btn)
 
-        # Основное содержимое
-        content_widget = QWidget(container)
-        content_widget.setObjectName("ContentWidget")
-        content_widget.setGeometry(1, 36, self.width() - 2, self.height() - 37)
+        root_layout.addWidget(self.title_bar_widget)
 
-        # Вертикальный layout
-        layout = QVBoxLayout(content_widget)
-        layout.setContentsMargins(10, 10, 10, 10)
+        self.content_widget = QWidget()
+        self.content_widget.setObjectName("ContentWidget")
+        main_layout = QVBoxLayout(self.content_widget)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setSpacing(10)
 
         # Текстовый браузер
         self.text_browser = QTextBrowser()
         self.text_browser.setStyleSheet("background: transparent;")
         self.text_browser.setOpenExternalLinks(True)
         self.text_browser.setReadOnly(True)
-        layout.addWidget(self.text_browser)
+        main_layout.addWidget(self.text_browser)
 
         # Стили для Markdown
         self.text_browser.document().setDefaultStyleSheet("""
@@ -4438,13 +4425,37 @@ class ChangelogWindow(QDialog):
             }
         """)
 
+        ps = QLabel("Powered by theoldman")
+        ps.setStyleSheet("background: transparent; font-size: 12px; padding: 5px;")
+        main_layout.addWidget(ps, alignment=Qt.AlignmentFlag.AlignRight)
+
         # Кнопка закрытия
         close_button = QPushButton("Закрыть")
         close_button.clicked.connect(self.close)
-        layout.addWidget(close_button)
+        main_layout.addWidget(close_button)
 
-        self.load_changelog()
-        self.assistant.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#FF6666")
+        root_layout.addWidget(self.content_widget)      
+
+    def title_bar_mouse_press(self, event):
+        """Обработка нажатия мыши на заголовок"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Запоминаем позицию относительно главного окна
+            self.drag_pos = event.globalPosition().toPoint()
+            event.accept()
+
+    def title_bar_mouse_move(self, event):
+        """Обработка перемещения мыши при удерживании на заголовке"""
+        if self.drag_pos is not None and event.buttons() == Qt.MouseButton.LeftButton:
+            # Вычисляем смещение и перемещаем главное окно
+            delta = event.globalPosition().toPoint() - self.drag_pos
+            self.move(self.pos() + delta)
+            self.drag_pos = event.globalPosition().toPoint()
+            event.accept()
+
+    def title_bar_mouse_release(self, event):
+        """Обработка отпускания кнопки мыши"""
+        self.drag_pos = None
+        event.accept()
 
     def load_changelog(self):
         """Загружает и отображает Markdown файл"""

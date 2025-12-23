@@ -1,4 +1,4 @@
-from PySide6.QtCore import QThread, Signal, QTimer
+from PySide6.QtCore import QThread, Signal
 import time
 from logging_config import debug_logger
 

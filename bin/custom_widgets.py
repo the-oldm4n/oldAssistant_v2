@@ -1,7 +1,10 @@
 ﻿import os
-from PySide6.QtWidgets import *
-from PySide6.QtCore import *
-from PySide6.QtGui import *
+from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget,\
+    QFrame, QWidget, QGraphicsOpacityEffect
+from PySide6.QtCore import Signal, QPropertyAnimation, Qt, QRectF, QPointF, QEasingCurve,\
+    Property, QParallelAnimationGroup, QAbstractAnimation
+from PySide6.QtGui import QColor, QCursor, QBrush, QPen, QLinearGradient, QPainter,\
+    QPainterPath, QRadialGradient
 from bin.apply_color_methods import ApplyColor
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.signals import color_signal

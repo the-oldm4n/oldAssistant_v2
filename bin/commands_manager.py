@@ -21,6 +21,8 @@ from logging_config import logger, debug_logger
 from bin.speak_functions import thread_react, thread_react_detail
 from path_builder import get_path
 from PySide6.QtCore import QObject
+from bin.signals import commands_signal
+
 
 class CommandsManager(QObject):
     def __init__(self):
@@ -38,6 +40,7 @@ class CommandsManager(QObject):
         self.commands = self.load_commands()
         converted = self.reduction_commands()
         debug_logger.info(f"Преобразование в новый формат команд: {converted}")
+        commands_signal.commands_updated.connect(self.reload_commands)
 
     def load_commands(self):
         """Загрузка команд из файла"""
@@ -48,6 +51,18 @@ class CommandsManager(QObject):
                 return json.load(f)
         except (json.JSONDecodeError, FileNotFoundError):
             return {}
+        
+    def reload_commands(self):
+        """Полная перезагрузка команд при сигнале"""
+        self.save_commands()
+        old_count = len(self.commands) if hasattr(self, 'commands') else 0
+        self.commands = self.load_commands()  # Обновляем self.commands
+        new_count = len(self.commands)
+        
+        debug_logger.info(f"Команды обновлены: было {old_count}, стало {new_count}")
+        self.save_commands()
+
+        commands_signal.commands_reloaded.emit()
 
     def save_commands(self):
         """Сохранение команд в файл"""
@@ -114,7 +129,7 @@ class CommandsManager(QObject):
         
         if cmd_type == 'folder':
             self.handler_folder(value, move, react=False)
-        elif cmd_type == 'links' or cmd_type == 'url':
+        elif cmd_type == 'links' or cmd_type == 'url' or cmd_type == 'shortcut':
             self.handler_links(value, move, added_args=args, react=False)
         elif cmd_type == 'system':
             self.handler_system_commands(value, move, react=False)
@@ -1016,3 +1031,7 @@ class CommandsManager(QObject):
                     method(react)
                     return True
         return False
+
+
+main_commands_manager = CommandsManager()
+

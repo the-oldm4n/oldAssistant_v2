@@ -2,10 +2,10 @@ import json
 import math
 import os
 import re
-from PySide6.QtCore import Signal, Qt, QTimer
+from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QColor, QPainter, QLinearGradient
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QPushButton, QSpinBox, QSlider, QDialog, QWidget, QTabWidget, \
-    QColorDialog, QCheckBox, QHBoxLayout, QComboBox, QApplication, QLineEdit
+    QHBoxLayout, QComboBox, QApplication, QLineEdit
 from bin.apply_color_methods import ApplyColor
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.custom_widgets import CustomToggle

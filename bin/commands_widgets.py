@@ -7,10 +7,13 @@ import time
 import subprocess
 import pythoncom
 import win32com.client
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtWidgets import *
+from PySide6.QtGui import QFont, QRegularExpressionValidator
+from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget,\
+    QDialog, QMenu, QMessageBox, QLineEdit, QStackedWidget, QFileDialog, QListWidget, QListWidgetItem,\
+    QDialogButtonBox, QComboBox, QCompleter, QScrollArea, QSpinBox
+from PySide6.QtCore import Signal, QTimer, Qt, QStringListModel, QRegularExpression
 from bin.apply_color_methods import ApplyColor
+from bin.commands_manager import main_commands_manager
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.lists import setup_custom_font_label
 from bin.shortcut_monitor import ShortcutMonitor
@@ -194,6 +197,7 @@ class AppCommandForm(QWidget):
         super().__init__(parent)
         self.assistant = assistant
         self.assistant.commands_manager.search_links()
+        self.commands_manager = main_commands_manager
         self.init_ui()
 
     def init_ui(self):
@@ -262,7 +266,7 @@ class AppCommandForm(QWidget):
             self.show_error("Команда не может быть пустой!")
             return
 
-        if key in self.assistant.commands:
+        if key in self.commands_manager.commands:
             self.show_error(f"Команда '{key}' уже существует!")
             return
 
@@ -276,7 +280,7 @@ class AppCommandForm(QWidget):
             "type": "shortcut"
         }
 
-        self.assistant.commands[key] = new_command
+        self.commands_manager.commands[key] = new_command
         commands_signal.commands_updated.emit()
         self.assistant.show_notification_message(message=f"Команда '{key}' добавлена!")
         self.key_input.clear()
@@ -297,6 +301,7 @@ class FolderCommandForm(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
+        self.commands_manager = main_commands_manager
         self.init_ui()
 
     def init_ui(self):
@@ -358,7 +363,7 @@ class FolderCommandForm(QWidget):
             self.show_error("Заполните все поля!")
             return
 
-        if key in self.assistant.commands:
+        if key in self.commands_manager.commands:
             self.show_error(f"Команда '{key}' уже существует!")
             return
         
@@ -369,7 +374,7 @@ class FolderCommandForm(QWidget):
             "type": "folder"
         }
 
-        self.assistant.commands[key] = new_command
+        self.commands_manager.commands[key] = new_command
         commands_signal.commands_updated.emit()
         self.assistant.show_notification_message(message=f"Команда '{key}' добавлена!")
         self.key_input.clear()
@@ -390,6 +395,7 @@ class UrlCommandForm(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
+        self.commands_manager = main_commands_manager
         self.init_ui()
 
     def init_ui(self):
@@ -465,7 +471,7 @@ class UrlCommandForm(QWidget):
             self.show_error("Заполните все поля!")
             return
 
-        if key in self.assistant.commands:
+        if key in self.commands_manager.commands:
             self.show_error(f"Команда '{key}' уже существует!")
             return
 
@@ -486,7 +492,7 @@ class UrlCommandForm(QWidget):
             "type": "url"
         }
 
-        self.assistant.commands[key] = new_command
+        self.commands_manager.commands[key] = new_command
         commands_signal.commands_updated.emit()
         self.assistant.show_notification_message(f"Команда '{key}' добавлена!")
         self.key_input.clear()
@@ -525,9 +531,10 @@ class CommandsWidget(QWidget):
         super().__init__(parent)
         self.assistant = assistant
         self._help_initialized = False
+        self.commands_manager = main_commands_manager
         self.init_ui()
         self.update_commands_list()
-        commands_signal.commands_updated.connect(self.update_commands_list)
+        commands_signal.commands_reloaded.connect(self.update_commands_list)
 
     def init_ui(self):
         """Инициализация интерфейса"""
@@ -657,19 +664,18 @@ class CommandsWidget(QWidget):
             if dialog.exec_() == QDialog.DialogCode.Accepted:
                 new_key = dialog.new_key
 
-                if current_key in self.assistant.commands:
-                    command_value = self.assistant.commands[current_key]
-                    del self.assistant.commands[current_key]
-                    self.assistant.commands[new_key] = command_value
-                    self.save_commands()
-                    self.update_commands_list()
+                if current_key in self.commands_manager.commands:
+                    command_value = self.commands_manager.commands[current_key]
+                    del self.commands_manager.commands[current_key]
+                    self.commands_manager.commands[new_key] = command_value
+                    commands_signal.commands_updated.emit()
                     self.assistant.show_message(f"Команда успешно переименована в '{new_key}'", "Успех", "info")
 
     def update_commands_list(self):
         """Обновляет список команд"""
         self.commands_list.clear()
 
-        for key, command_data in self.assistant.commands.items():
+        for key, command_data in self.commands_manager.commands.items():
             if isinstance(command_data, dict) and 'name' in command_data:
                 name = command_data.get('name', '')
                 _type = command_data.get('type', '')
@@ -727,36 +733,12 @@ class CommandsWidget(QWidget):
         # Удаляем выбранные команды
         for item in selected_items:
             key = item.text().split(" : ")[0]
-            if key in self.assistant.commands:
-                self.remove_command_from_process_names(self.assistant.commands[key])
-                del self.assistant.commands[key]
+            if key in self.commands_manager.commands:
+                del self.commands_manager.commands[key]
                 self.commands_list.takeItem(self.commands_list.row(item))
 
-        self.save_commands()
+        commands_signal.commands_updated.emit()
         self.select_last_item()
-
-    def remove_command_from_process_names(self, command_value):
-        """Удаляет команду из process_names.json"""
-        process_names_file = get_path('user_settings', 'process_names.json')
-        try:
-            with open(process_names_file, 'r', encoding='utf-8') as file:
-                process_names = json.load(file)
-
-            updated_names = [entry for entry in process_names if list(entry.keys())[0] != command_value]
-
-            with open(process_names_file, 'w', encoding='utf-8') as file:
-                json.dump(updated_names, file, ensure_ascii=False, indent=4)
-        except Exception as e:
-            debug_logger.error(f"Ошибка при обновлении process_names.json: {e}")
-
-    def save_commands(self):
-        """Cохраняет команды"""
-        try:
-            with open(get_path('user_settings', 'commands.json'), 'w', encoding='utf-8') as file:
-                json.dump(self.assistant.commands, file, ensure_ascii=False, indent=4)
-
-        except Exception as e:
-            debug_logger.error(f"Ошибка сохранения команд в CommandsWidget: {e}")
 
 
 class ProcessLinksWidget(QWidget):
@@ -1149,7 +1131,7 @@ class CreateScriptsWidget(QWidget):
     def __init__(self, assistant, parent=None):
         super().__init__(parent)
         self.assistant = assistant
-        self.commands_manager = self.assistant.commands_manager
+        self.commands_manager = main_commands_manager #self.assistant.commands_manager
         self._help_initialized = False
         self.init_ui()
         
@@ -1225,27 +1207,23 @@ class ScriptStepWidget(QWidget):
     stepMovedDown = Signal(int)
     stepChanged = Signal()
     
-    def __init__(self, step_number, available_commands, parent=None):
+    def __init__(self, step_number, parent=None):
         super().__init__(parent)
         self.style_manager = ApplyColor()
         self.step_number = step_number
-        self.available_commands = available_commands
+        self.commands_manager = main_commands_manager
+        self.available_commands = []
         self.icon_arrowup_path = get_path("bin", "icons", "arrow_up.svg")
         self.icon_arrowdown_path = get_path("bin", "icons", "arrow_down.svg")
         self.icon_close_path = get_path("bin", "icons", "close.svg")
+        commands_signal.commands_reloaded.connect(self._populate_commands)
         self.init_ui()
         self.apply_styles()
         
     def init_ui(self):
-        # layout = QHBoxLayout(self)
-        # layout.setContentsMargins(5, 5, 5, 5)
-        # main_widget = QWidget()
-        # layout.addWidget(main_widget)
-        # main_widget.setObjectName("ScriptStepFrame")
-
         main_widget = QWidget()
         main_widget.setObjectName("ScriptStepFrame")
-        layout = QHBoxLayout(main_widget)  # Layout внутри frame
+        layout = QHBoxLayout(main_widget)
         layout.setContentsMargins(5, 5, 5, 5)
         
         # Номер шага
@@ -1343,10 +1321,17 @@ class ScriptStepWidget(QWidget):
         self.style_manager.apply_color_svg(self.btn_down_svg, strength=0.90)
         self.style_manager.apply_color_svg(self.btn_remove_svg, strength=0.90)
 
+    def get_available_commands(self):
+        """Получить все доступные команды"""
+        all_commands = {**self.commands_manager.default_commands, **self.commands_manager.commands}
+        return all_commands
+
     def _populate_commands(self, include_scripts=False):
         """Заполняем список доступных команд"""
         self.cmb_command.clear()
         self.cmb_command.addItem("-- Выберите команду --", None)
+
+        self.available_commands = self.get_available_commands()
         
         for key, data in self.available_commands.items():
             # Формируем текст для отображения
@@ -1523,6 +1508,7 @@ class SimpleScriptForm(QWidget):
         
     def add_step(self):
         """Добавить новый шаг"""
+        print(f"Added new step")
         if len(self.steps) >= 10:
             self.lbl_status.setText("Максимум 10 шагов")
             return
@@ -1531,11 +1517,7 @@ class SimpleScriptForm(QWidget):
             # Убираем последний элемент (stretch)
             self.steps_container.takeAt(self.steps_container.count() - 1)
             
-        step_widget = ScriptStepWidget(
-            len(self.steps) + 1,
-            self.get_available_commands(),
-            self
-        )
+        step_widget = ScriptStepWidget(len(self.steps) + 1, self)
         
         # Подключаем сигналы
         step_widget.stepRemoved.connect(self.remove_step)

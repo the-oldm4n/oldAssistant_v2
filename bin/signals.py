@@ -15,6 +15,7 @@ gui_signals = GuiSignals()
 
 class CommandsChangeSignal(QObject):
     commands_updated = Signal()
+    commands_reloaded = Signal()
 
 commands_signal = CommandsChangeSignal()
 

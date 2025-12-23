@@ -1,14 +1,8 @@
-﻿import sys
-import math
+﻿import math
 import random
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, QTimer, QPoint, QSize
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath, QPixmap, QRadialGradient
-
-import random
-from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, QTimer, QPointF, QRectF
-from PySide6.QtGui import QPainter, QColor, QBrush, QPainterPath
+from PySide6.QtCore import Qt, QTimer, QPointF, QSize, QPoint
+from PySide6.QtGui import QPainter, QColor, QBrush, QPainterPath, QPen, QPixmap
 
 class FrostedWidget(QWidget):
     def __init__(self, content_widget: QWidget, frost_width=10, parent=None):

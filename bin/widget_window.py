@@ -2,10 +2,10 @@ import json
 import os
 import subprocess
 import wmi
-from PySide6.QtGui import QFont, QFontDatabase
+from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, \
-    QDialog, QLabel, QGridLayout, QStackedWidget, QSizePolicy, QTextEdit, QApplication, QGraphicsBlurEffect
-from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve, QEvent
+    QDialog, QLabel, QGridLayout, QStackedWidget, QSizePolicy, QTextEdit, QApplication
+from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve
 
 from bin.apply_color_methods import ApplyColor
 from bin.audio_control import controller
@@ -125,6 +125,20 @@ class WindowStateManager:
         state["is_snow"] = bool(value)
         # Сохраняем обратно
         self.save_state(state)
+
+    def get_is_snow(self):
+        """Получает текущее значение is_snow"""
+        state = self.load_state()
+        value = state.get("is_snow", False)
+        if isinstance(value, str):
+            value_lower = value.lower().strip()
+            if value_lower in ("false"):
+                return False
+            elif value_lower in ("true"):
+                return True
+        
+        return bool(value)
+
 
 
 class SmartWidget(QWidget):
@@ -263,8 +277,7 @@ class SmartWidget(QWidget):
 
     def toggle_snow(self):
         """Переключает состояние снега"""
-        self.is_snow = not self.is_snow
-        self.state_manager.set_is_snow(self.is_snow)
+        self.is_snow = self.state_manager.get_is_snow()
         self.update_snow_state()
 
     # Упрощенная версия без лишних проверок

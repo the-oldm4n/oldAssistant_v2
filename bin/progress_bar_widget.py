@@ -1,8 +1,7 @@
-﻿from PySide6.QtWidgets import QProgressBar, QWidget, QVBoxLayout, QHBoxLayout
+﻿from PySide6.QtWidgets import QProgressBar, QWidget, QVBoxLayout
 from PySide6.QtCore import Qt, QPropertyAnimation, Property
-from PySide6.QtGui import QPainter, QPen, QColor, QRadialGradient, QLinearGradient, QBrush
+from PySide6.QtGui import QPainter, QPen, QColor, QLinearGradient, QBrush
 
-from bin.custom_svg_widget import CustomSvgWidget
 
 class CustomProgressBar(QWidget):
     def __init__(self, parent=None, style="default", circle_size=100, line_width=2, padding=20):

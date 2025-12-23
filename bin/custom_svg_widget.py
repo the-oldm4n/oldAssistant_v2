@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import *
-from PySide6.QtGui import *
-from PySide6.QtCore import *
+from PySide6.QtWidgets import QGraphicsColorizeEffect, QGraphicsEffect
+from PySide6.QtGui import QColor, QPixmap, QPainter, QLinearGradient, QBrush, QRadialGradient, QConicalGradient
+from PySide6.QtCore import Qt, Property
 from PySide6.QtSvgWidgets import QSvgWidget
 
 class CustomSvgWidget(QSvgWidget):

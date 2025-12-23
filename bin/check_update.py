@@ -4,7 +4,7 @@ import uuid
 from packaging import version
 from typing import Tuple, Optional, Dict
 import requests
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, QObject, QRunnable, Slot
 from bin.request_module import session
 
 from logging_config import debug_logger
@@ -96,28 +96,59 @@ class GetManifestThread(QThread):
             return full_manifest
 
 
-class VersionCheckThread(QThread):
-    version_checked = Signal(str, str)  # Сигнал для stable и exp версий
-    check_failed = Signal()  # Сигнал при ошибке
+# class VersionCheckThread(QThread):
+#     version_checked = Signal(str, str)  # Сигнал для stable и exp версий
+#     check_failed = Signal()  # Сигнал при ошибке
 
+#     def run(self):
+#         print(f"[ПОТОК] Начало, ID: {int(QThread.currentThread())}")
+#         try:
+#             version_url = f"{domain}/version"
+#             response = session.get(version_url, timeout=5)
+
+#             if response.status_code == 200:
+#                 data = response.json()
+#                 stable = data.get("stable", {}).get("version", "")
+#                 exp = data.get("experimental", {}).get("exp_version", "")
+#                 if stable:
+#                     debug_logger.info(f"Последняя стабильная версия: {stable}")
+#                 if exp:
+#                     debug_logger.info(f"Экспериментальная версия: {exp}")
+#                 self.version_checked.emit(stable, exp)
+#                 print(f"[ПОТОК] Сигнал отправлен")
+#             else:
+#                 self.check_failed.emit()
+#         except requests.exceptions.RequestException:
+#             self.check_failed.emit()
+#         finally:
+#             self.quit()
+#             print(f"[ПОТОК] quit() вызван")
+
+class VersionCheckSignals(QObject):
+    """Сигналы для QRunnable (т.к. QRunnable не наследует QObject)"""
+    version_checked = Signal(str, str)
+    check_failed = Signal()
+
+class VersionCheckThread(QRunnable):
+    def __init__(self):
+        super().__init__()
+        self.signals = VersionCheckSignals()
+    
+    @Slot()
     def run(self):
+        """Это выполнится в отдельном потоке из пула"""
         try:
-            version_url = f"{domain}/version"
-            response = session.get(version_url, timeout=5)
-
+            response = session.get(f"{domain}/version", timeout=5)
             if response.status_code == 200:
                 data = response.json()
                 stable = data.get("stable", {}).get("version", "")
                 exp = data.get("experimental", {}).get("exp_version", "")
-                if stable:
-                    debug_logger.info(f"Последняя стабильная версия: {stable}")
-                if exp:
-                    debug_logger.info(f"Экспериментальная версия: {exp}")
-                self.version_checked.emit(stable, exp)
+                self.signals.version_checked.emit(stable, exp)
             else:
-                self.check_failed.emit()
-        except requests.exceptions.RequestException:
-            self.check_failed.emit()
+                self.signals.check_failed.emit()
+        except Exception as e:
+            debug_logger.error(f"Version check error: {e}")
+            self.signals.check_failed.emit()
 
 def check_version():
     try:

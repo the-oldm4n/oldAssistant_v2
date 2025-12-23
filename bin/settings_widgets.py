@@ -2,10 +2,8 @@ import json
 import os
 import secrets
 import string
-import uuid
 import sounddevice as sd
 import winshell
-import time
 from bin.apply_color_methods import ApplyColor
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.custom_widgets import CustomToggle
@@ -16,11 +14,12 @@ from bin.choose_color_window import ColorSettingsWindow
 from bin.widget_window import WindowStateManager
 from path_builder import get_path
 from logging_config import logger, debug_logger
-from PySide6.QtCore import *
-from PySide6.QtWidgets import *
-from PySide6.QtGui import *
-from PySide6.QtSvg import *
-from PySide6.QtSvgWidgets import *
+from PySide6.QtGui import QAction, QFontDatabase
+from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QApplication, QWidget,\
+    QDialog, QMenu, QMessageBox, QLineEdit, QComboBox, QSlider, QListWidget, QScrollArea, QFrame,\
+    QListWidgetItem, QCheckBox
+from PySide6.QtCore import Signal, QTimer, Qt, QEvent
+
 
 speakers = dict(Персик="persik", Джарвис="jarvis", Пласид='placide', Бестия='rogue',
                 Джонни='johnny', СанСаныч='sanych', Санбой='sanboy', Woman='tigress', Стейтем='stathem')
@@ -381,7 +380,7 @@ class SettingsWidget(QWidget):
         self.assistant.save_settings()
 
     def select_steam_folder(self):
-        folder_path = QFileDialog.getExistingDirectory(
+        folder_path = QSlider.getExistingDirectory(
             self, "Выберите папку с steam.exe")
 
         if folder_path:
@@ -1869,39 +1868,6 @@ class SettingsWidgetPanel(QWidget):
             if key in self.checkboxes:
                 checkbox = self.checkboxes[key]
                 self.drag_container.layout.addWidget(checkbox)
-
-    # def load_buttons_settings(self):
-    #     """Загрузить настройки кнопок из файла (порядок и состояния)"""
-    #     try:
-    #         with open(self.widget_state, 'r', encoding='utf-8') as f:
-    #             settings_data = json.load(f)
-
-    #         if "buttons" not in settings_data:
-    #             return False
-
-    #         buttons_data = settings_data["buttons"]
-
-    #         # Удаляем все чекбоксы из layout
-    #         for i in reversed(range(self.drag_container.layout.count())):
-    #             widget = self.drag_container.layout.itemAt(i).widget()
-    #             if widget and hasattr(widget, 'text'):
-    #                 self.drag_container.layout.removeWidget(widget)
-
-    #         # Добавляем чекбоксы в порядке из файла и устанавливаем состояния
-    #         for key, state in buttons_data.items():
-    #             if key in self.checkboxes:
-    #                 checkbox = self.checkboxes[key]
-    #                 checkbox.setChecked(state)
-    #                 self.drag_container.layout.addWidget(checkbox)
-
-    #         return True
-
-    #     except FileNotFoundError:
-    #         debug_logger.error(f"Файл {self.widget_state} не найден")
-    #         return False
-    #     except json.JSONDecodeError:
-    #         debug_logger.error(f"Ошибка чтения JSON из {self.widget_state}")
-    #         return False
 
     def load_buttons_settings(self):
         try:
