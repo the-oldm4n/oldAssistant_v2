@@ -1,12 +1,8 @@
 import json
 import re
-
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtSvg import *
-from PySide6.QtSvgWidgets import *
-from PySide6.QtWidgets import *
-
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QLinearGradient
+from PySide6.QtWidgets import QGraphicsColorizeEffect
 from bin.custom_svg_widget import CustomSvgWidget
 from logging_config import debug_logger
 from path_builder import get_path
@@ -14,7 +10,6 @@ from path_builder import get_path
 
 class ApplyColor():
     def __init__(self, parent=None):
-        self.parent = parent  # Сохраняем ссылку на родительское окно
         self.color_path = get_path('user_settings', 'color_settings.json')
         self.styles = self.load_styles()
 
@@ -111,7 +106,6 @@ class ApplyColor():
         :param brightness: Значение от -100 до 100
         :return: Новый цвет в hex-формате
         """
-        from PySide6.QtGui import QColor
         try:
             qcolor = QColor(color)
             if brightness > 0:
@@ -130,7 +124,6 @@ class ApplyColor():
                 border_value = style.get("border", "")
 
                 # Сначала ищем градиент в border
-                import re
                 gradient_match = re.search(
                     r'qlineargradient\([^)]*\)|qradialgradient\([^)]*\)|qconicalgradient\([^)]*\)',
                     border_value
@@ -167,7 +160,7 @@ class ApplyColor():
 
         try:
             # Получаем цвет или градиент из стилей
-            color_or_gradient = self.get_color_from_border(key) if key else "#05B8CC"
+            color_or_gradient = self.get_color_from_border(key) if key else "#0267FF"
 
             # Если виджет является CustomProgressBar (круговой или looper)
             if hasattr(widget, 'style') and hasattr(widget, 'setProgressColor'):
@@ -232,7 +225,6 @@ class ApplyColor():
         """Создает QLinearGradient из строки"""
         try:
             # Парсим параметры градиента
-            import re
             params = re.findall(r'([xy]\d):([\d.]+)', gradient_string)
             stops = re.findall(r'stop:([\d.]+)\s+([^,)]+)', gradient_string)
             
@@ -249,25 +241,23 @@ class ApplyColor():
             debug_logger.error(f"Ошибка парсинга градиента: {e}")
             # Возвращаем градиент по умолчанию
             gradient = QLinearGradient(0, 0, width, height)
-            gradient.setColorAt(0, QColor("#05B8CC"))
-            gradient.setColorAt(1, QColor("#05B8CC"))
+            gradient.setColorAt(0, QColor("#0059FF"))
+            gradient.setColorAt(1, QColor("#0059FF"))
             return gradient
 
     def get_first_gradient_color(self, gradient_string):
         """Извлекает первый цвет из градиента"""
         try:
-            import re
             stops = re.findall(r'stop:([\d.]+)\s+([^,)]+)', gradient_string)
             if stops:
                 return stops[0][1].strip()
         except:
             pass
-        return "#05B8CC"
+        return "#0059FF"
     
     def get_gradient_colors(self, gradient_string):
         """Извлекает все цвета из градиента и возвращает их список в порядке следования"""
         try:
-            import re
             colors = []
             # Ищем все значения stop с цветами
             stops = re.findall(r'stop:([\d.]+)\s+([^,)]+)', gradient_string)
@@ -279,10 +269,10 @@ class ApplyColor():
                 # Извлекаем только цвета в правильном порядке
                 colors = [stop[1].strip() for stop in sorted_stops]
                 
-            return colors if colors else ["#05B8CC"]
+            return colors if colors else ["#0059FF"]
             
         except Exception:
-            return ["#05B8CC"]
+            return ["#0059FF"]
 
     def setup_circular_colors(self, widget, color_or_gradient):
         """Автоматически настраивает цвета для кругового прогрессбара"""
@@ -373,7 +363,7 @@ class ApplyColor():
         colors = self.get_gradient_colors(gradient)
         
         if not colors:
-            colors = ["#05B8CC"]
+            colors = ["#0059FF"]
         
         if only_first_color:
             # Один цвет
@@ -458,7 +448,6 @@ class ApplyColor():
         Создает полупрозрачный и затемненный градиент
         """
         try:
-            import re
             stops = re.findall(r"stop:([\d.]+)\s+([^,)]+)", gradient_str)
             
             if not stops:
@@ -497,11 +486,8 @@ class ApplyColor():
     def _parse_color_string(self, color_str):
         """Парсит строку цвета в QColor"""
         try:
-            from PySide6.QtGui import QColor
-            
             color_str = color_str.strip()
-            
-            # HEX цвета (#RRGGBB или #RGB)
+
             if color_str.startswith('#'):
                 return QColor(color_str)
             
@@ -554,8 +540,6 @@ class ApplyColor():
                 debug_logger.warning(f"Свойство {css_property} не найдено для {widget_key}")
                 return None
             
-            # print(f"🔍 Ищем градиент в: {style_value}")  # ДЛЯ ОТЛАДКИ
-            
             # Линейный градиент
             linear_match = re.search(r'qlineargradient\s*\(([^)]+)\)', style_value)
             if linear_match:
@@ -574,7 +558,6 @@ class ApplyColor():
                 gradient_str = conical_match.group(1)
                 return self._parse_conical_gradient(gradient_str)
                 
-            # debug_logger.info(f"Градиент не найден в свойстве {css_property}")
             return None
             
         except Exception as e:
@@ -584,10 +567,6 @@ class ApplyColor():
     def _parse_linear_gradient(self, gradient_params):
         """Парсит параметры линейного градиента"""
         try:
-            import re
-            from PySide6.QtGui import QColor
-                        
-            # Парсим координаты
             coords = {}
             coord_pattern = r'(x1|x2|y1|y2):\s*([\d.]+)'
             for match in re.finditer(coord_pattern, gradient_params):
@@ -605,7 +584,7 @@ class ApplyColor():
                     colors.append((position, color))
             
             if not colors:
-                debug_logger.error("❌ Не найдено цветов в градиенте")
+                debug_logger.error("Не найдено цветов в градиенте")
                 return None
                 
             # Создаем структуру градиента
@@ -634,10 +613,6 @@ class ApplyColor():
     def _parse_radial_gradient(self, gradient_params):
         """Парсит параметры радиального градиента"""
         try:
-            import re
-            from PySide6.QtGui import QColor
-                        
-            # Парсим центр и радиус
             center_x = center_y = 0.5
             radius = 0.5
             
@@ -680,10 +655,6 @@ class ApplyColor():
     def _parse_conical_gradient(self, gradient_params):
         """Парсит параметры конического градиента"""
         try:
-            import re
-            from PySide6.QtGui import QColor
-                        
-            # Парсим центр и угол
             center_x = center_y = 0.5
             angle = 0
             
@@ -722,3 +693,6 @@ class ApplyColor():
         except Exception as e:
             debug_logger.error(f"Ошибка парсинга конического градиента: {e}")
             return None
+
+
+main_apply_colors = ApplyColor()

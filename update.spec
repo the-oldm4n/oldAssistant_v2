@@ -1,17 +1,17 @@
 # -*- mode: python ; coding: utf-8 -*-
-version_file = 'G:/PycharmProjects/oldAssistant_v2/update_app/version.txt'
+version_file = 'F:/PyCharmProjects/oldAssistant_v2/update_app/version.txt'
 
 block_cipher = None
 
 # Главные файлы проекта (сборка в один файл)
 main_script = 'update_app/update.py'
 additional_files = [
-    ('G:/PycharmProjects/oldAssistant_v2/update_app/color.json', '.'),
-    ('G:/PycharmProjects/oldAssistant_v2/update_app/logo.svg', '.'),
-    ('G:/PycharmProjects/oldAssistant_v2/update_app/icon.ico', '.'),
-    ('G:/PycharmProjects/oldAssistant_v2/update_app/check_and_download.py', '.'),
-    ('G:/PycharmProjects/oldAssistant_v2/update_app/utils.py', '.'),
-    ('G:/PycharmProjects/oldAssistant_v2/update_app/version.txt', '.'),
+    ('F:/PyCharmProjects/oldAssistant_v2/update_app/color.json', '.'),
+    ('F:/PyCharmProjects/oldAssistant_v2/update_app/logo.svg', '.'),
+    ('F:/PyCharmProjects/oldAssistant_v2/update_app/icon.ico', '.'),
+    ('F:/PyCharmProjects/oldAssistant_v2/update_app/check_and_download.py', '.'),
+    ('F:/PyCharmProjects/oldAssistant_v2/update_app/utils.py', '.'),
+    ('F:/PyCharmProjects/oldAssistant_v2/update_app/version.txt', '.'),
 ]
 
 a = Analysis(
@@ -43,13 +43,13 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Update',      # Имя выходного файла
+    name='Update',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,              # Сжатие исполняемого файла
+    upx=True,
     console=False,
     uac_admin=True,
-    icon='G:/PycharmProjects/oldAssistant_v2/update_app/icon.ico',
+    icon='F:/PyCharmProjects/oldAssistant_v2/update_app/icon.ico',
     version=version_file,
 )

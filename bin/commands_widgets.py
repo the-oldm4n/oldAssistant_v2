@@ -5,14 +5,13 @@ from urllib.parse import urlparse
 import uuid
 import time
 import subprocess
-import pythoncom
 import win32com.client
 from PySide6.QtGui import QFont, QRegularExpressionValidator
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget,\
     QDialog, QMenu, QMessageBox, QLineEdit, QStackedWidget, QFileDialog, QListWidget, QListWidgetItem,\
     QDialogButtonBox, QComboBox, QCompleter, QScrollArea, QSpinBox
 from PySide6.QtCore import Signal, QTimer, Qt, QStringListModel, QRegularExpression
-from bin.apply_color_methods import ApplyColor
+from bin.apply_color_methods import main_apply_colors
 from bin.commands_manager import main_commands_manager
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.lists import setup_custom_font_label
@@ -1209,7 +1208,7 @@ class ScriptStepWidget(QWidget):
     
     def __init__(self, step_number, parent=None):
         super().__init__(parent)
-        self.style_manager = ApplyColor()
+        self.style_manager = main_apply_colors
         self.step_number = step_number
         self.commands_manager = main_commands_manager
         self.available_commands = []
@@ -1508,7 +1507,6 @@ class SimpleScriptForm(QWidget):
         
     def add_step(self):
         """Добавить новый шаг"""
-        print(f"Added new step")
         if len(self.steps) >= 10:
             self.lbl_status.setText("Максимум 10 шагов")
             return

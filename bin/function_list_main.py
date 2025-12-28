@@ -62,7 +62,7 @@ def shutdown_windows(react=True):
         speaker = get_current_speaker()
         audio_paths = get_audio_paths(speaker)
         react_detail(audio_paths['off_file'])
-    subprocess.Popen(["shutdown", "/s", "/t", "0"])
+    subprocess.run(["shutdown", "/s", "/t", "0"])
 
 def restart_windows(react=True):
     """
@@ -72,7 +72,7 @@ def restart_windows(react=True):
         speaker = get_current_speaker()
         audio_paths = get_audio_paths(speaker)
         react_detail(audio_paths['off_file'])
-    subprocess.Popen(["shutdown", "/r", "/t", "0"])
+    subprocess.run(["shutdown", "/r", "/t", "0"])
 
 def open_volume_mixer(react=True):
     """ Открывает микшер виндовс """

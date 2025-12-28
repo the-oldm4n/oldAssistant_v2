@@ -1,4 +1,40 @@
 {
+  "2.2.1": {
+    "full_update": false,
+    "changed_files": [
+      "bin/speak_voice/stathem/start_script/Запускаю сценарий.ogg",
+      "bin/speak_voice/stathem/start_script/Сценарий выполняется.ogg",
+      "bin/speak_voice/persik/start_script/Выполняю запуск сценария.ogg",
+      "bin/speak_voice/persik/start_script/Начинаю выполнение сценария.ogg",
+      "bin/speak_voice/persik/start_script/Запускаю скрипт.ogg",
+      "bin/speak_voice/tigress/start_script/Выполняю запуск сценария.ogg",
+      "bin/icons/script-icons/star.svg",
+      "bin/icons/script-icons/favorite.svg",
+      "bin/icons/script-icons/bolt.svg",
+      "bin/apply_color_methods.py",
+      "bin/__pycache__/apply_color_methods.cpython-311.pyc",
+      "bin/commands_widgets.py",
+      "bin/__pycache__/commands_widgets.cpython-311.pyc",
+      "bin/function_list_main.py",
+      "bin/__pycache__/function_list_main.cpython-311.pyc",
+      "bin/other_options_widgets.py",
+      "bin/__pycache__/other_options_widgets.cpython-311.pyc",
+      "bin/settings_widgets.py",
+      "bin/__pycache__/settings_widgets.cpython-311.pyc",
+      "config.ini",
+      "Assistant.exe",
+      "version.txt",
+      "Update.exe"
+    ],
+    "deleted_files": [
+      "bin/speak_voice/rogue/start_script/Выполняю запуск сценария.ogg",
+      "_sqlite3.pyd",
+      "sqlite3.dll",
+      "pandas",
+      "pytz",
+      "dateutil"
+    ]
+  },
   "2.2.0": {
     "full_update": true,
     "changed_files": [],

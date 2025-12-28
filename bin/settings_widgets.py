@@ -4,10 +4,11 @@ import secrets
 import string
 import sounddevice as sd
 import winshell
-from bin.apply_color_methods import ApplyColor
+from bin.apply_color_methods import main_apply_colors
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.custom_widgets import CustomToggle
 from bin.lists import fonts_list, default_keywords_data, setup_custom_font_label
+from bin.shortcut_monitor import ShortcutMonitor
 from bin.signals import color_signal, widget_btns_signal, update_presets_signal
 from bin.speak_functions import thread_react
 from bin.choose_color_window import ColorSettingsWindow
@@ -276,7 +277,7 @@ class SettingsWidget(QWidget):
     def init_ui(self):
         # Создаем виджет-контейнер для содержимого
         content_widget = QWidget()
-        content_widget.setMaximumWidth(420)
+        # content_widget.setMaximumWidth(420)
         content_widget.setObjectName("WMSettingsContent")
         self.setLayout(QVBoxLayout())
         self.layout().addWidget(content_widget)
@@ -284,6 +285,10 @@ class SettingsWidget(QWidget):
         layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
+
+        self.title = setup_custom_font_label("Основные настройки", font_style="Comfortaa", weight="Medium")
+        self.title.setStyleSheet("background: transparent; font-size: 18px")
+        layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Поле для ввода имени ассистента
         name_label = setup_custom_font_label("Основное имя ассистента:", font_style="Comfortaa", weight="Medium")
@@ -514,6 +519,10 @@ class OtherSettingsWidget(QWidget):
         layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
+
+        self.title = setup_custom_font_label("Дополнительные настройки", font_style="Comfortaa", weight="Medium")
+        self.title.setStyleSheet("background: transparent; font-size: 18px")
+        layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Чекбоксы
         self.censor_check = CustomToggle("Реагировать на мат")
@@ -839,6 +848,10 @@ class SpeechHookManagerWidget(QWidget):
         layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(5)
+
+        self.title = setup_custom_font_label("Менеджер управления хук-словами", font_style="Comfortaa", weight="Medium")
+        self.title.setStyleSheet("background: transparent; font-size: 18px; margin-top: 10px; margin-bottom: 10px;")
+        layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Выбор списка команд
         list_selection_layout = QHBoxLayout()
@@ -2015,6 +2028,8 @@ class SettingsWidgetPanel(QWidget):
         try:
             with open(self.widget_state, 'r', encoding='utf-8') as f:
                 existing_data = json.load(f)
+
+            existing_data["font_family"] = self.font_combo.currentText()
             
             existing_data["buttons"] = self.get_buttons_data()
 
@@ -2130,13 +2145,18 @@ class CustomBtnForPanel(QDialog):
         super().__init__(parent)
         self.parent_widget = parent
         self.drag_pos = None
-        self.custom_icons_folder = get_path("bin", "icons", "script-icons")
+        self.btn_icons_folder = get_path("bin", "icons", "script-icons")
+        self.user_icons_folder = get_path("user_settings", "user-icons")
+        self.check_folder(folder_path=[self.user_icons_folder, self.btn_icons_folder])
         self.icon_close_path = get_path("bin", "icons", "close.svg")
         self.widget_state = get_path("user_settings", "widget_state.json")
-        self.commands = commands or []  # Список команд из JSON
-        self.style_manager = ApplyColor()
+        self.commands = commands or []
+        self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
+        self.monitor = ShortcutMonitor(self.user_icons_folder)
+        self.monitor.folder_changed.connect(self.load_svg_list)
+        self.monitor.start_monitoring()
         self.init_ui()
         self.load_svg_list()
         self.apply_styles()
@@ -2263,7 +2283,7 @@ class CustomBtnForPanel(QDialog):
         btn_layout.addStretch()
 
         self.open_script_folder = QPushButton("Папка с иконками")
-        self.open_script_folder.clicked.connect(self.open_folder)
+        self.open_script_folder.clicked.connect(lambda: self.open_folder(path=self.user_icons_folder))
         self.open_script_folder.setStyleSheet("padding-left: 10px; padding-right: 10px;")
         btn_layout.addWidget(self.open_script_folder)
 
@@ -2285,28 +2305,40 @@ class CustomBtnForPanel(QDialog):
         """Загружает SVG файлы из папки"""
         self.icon_combo.clear()
 
-        if os.path.exists(self.custom_icons_folder):
+        if os.path.exists(self.btn_icons_folder):
             svg_files = []
             
             # Собираем все SVG файлы
-            for file in sorted(os.listdir(self.custom_icons_folder)):
+            for file in sorted(os.listdir(self.btn_icons_folder)):
                 if file.lower().endswith('.svg'):
                     svg_files.append(file)
             
             # Если есть SVG файлы
-            if svg_files:  # <-- ИСПРАВЬ: проверяем svg_files, а не os.path.exists
+            if svg_files:
                 for svg_file in svg_files:
                     icon_name = os.path.splitext(svg_file)[0]
-                    icon_path = os.path.join(self.custom_icons_folder, svg_file)
+                    icon_path = os.path.join(self.btn_icons_folder, svg_file)
                     
                     # Добавляем в комбобокс
                     self.icon_combo.addItem(icon_name, icon_path)
-            else:
-                # Если папка пуста
-                self.icon_combo.addItem("(нет SVG файлов)", "")
-        else:
-            # Если папки не существует
-            self.icon_combo.addItem("(папка не найдена)", "")
+
+        if os.path.exists(self.user_icons_folder):
+            svg_files = []
+            
+            # Собираем все SVG файлы
+            for file in sorted(os.listdir(self.user_icons_folder)):
+                if file.lower().endswith('.svg'):
+                    svg_files.append(file)
+            
+            # Если есть SVG файлы
+            if svg_files:
+                for svg_file in svg_files:
+                    icon_name = os.path.splitext(svg_file)[0]
+                    icon_path = os.path.join(self.user_icons_folder, svg_file)
+                    
+                    # Добавляем в комбобокс
+                    self.icon_combo.addItem(icon_name, icon_path)
+        
 
     def update_preview(self, index):
         """Обновляет превью выбранной иконки"""
@@ -2333,22 +2365,23 @@ class CustomBtnForPanel(QDialog):
         self.error_label.setText(message)
         self.error_label.setVisible(True)
 
-    def open_folder(self):
-        path = get_path("bin", "icons", "script-icons")
+    def check_folder(self, folder_path: list):
+        try:
+            for path in folder_path:
+                if os.path.exists(path) and os.path.isdir(path):
+                    pass
+                else:
+                    os.makedirs(path)
+                    debug_logger.info(f'Папка "{path}" была создана.')
+        except Exception as e:
+            debug_logger.error(f'Ошибка при создании папки: {e}')
 
-        if os.path.exists(path) and os.path.isdir(path):
+    def open_folder(self, path):
+        try:
             os.startfile(path)
-        else:
-            # Если папка не существует, создаем её
-            try:
-                os.makedirs(path)
-                logger.info(f'Папка "{path}" была создана.')
-                debug_logger.info(f'Папка "{path}" была создана.')
-                os.startfile(path)
-            except Exception as e:
-                logger.error(f'Ошибка при создании папки: {e}')
-                debug_logger.error(f'Ошибка при создании папки: {e}')
-    
+        except Exception as e:
+            debug_logger.error(f'Ошибка при открытии папки: {e}')
+
     def save_button(self):
         """Создает объект кастомной кнопки"""
         name = self.name_input.text().strip()
@@ -2407,3 +2440,7 @@ class CustomBtnForPanel(QDialog):
         """Генерирует короткий уникальный ID заданной длины"""
         alphabet = string.ascii_lowercase + string.digits
         return ''.join(secrets.choice(alphabet) for _ in range(length))
+    
+    def closeEvent(self, event):
+        self.monitor.stop_monitoring()
+        super().closeEvent(event)

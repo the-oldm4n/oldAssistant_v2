@@ -86,7 +86,7 @@ class CustomProgressBar(QWidget):
         self.line_width = line_width
         
         # Цвета для кругового прогрессбара
-        self.progress_color = QColor("#05B8CC")          # Цвет самой полосы прогресса
+        self.progress_color = QColor("#1164FD")          # Цвет самой полосы прогресса
         self.track_color = QColor(40, 40, 40, 150)       # Цвет под полосой прогресса (фон кольца)
         self.background_color = QColor(30, 30, 30, 100)  # Цвет внутренней области
         self.text_color = QColor(255, 255, 255)          # Цвет текста
@@ -1069,7 +1069,7 @@ class UpdateWindow(QWidget):
             # Запускаем основную программу
             QTimer.singleShot(2000, self.run_main_app)
 
-    def delete_files_safely(self, files_to_delete):
+    def delete_files_safely(self, items_to_delete):
         """Безопасное удаление файлов в корзину с бэкапом в old_files_backup"""
         deleted_count = 0
         os.makedirs(self.old_files_dir, exist_ok=True)
@@ -1079,16 +1079,16 @@ class UpdateWindow(QWidget):
         try:
             os.makedirs(backup_dir, exist_ok=True)
             
-            for file_path in files_to_delete:
-                full_path = self.root_dir / file_path
+            for item_path in items_to_delete:
+                clean_path = item_path.rstrip('/') if item_path.endswith('/') else item_path
+                full_path = self.root_dir / clean_path
                 
                 if not os.path.exists(full_path):
-                    logger.warning(f"Файл для удаления не существует: {file_path}")
+                    logger.warning(f"Файл для удаления не существует: {item_path}")
                     continue
                     
                 try:
-                    # 1. Создаем резервную копию в old_files_backup/deletion_backup/
-                    backup_path = backup_dir / file_path
+                    backup_path = backup_dir / clean_path
                     os.makedirs(os.path.dirname(backup_path), exist_ok=True)
                     
                     if os.path.isfile(full_path):
@@ -1098,17 +1098,16 @@ class UpdateWindow(QWidget):
                         shutil.copytree(full_path, backup_path)
                         logger.info(f"Создан бэкап файла: {backup_path}")
                     
-                    # 2. Отправляем в корзину (а не удаляем навсегда)
                     send2trash.send2trash(str(full_path))
-                    logger.info(f"Файл перемещен в корзину: {file_path}")
+                    logger.info(f"Файл перемещен в корзину: {item_path}")
                     deleted_count += 1
                     
                 except Exception as e:
-                    logger.error(f"Ошибка удаления {file_path}: {e}")
+                    logger.error(f"Ошибка удаления {item_path}: {e}")
                     
             logger.info(f"Перемещено в корзину {deleted_count} файлов/папок")
             return True
-            
+                
         except Exception as e:
             logger.error(f"Ошибка в процессе удаления: {e}")
             return False
@@ -1127,9 +1126,27 @@ class UpdateWindow(QWidget):
                 except:
                     continue
             
+            if not version_objects:
+                logger.warning("В манифесте нет валидных версий")
+                return []
+            
             version_objects.sort()
-            current_idx = version_objects.index(current_ver)
-            target_idx = version_objects.index(target_ver)
+            
+            try:
+                current_idx = version_objects.index(current_ver)
+            except ValueError:
+                logger.error(f"Текущая версия {current_ver} не найдена в манифесте")
+                return []
+            
+            try:
+                target_idx = version_objects.index(target_ver)
+            except ValueError:
+                logger.error(f"Целевая версия {target_ver} не найдена в манифесте")
+                return []
+            
+            if target_idx <= current_idx:
+                logger.info("Целевая версия не требует удаления файлов")
+                return []
             
             all_deletions = set()
             
@@ -1146,7 +1163,7 @@ class UpdateWindow(QWidget):
                     elif isinstance(deletions, list):
                         all_deletions.update(deletions)
             
-            logger.info(f"Найдено {len(all_deletions)} файлов для удаления")
+            logger.info(f"Найдено {len(all_deletions)} элементов для удаления")
             return list(all_deletions)
             
         except Exception as e:
@@ -1360,35 +1377,6 @@ class UpdateWindow(QWidget):
         except Exception as e:
             logger.error(f"Ошибка копирования дельта-файлов: {e}")
             return False
-
-    # def restore_from_backup(self):
-    #     """Восстанавливает файлы из резервной копии"""
-    #     try:
-    #         if os.path.exists(self.old_files_dir):
-    #             for root, dirs, files in os.walk(self.old_files_dir):
-    #                 for file in files:
-                        
-    #                     if file == "Update.exe":
-    #                         continue
-                        
-    #                     relative_path = os.path.relpath(os.path.join(root, file), self.old_files_dir)
-    #                     backup_file = os.path.join(root, file)
-    #                     dest_file = os.path.join(self.root_dir, relative_path)
-                        
-    #                     # Восстанавливаем файл
-    #                     os.makedirs(os.path.dirname(dest_file), exist_ok=True)
-    #                     shutil.copy2(backup_file, dest_file)
-    #                     logger.info(f"Восстановлен файл из резервной копии: {dest_file}")
-                
-    #             # Восстанавливаем Assistant.exe если есть резервная копия
-    #             assistant_backup = os.path.join(self.old_files_dir, "Assistant.exe")
-    #             if os.path.exists(assistant_backup):
-    #                 parent_dir = os.path.dirname(self.root_dir)
-    #                 assistant_dest = os.path.join(parent_dir, "Assistant.exe")
-    #                 shutil.copy2(assistant_backup, assistant_dest)
-    #                 logger.info(f"Восстановлен Assistant.exe из резервной копии: {assistant_dest}")
-    #     except Exception as e:
-    #         logger.error(f"Ошибка восстановления из резервной копии: {e}")
     
     def restore_from_backup(self):
         """Восстанавливает файлы из резервной копии, включая deletion_backup"""

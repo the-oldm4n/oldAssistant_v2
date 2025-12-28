@@ -1,11 +1,11 @@
 import csv
 import os
-from pathlib import Path
+from datetime import datetime, date
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget,\
     QMainWindow, QMessageBox, QCheckBox, QTextEdit
-from bin.apply_color_methods import ApplyColor
+from bin.apply_color_methods import main_apply_colors
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.download_thread import DownloadThread
 from bin.lists import setup_custom_font_label
@@ -23,6 +23,7 @@ class CensorCounterWidget(QWidget):
         super().__init__(parent)
         self.assistant = assistant
         self._help_initialized = False
+        self.data = []
         self.init_ui()
         self.load_data()
         self.setProperty("helpId", "censor_conter_widget")
@@ -35,10 +36,12 @@ class CensorCounterWidget(QWidget):
             self._help_initialized = True
 
     def init_ui(self):
-        # Основной layout
         layout = QVBoxLayout(self)
 
-        # Метки для отображения данных
+        self.title = setup_custom_font_label("Статистика по цензуре", font_style="Comfortaa", weight="Medium")
+        self.title.setStyleSheet("background: transparent; font-size: 18px; margin-top: 10px; margin-bottom: 10px;")
+        layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
+
         self.day_label = QLabel("За день: 0", self)
         self.week_label = QLabel("За последние 7 дней: 0", self)
         self.month_label = QLabel("За последние 30 дней: 0", self)
@@ -49,7 +52,6 @@ class CensorCounterWidget(QWidget):
         self.month_label.setStyleSheet("background: transparent;")
         self.total_label.setStyleSheet("background: transparent;")
 
-        # Добавляем метки в layout
         layout.addWidget(self.day_label)
         layout.addWidget(self.week_label)
         layout.addWidget(self.month_label)
@@ -62,175 +64,141 @@ class CensorCounterWidget(QWidget):
         layout.addStretch()
 
     def load_data(self):
-        """Загружает данные из CSV-файла, проверяет и подготавливает данные."""
+        """Загружает данные из CSV-файла"""
         file_path = get_path("user_settings", "censor_counter.csv")
-
+        
+        self.data = []
+        
         try:
-            import pandas as pd
-            # Чтение данных с явным указанием формата и обработкой ошибок
-            self.data = pd.read_csv(
-                file_path,
-                parse_dates=["date"],
-                date_format="%Y-%m-%d",  # явный формат вместо dayfirst
-                dtype={"score": "Int64", "total_score": "Int64"},  # явное указание типов
-                on_bad_lines="warn"  # обработка битых строк
-            )
-
-            # Проверка и преобразование даты
-            if not pd.api.types.is_datetime64_any_dtype(self.data["date"]):
-                self.data["date"] = pd.to_datetime(
-                    self.data["date"],
-                    format="%Y-%m-%d",
-                    errors="coerce"
-                )
-
-            # Проверка обязательных колонок
-            required_columns = ["date", "score", "total_score"]
-            if not all(col in self.data.columns for col in required_columns):
-                missing = [col for col in required_columns if col not in self.data.columns]
-                raise ValueError(f"Отсутствуют обязательные колонки: {missing}")
-
-            # Обработка пустого DataFrame
-            if self.data.empty:
-                self.data = pd.DataFrame(columns=required_columns)
-                self.data["date"] = pd.to_datetime(self.data["date"])
-                self.data["score"] = self.data["score"].astype("Int64")
-                self.data["total_score"] = self.data["total_score"].astype("Int64")
-
-            # Удаление строк с некорректными датами
-            self.data = self.data.dropna(subset=["date"]).copy()
-
-            # Заполнение пропущенных значений
-            self.data["score"] = self.data["score"].fillna(0).astype(int)
-            self.data["total_score"] = self.data["total_score"].fillna(0).astype(int)
-
-            debug_logger.debug("Данные счетчика цензуры успешно загружены")
-
+            if not os.path.exists(file_path):
+                debug_logger.warning("Файл censor_counter.csv не найден, создаем новый")
+                self.update_labels()
+                return
+            
+            with open(file_path, 'r', encoding='utf-8') as file:
+                reader = csv.DictReader(file)
+                
+                # Проверяем наличие обязательных колонок
+                if not reader.fieldnames or 'date' not in reader.fieldnames:
+                    debug_logger.error("Некорректный формат CSV файла")
+                    return
+                
+                for row in reader:
+                    try:
+                        parsed_row = {
+                            'date': self.parse_date(row.get('date', '')),
+                            'score': int(row.get('score', 0) or 0),
+                            'total_score': int(row.get('total_score', 0) or 0)
+                        }
+                        self.data.append(parsed_row)
+                    except (ValueError, TypeError) as e:
+                        debug_logger.warning(f"Пропущена некорректная строка: {row}, ошибка: {e}")
+                        continue
+                
+            debug_logger.debug(f"Загружено {len(self.data)} записей из CSV")
             self.calculate_scores()
-
-        except FileNotFoundError:
-            debug_logger.warning("Файл censor_counter.csv не найден, создаем новый")
-            self.data = pd.DataFrame(columns=["date", "score", "total_score"])
-            self.data["date"] = pd.to_datetime(self.data["date"])
-            self.update_labels()
+            
         except Exception as e:
-            logger.error("Ошибка загрузки данных: %s", str(e), exc_info=True)
-            debug_logger.error("Ошибка загрузки данных: %s", str(e), exc_info=True)
-            self.data = pd.DataFrame(columns=["date", "score", "total_score"])
-            self.data["date"] = pd.to_datetime(self.data["date"])
+            logger.error(f"Ошибка загрузки данных: {str(e)}", exc_info=True)
+            debug_logger.error(f"Ошибка загрузки данных: {str(e)}", exc_info=True)
             self.update_labels()
+
+    def parse_date(self, date_str):
+        """Парсит дату из строки в объект date"""
+        if not date_str:
+            return None
+        
+        try:
+            for fmt in ('%Y-%m-%d', '%d.%m.%Y', '%m/%d/%Y', '%Y/%m/%d'):
+                try:
+                    return datetime.strptime(date_str.strip(), fmt).date()
+                except ValueError:
+                    continue
+            debug_logger.warning(f"Не удалось распарсить дату: {date_str}")
+            return None
+        except Exception as e:
+            debug_logger.warning(f"Ошибка парсинга даты {date_str}: {e}")
+            return None
 
     def calculate_scores(self):
+        """Вычисляет статистику по дням/неделям/месяцам"""
         try:
-            import pandas as pd
-            # Проверка, что данные загружены
-            if not hasattr(self, "data") or self.data.empty:
-                self.update_labels()
+            today = date.today()
+            
+            valid_data = [row for row in self.data if row['date'] is not None]
+            
+            if not valid_data:
+                self.update_labels(0, 0, 0, 0)
                 return
-
-            # Преобразуем 'date' в datetime (если ещё не)
-            if not pd.api.types.is_datetime64_any_dtype(self.data["date"]):
-                self.data["date"] = pd.to_datetime(
-                    self.data["date"],
-                    format="%Y-%m-%d",  # явно указываем формат
-                    errors="coerce"  # некорректные -> NaT
-                )
-
-            # Удаляем строки с NaT (если есть)
-            clean_data = self.data.dropna(subset=["date"]).copy()
-
-            # Если после очистки данных нет — обнуляем
-            if clean_data.empty:
-                self.update_labels()
-                return
-
-            # Текущая дата как pd.Timestamp (без времени)
-            today = pd.Timestamp.now().normalize()  # или .floor('D')
-
-            # Для отладки: выводим даты из данных
-            # debug_logger.info(f"Даты в данных: {clean_data['date'].dt.strftime('%Y-%m-%d').tolist()}")
-            # debug_logger.info(f"Текущая дата: {today.strftime('%Y-%m-%d')}")
-
-            # Маски для фильтрации
-            day_mask = (clean_data["date"].dt.normalize() == today)
-            week_mask = (clean_data["date"].dt.normalize() >= (today - pd.Timedelta(days=6)))
-            month_mask = (clean_data["date"].dt.normalize() >= (today - pd.Timedelta(days=29)))
-
-            # Проверка масок (для отладки)
-            # debug_logger.info(f"Строки за день: {clean_data[day_mask]}")
-            # debug_logger.info(f"Строки за неделю: {clean_data[week_mask]}")
-            # debug_logger.info(f"Строки за месяц: {clean_data[month_mask]}")
-
-            # Считаем суммы
-            day_score = int(clean_data.loc[day_mask, "score"].sum())
-            week_score = int(clean_data.loc[week_mask, "score"].sum())
-            month_score = int(clean_data.loc[month_mask, "score"].sum())
-            total_score = int(clean_data["score"].sum())
-
+            
+            day_score = 0
+            week_score = 0
+            month_score = 0
+            total_score = 0
+            
+            for row in valid_data:
+                row_date = row['date']
+                score = row['score']
+                
+                total_score += score
+                
+                days_diff = (today - row_date).days
+                
+                if days_diff == 0:
+                    day_score += score
+                
+                if 0 <= days_diff <= 6:
+                    week_score += score
+                
+                if 0 <= days_diff <= 29:
+                    month_score += score
+            
             # Обновляем UI
             self.day_label.setText(f"За день: {day_score}")
             self.week_label.setText(f"За последние 7 дней: {week_score}")
             self.month_label.setText(f"За последние 30 дней: {month_score}")
             self.total_label.setText(f"Всего: {total_score}")
-
+            
         except Exception as e:
             logger.error(f"Ошибка в calculate_scores: {e}", exc_info=True)
             debug_logger.error(f"Ошибка в calculate_scores: {e}", exc_info=True)
-            self.update_labels()
+            self.update_labels(0, 0, 0, 0)
+
+    def update_labels(self, day=0, week=0, month=0, total=0):
+        """Обновляет метки с заданными значениями"""
+        self.day_label.setText(f"За день: {day}")
+        self.week_label.setText(f"За последние 7 дней: {week}")
+        self.month_label.setText(f"За последние 30 дней: {month}")
+        self.total_label.setText(f"Всего: {total}")
 
     def reset_censor_counter(self):
-        """
-        Сбрасывает счетчик, обнуляя таблицу censor_counter.csv.
-        Оставляет только заголовки.
-        """
-        # Используем кастомное диалоговое окно для подтверждения
+        """Сбрасывает счетчик, обнуляя таблицу censor_counter.csv"""
         result = self.assistant.show_message(
             text="Точно сбросить значения?",
             title="Сброс счетчика",
             message_type="warning",
             buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
-        # Если пользователь нажал "Нет" или закрыл окно, выходим из метода
-        if result == QMessageBox.StandardButton.No:
+        
+        if result != QMessageBox.StandardButton.Yes:
             logger.info("Сброс счетчика отменен.")
             debug_logger.info("Сброс счетчика отменен.")
             return
-
-        if result == QMessageBox.StandardButton.Yes:
-            # Путь к CSV-файлу
-            CSV_FILE = get_path('user_settings', 'censor_counter.csv')
-
-            # Проверяем, существует ли файл
-            if not Path(CSV_FILE).exists():
-                error_msg = "Файл censor_counter.csv не существует. Невозможно сбросить счетчик."
-                logger.error(error_msg)
-                debug_logger.error(error_msg)
-                self.assistant.show_message(error_msg, "Ошибка", "error")
-                return
-
-            # Открываем файл для записи и оставляем только заголовки
-            with open(CSV_FILE, mode='w', newline='') as file:
-                writer = csv.writer(file)
-                writer.writerow(['date', 'score', 'total_score'])  # Записываем заголовки
-
-            logger.info("Счетчик успешно сброшен.")
-            debug_logger.info("Счетчик успешно сброшен.")
-            # Обновляем лейблы после сброса
-            self.update_labels()
-
-    def update_labels(self):
-        """
-        Обновляет лейблы после сброса счетчика.
-        """
-        try:
-            # Обновляем значения в лейблах
-            self.day_label.setText("За день: 0")
-            self.week_label.setText("За последние 7 дней: 0")
-            self.month_label.setText("За последние 30 дней: 0")
-            self.total_label.setText("Всего: 0")
-        except Exception as e:
-            logger.error(f"Ошибка при обновлении лейблов: {e}")
-            debug_logger.error(f"Ошибка при обновлении лейблов: {e}")
+        
+        CSV_FILE = get_path('user_settings', 'censor_counter.csv')
+        
+        os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
+        
+        with open(CSV_FILE, 'w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow(['date', 'score', 'total_score'])
+        
+        self.data = []
+        
+        self.update_labels(0, 0, 0, 0)
+        
+        logger.info("Счетчик успешно сброшен.")
+        debug_logger.info("Счетчик успешно сброшен.")
 
 
 class CheckUpdateWidget(QWidget):
@@ -243,7 +211,7 @@ class CheckUpdateWidget(QWidget):
         self.assistant = assistant
         self._help_initialized = False
         self.init_ui()
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
         self.style_manager.apply_progressbar(key="QPushButton", widget=self.progress, style="parts")
@@ -258,6 +226,10 @@ class CheckUpdateWidget(QWidget):
     def init_ui(self):
         # Основной layout
         layout = QVBoxLayout(self)
+
+        self.title = setup_custom_font_label("Центр обновлений", font_style="Comfortaa", weight="Medium")
+        self.title.setStyleSheet("background: transparent; font-size: 18px; margin-top: 10px; margin-bottom: 10px;")
+        layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self.check_button = QPushButton("Проверить обновления")
         self.check_button.clicked.connect(self.assistant.check_update_app)
@@ -348,6 +320,10 @@ class DebugLoggerWidget(QWidget):
     def init_ui(self):
         # Основной layout
         layout = QVBoxLayout(self)
+
+        self.title = setup_custom_font_label("Подробные логи", font_style="Comfortaa", weight="Medium")
+        self.title.setStyleSheet("background: transparent; font-size: 18px; margin-top: 10px; margin-bottom: 10px;")
+        layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self.check_button = QPushButton("Файл логов")
         self.check_button.clicked.connect(self.open_folder)

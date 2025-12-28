@@ -13,7 +13,6 @@ import jellyfish
 import numpy as np
 import pyaudio
 import requests
-from pathlib import Path
 import sys
 import time
 import traceback
@@ -33,7 +32,7 @@ from PySide6.QtWidgets import QMainWindow, QPushButton, QLabel, QVBoxLayout, QHB
     QSpacerItem, QTextBrowser, QLineEdit
 from PySide6.QtCore import Signal, QTimer, Qt, QEasingCurve, QPropertyAnimation, QRect, QEvent, QUrl, QPoint, Slot,\
     QThread, QThreadPool
-from bin.apply_color_methods import ApplyColor
+from bin.apply_color_methods import main_apply_colors
 from bin.check_update import GetManifestThread, get_update_strategy, load_changelog, VersionCheckThread
 from bin.custom_widgets import AnimatedSidebar, VersionLabel
 from bin.choose_color_window import ColorSettingsWindow
@@ -63,7 +62,7 @@ from logging_config import logger, debug_logger
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.0"
+version_file = "2.2.1"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -173,7 +172,7 @@ class Assistant(QMainWindow):
         self.changelog_file_path = get_path('update', 'changelog.md')
         self.process_names = get_path('user_settings', 'process_names.json')
         self.ohm_path = get_path("bin", "OHM", "OpenHardwareMonitor.exe")
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
         self.settings_file_path = get_path('user_settings', 'settings.json')
@@ -204,8 +203,8 @@ class Assistant(QMainWindow):
         self.silence_timer = QTimer()  # Таймер для проверки тишины
         self.silence_timer.timeout.connect(self.check_silence_timeout)
         self.silence_timer.start(5000)
-        self.setup_memory_monitor()
-        self.save_settings_signal.connect(self.restart_bot)
+        
+        self.save_settings_signal.connect(self.restart_bot) # сигнал эмитится при выборе другого устройства ввода
         self.type_version = "stable"
         self.commands = self.commands_manager.commands
         self.audio_paths = get_audio_paths(self.speaker)
@@ -221,6 +220,8 @@ class Assistant(QMainWindow):
         self.splash.check_auth(self, self.auth)
 
     def check_up(self):
+        
+        
         self.check_or_create_folder()
         self.apply_styles()
         # Обновление селекторов стилей в файле
@@ -249,10 +250,12 @@ class Assistant(QMainWindow):
             self.log_area.start_active_mode()
         else:
             self.log_area.start_background_mode()
-        QTimer.singleShot(5000, lambda: self.check_update_app())
+        
         self.update_checker = QTimer()
         self.update_checker.timeout.connect(self.check_update_app)
         self.update_checker.start(3600000)  # Чек обновлений раз в 60 минут (3600000)
+        QTimer.singleShot(5000, lambda: self.check_update_app()) # Первый чек через 5 сек. после запуска
+        self.setup_memory_monitor()
 
     def handle_init_result(self, success):
         """Обработчик результата инициализации"""
@@ -1748,11 +1751,9 @@ class Assistant(QMainWindow):
     def check_or_create_folder(self):
         folder_path = get_path('user_settings', "links for assist")
 
-        # Проверяем, существует ли папка
         if os.path.exists(folder_path) and os.path.isdir(folder_path):
             debug_logger.info("Папка links for assist найдена")
         else:
-            # Если папка не существует, создаем её
             try:
                 os.makedirs(folder_path)  # Создаем папку
                 debug_logger.info('Папка "links for assist" была создана.')
@@ -2039,60 +2040,87 @@ class Assistant(QMainWindow):
             debug_logger.error(f"[assistant.get_reaction] Ошибка: {e}")
 
     def censor_counter(self):
-        # Путь к CSV-файлу
+        """Добавляет запись о матерном слове в счетчик"""
         CSV_FILE = get_path('user_settings', 'censor_counter.csv')
-
-        # Создаем файл, если он не существует
-        if not Path(CSV_FILE).exists():
-            with open(CSV_FILE, mode='w', newline='') as file:
-                writer = csv.writer(file)
-                writer.writerow(['date', 'score', 'total_score'])  # Заголовки столбцов
-
-        # Получаем текущую дату
-        today = datetime.now().strftime('%Y-%m-%d')
-
-        # Читаем данные из CSV
-        rows = []
-        with open(CSV_FILE, mode='r') as file:
-            reader = csv.reader(file)
-            headers = next(reader)  # Пропускаем заголовки
-            for row in reader:
-                # Пропускаем пустые строки
-                if not row:
-                    continue
-                # Проверяем, что строка содержит достаточно данных
-                if len(row) >= 3:
-                    rows.append(row)
-
-        # Ищем запись для текущей даты
-        found = False
-        total_score = 0
-        for row in rows:
+        os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
+        
+        today = datetime.now().date()  # Используем date вместо str
+        today_str = today.strftime('%Y-%m-%d')
+        
+        data = []
+        headers = ['date', 'score', 'total_score']
+        file_exists = os.path.exists(CSV_FILE)
+        
+        if file_exists:
             try:
-                # Преобразуем score и total_score в int
-                row[1] = int(row[1])
-                row[2] = int(row[2])
-                total_score += row[1]  # Считаем общее количество
-
-                if row[0] == today:
-                    # Если запись найдена, увеличиваем score на 1
-                    row[1] += 1
-                    row[2] += 1
-                    found = True
-            except (ValueError, IndexError) as e:
-                logger.error(f"Ошибка при обработке строки {row}: {e}")
-                debug_logger.error(f"Ошибка в методе censor_counter при обработке строки {row}: {e}")
+                with open(CSV_FILE, mode='r', encoding='utf-8', newline='') as file:
+                    reader = csv.DictReader(file)
+                    
+                    if reader.fieldnames != headers:
+                        debug_logger.warning(f"Некорректные заголовки в файле {CSV_FILE}")
+                        file_exists = False
+                    else:
+                        for row in reader:
+                            try:
+                                row_date = row['date'].strip()
+                                score = int(row['score'] or 0)
+                                total_score = int(row['total_score'] or 0)
+                                
+                                data.append({
+                                    'date': row_date,
+                                    'score': score,
+                                    'total_score': total_score
+                                })
+                            except (ValueError, KeyError) as e:
+                                debug_logger.warning(f"Пропущена некорректная строка: {row}, ошибка: {e}")
+                                continue
+            except Exception as e:
+                logger.error(f"Ошибка чтения файла {CSV_FILE}: {e}")
+                debug_logger.error(f"Ошибка чтения файла {CSV_FILE}: {e}")
+                file_exists = False
+        
+        if not file_exists:
+            data = []
+            with open(CSV_FILE, mode='w', encoding='utf-8', newline='') as file:
+                writer = csv.DictWriter(file, fieldnames=headers)
+                writer.writeheader()
+        
+        total_all_time = 0
+        today_found = False
+        
+        for record in data:
+            try:
+                score_val = record['score']
+                total_all_time += score_val
+                
+                if record['date'] == today_str:
+                    today_found = True
+                    record['score'] += 1
+                    record['total_score'] = total_all_time + 1
+            except KeyError:
                 continue
-
-        # Если запись не найдена, добавляем новую
-        if not found:
-            rows.append([today, 1, total_score + 1])
-
-        # Записываем обновленные данные обратно в CSV
-        with open(CSV_FILE, mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(headers)  # Записываем заголовки
-            writer.writerows(rows)  # Записываем данные
+        
+        # Если запись на сегодня не найдена, добавляем новую
+        if not today_found:
+            total_all_time += 1  # Добавляем новое слово
+            data.append({
+                'date': today_str,
+                'score': 1,
+                'total_score': total_all_time
+            })
+        
+        # Записываем обновленные данные
+        try:
+            with open(CSV_FILE, mode='w', encoding='utf-8', newline='') as file:
+                writer = csv.DictWriter(file, fieldnames=headers)
+                writer.writeheader()
+                writer.writerows(data)
+            
+            debug_logger.debug(f"Счетчик обновлен. Сегодняшняя запись: {'обновлена' if today_found else 'добавлена'}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка записи в файл {CSV_FILE}: {e}")
+            debug_logger.error(f"Ошибка записи в файл {CSV_FILE}: {e}")
             
     def check_keywords_file(self):
         """
@@ -3511,25 +3539,6 @@ class Assistant(QMainWindow):
         width = widget.width()
         height = widget.height()
         size = widget.size()
-
-    # def show_widget(self):
-    #     """Открывает панель настроек: сначала сжимаем, потом расширяем с изменяемой панелью"""
-    #     # Анимация сжатия левой панели
-    #     self._load_current_panel()
-    #     # self.show_layout(self.compact_layout)
-    #     # self.show_compact_buttons()
-    #     self.help_widget.show()
-    #     self.get_size_widget(self.left_container)
-
-    #     self.animation.stop()
-    #     self.animation.setPropertyName(b"maximumWidth")
-    #     self.animation.setStartValue(200)
-    #     self.animation.setEndValue(1)
-    #     self.animation.setDuration(400)
-    #     self.animation.setEasingCurve(QEasingCurve.Type.InBack)
-    #     # После сжатия — начинаем расширение с панелью настроек
-    #     self.animation.finished.connect(self._expand_mutable_panel)
-    #     self.animation.start()
     
     def show_widget(self):
         # self._current_panel = 'settings'
@@ -3539,22 +3548,10 @@ class Assistant(QMainWindow):
         # Сразу анимируем раскрытие mutable_panel
         self.animation.stop()
         self.mutable_panel.show()
-        self.animation.setStartValue(1)
+        self.animation.setStartValue(0)
         self.animation.setEndValue(self._get_panel_width())
         self.animation.setDuration(500)
         self.animation.setEasingCurve(QEasingCurve.Type.InCubic)
-        self.animation.start()
-
-    def _expand_mutable_panel(self):
-        """Вызывается после сжатия: показываем панель и загружаем нужный контент"""
-        # self.left_buttons_panel.hide()
-        self.animation.finished.disconnect(self._expand_mutable_panel)
-        self.mutable_panel.show()
-
-        self.animation.setStartValue(1)
-        self.animation.setEndValue(self._get_panel_width())
-        self.animation.setDuration(500)
-        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.animation.start()
 
     def _clear_mutable_panel(self):
@@ -3595,7 +3592,7 @@ class Assistant(QMainWindow):
         self.help_widget.hide()
         self.animation.stop()
         self.animation.setStartValue(self.mutable_panel.width())
-        self.animation.setEndValue(1)
+        self.animation.setEndValue(0)
         self.animation.setDuration(500)
         self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.animation.finished.connect(self._on_panel_hidden)
@@ -3612,7 +3609,7 @@ class Assistant(QMainWindow):
         self.animation.stop()
         self.animation.setPropertyName(b"maximumWidth")
         self.animation.setStartValue(self._get_panel_width())
-        self.animation.setEndValue(1)
+        self.animation.setEndValue(0)
         self.animation.setDuration(500)
         self.animation.setEasingCurve(QEasingCurve.Type.InCubic)
         self.get_size_widget(self.mutable_panel)
@@ -3629,15 +3626,12 @@ class Assistant(QMainWindow):
         new_content_callback()
 
         # Анимация расширения
-        self.animation.setStartValue(1)
+        self.animation.setStartValue(0)
         self.animation.setEndValue(self._get_panel_width())
-        self.animation.setDuration(350)
+        self.animation.setDuration(500)
         self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.animation.start()
 
-    # def _get_panel_width(self):
-    #     """Возвращает ширину панели"""
-    #     return 360
     def _get_panel_width(self):
         """Возвращает ширину панели с пропорциональным масштабированием"""
         min_panel_width = 420
@@ -4022,22 +4016,6 @@ class Assistant(QMainWindow):
             # Запуск как EXE
             task_name = task_name_base
             target_path = os.path.join(write_directory, 'Assistant.exe')
-        else:
-            # Запуск как скрипт Python
-            task_name = f"{task_name_base}-script"
-            bat_path = os.path.join(current_directory, 'start_assistant.bat')
-
-            # Создаем BAT-файл если его нет
-            if not os.path.isfile(bat_path):
-                try:
-                    with open(bat_path, 'w', encoding='utf-8') as bat_file:
-                        bat_file.write(f'@echo off\npython "{os.path.abspath(__file__)}"')
-                    debug_logger.info(f"Создан .bat файл: {bat_path}")
-                except Exception as e:
-                    debug_logger.error(f"Ошибка при создании .bat файла: {e}")
-                    return
-
-            target_path = bat_path
 
         logger.info(f"Путь для планировщика: {target_path}")
         debug_logger.debug(f"Путь для планировщика: {target_path}")
@@ -4086,8 +4064,6 @@ class Assistant(QMainWindow):
         # Определяем имя задачи в зависимости от типа запуска
         if getattr(sys, 'frozen', False):
             task_name = "VirtualAssistant"  # Для EXE-версии
-        else:
-            task_name = "VirtualAssistant-script"  # Для Python-скрипта
 
         command = [
             'schtasks',
@@ -4122,8 +4098,6 @@ class Assistant(QMainWindow):
         # Определяем имя задачи в зависимости от типа запуска
         if getattr(sys, 'frozen', False):
             task_name = "VirtualAssistant"  # Для EXE-версии
-        else:
-            task_name = "VirtualAssistant-script"  # Для Python-скрипта
 
         command = ['schtasks', '/query', '/tn', task_name]
 
@@ -4506,7 +4480,7 @@ class InitScreen(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.auth = None
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
         self.style_path = get_path('user_settings', 'color_settings.json')
@@ -4853,7 +4827,7 @@ class LoginWindow(QWidget):
         self.auth = auth
         if not self.auth:
             self.auth = AuthManager(domain)
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
         self.style_path = get_path('user_settings', 'color_settings.json')
