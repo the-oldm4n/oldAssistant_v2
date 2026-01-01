@@ -1,4 +1,23 @@
 {
+  "2.2.2": {
+    "full_update": false,
+    "changed_files": [
+      "bin/custom_widgets.py",
+      "bin/__pycache__/custom_widgets.cpython-311.pyc",
+      "bin/frosted_widget.py",
+      "bin/__pycache__/frosted_widget.cpython-311.pyc",
+      "bin/help_widget.py",
+      "bin/__pycache__/help_widget.cpython-311.pyc",
+      "bin/settings_widgets.py",
+      "bin/__pycache__/settings_widgets.cpython-311.pyc",
+      "bin/speak_functions.py",
+      "bin/__pycache__/speak_functions.cpython-311.pyc",
+      "config.ini",
+      "Assistant.exe",
+      "version.txt"
+    ],
+    "deleted_files": []
+  },
   "2.2.1": {
     "full_update": false,
     "changed_files": [

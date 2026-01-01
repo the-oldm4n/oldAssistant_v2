@@ -525,17 +525,6 @@ class SnowOverlay(QWidget):
 
         new_preset = self._choose_preset()
         self._start_interpolation(new_preset)
-
-    # def _init_snowflakes(self):
-    #     self.flakes = []
-    #     w, h = self.width(), self.height()
-    #     for _ in range(self.snowflake_count):
-    #         x = random.uniform(0, w)
-    #         y = random.uniform(-h, h)  # начинают за пределами сверху
-    #         size = random.uniform(self.flake_size_min, self.flake_size_max)
-    #         speed_factor = random.uniform(0.7, 1.3)
-    #         sway_offset = random.uniform(0, 1000)  # фаза для колебаний
-    #         self.flakes.append([x, y, size, speed_factor, sway_offset])
     
     def _init_snowflakes(self):
         self.flakes = []

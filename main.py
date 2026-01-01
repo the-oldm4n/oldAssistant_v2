@@ -62,7 +62,7 @@ from logging_config import logger, debug_logger
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.1"
+version_file = "2.2.2"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -4096,8 +4096,7 @@ class Assistant(QMainWindow):
     def check_autostart(self):
         """Проверка, добавлена ли программа в автозапуск"""
         # Определяем имя задачи в зависимости от типа запуска
-        if getattr(sys, 'frozen', False):
-            task_name = "VirtualAssistant"  # Для EXE-версии
+        task_name = "VirtualAssistant"  # Для EXE-версии
 
         command = ['schtasks', '/query', '/tn', task_name]
 

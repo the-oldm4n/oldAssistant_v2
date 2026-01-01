@@ -5,7 +5,7 @@ from PySide6.QtCore import Signal, QPropertyAnimation, Qt, QRectF, QPointF, QEas
     Property, QParallelAnimationGroup, QAbstractAnimation
 from PySide6.QtGui import QColor, QCursor, QBrush, QPen, QLinearGradient, QPainter,\
     QPainterPath, QRadialGradient
-from bin.apply_color_methods import ApplyColor
+from bin.apply_color_methods import main_apply_colors
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.signals import color_signal
 from logging_config import debug_logger
@@ -140,7 +140,7 @@ class GlowFrame(QFrame):
 
             # Ограничиваем свечение формой фрейма (чтобы не вылезало за границы)
             path = QPainterPath()
-            path.addRoundedRect(self.rect(), 8, 8)  # или 0, если углы острые
+            path.addRoundedRect(self.rect(), 0, 0)
             painter.setClipPath(path)
 
             cursor_pos = self.mapFromGlobal(QCursor.pos())
@@ -167,7 +167,7 @@ class _CustomToggle(QWidget):
     def __init__(self, parent=None, checked=False, color="#4686FD"):
         super().__init__(parent)
         self._checked = checked
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
         self._color = QColor(color)
@@ -418,7 +418,7 @@ class AnimatedSidebar(QWidget):
         self.setAttribute(Qt.WA_Hover)
         self.min_width = 50
         self.max_width = 250
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
         color_signal.color_changed.connect(self.set_color)
@@ -661,7 +661,7 @@ class VersionLabel(QWidget):
         super().__init__(parent)
         self.version = version
         
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
         color_signal.color_changed.connect(self.apply_color)

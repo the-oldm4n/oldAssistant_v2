@@ -53,6 +53,9 @@ def react(folder_path, trace):
         pygame.mixer.music.set_volume(volume_reduction_factor)  # Установка громкости
         pygame.mixer.music.play()
 
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
+
     except Exception as e:
         logger.error(f"Ошибка при воспроизведении аудио: {e}")
         debug_logger.error(f"Ошибка при воспроизведении аудио: {e}")
@@ -78,6 +81,9 @@ def react_detail(file_path, trace=""):
         pygame.mixer.music.load(file_path)
         pygame.mixer.music.set_volume(volume_reduction_factor)  # Установка громкости
         pygame.mixer.music.play()
+
+        while pygame.mixer.music.get_busy():
+            pygame.time.Clock().tick(10)
 
     except Exception as e:
         logger.error(f"Ошибка при воспроизведении аудио: {e}")
