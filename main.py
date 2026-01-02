@@ -62,7 +62,7 @@ from logging_config import logger, debug_logger
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.2"
+version_file = "2.2.3"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -2222,7 +2222,6 @@ class Assistant(QMainWindow):
                 # Чистая команда без действия, "command"
                 clean_target = self._extract_clean_target(text, self.all_actions)
 
-                # has_action_words = any(kw in text.lower() for kw in all_actions)
                 if self.find_action(text, self.action_up, self.action_down, self.all_actions)[0] is not None:
                     has_action_words = True
                 else:
@@ -2231,11 +2230,11 @@ class Assistant(QMainWindow):
                 # Проверка на наличие команд для управления    
                 self.is_keyword_player = any(self.find_closest_command(word, self.keywords_player, threshold=80) for word in words)
 
-                debug_logger.info(f"[has_action_words] {has_action_words}")
+                debug_logger.info(f"[FIRST_HANDLER][has_action_words] {has_action_words}")
 
-                debug_logger.info(f"[text------>] {text}"
-                                  f"\n[action_command------>] {action_command}"
-                                  f"\n[clean_target------>] {clean_target}")
+                debug_logger.info(f"[FIRST_HANDLER][Raw Text] {text}"
+                                  f"\n[FIRST_HANDLER][Action] {action_command}"
+                                  f"\n[FIRST_HANDLER][Clean Command] {clean_target}")
 
                 # Сбрасываем контекст, если прошло более 10 секунд без активности
                 if self.last_unrecognized_command and (current_time - last_activity_time) > 10:
@@ -2260,7 +2259,7 @@ class Assistant(QMainWindow):
                         self.get_reaction(name="censored_folder")
 
                 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-                # 🎯 ОБРАБОТКА ПОДТВЕРЖДЕНИЯ КОМАНДЫ ("ДА"/"НЕТ")
+                # ОБРАБОТКА ПОДТВЕРЖДЕНИЯ КОМАНДЫ ("ДА"/"НЕТ")
                 # Если мы ожидаем подтверждение — игнорируем всё, кроме "да" или "нет"
                 if self.last_unrecognized_command and self.last_unrecognized_command.get('mode') == 'confirm':
                     if self.last_unrecognized_command.get('is_shutdown'):
@@ -2352,8 +2351,6 @@ class Assistant(QMainWindow):
                                     elif type_processed == "script":
                                         self.handle_script_command(restored_command, action_type)
 
-                                    # app_processed = self.handle_app_command(restored_command, action_type)
-                                    # folder_processed = self.handle_folder_command(restored_command, action_type)
                                     if type_processed != "":
                                         any_executed = True
 
@@ -2408,6 +2405,7 @@ class Assistant(QMainWindow):
 
                 # Режим уточнения команды (если предыдущая попытка не удалась)
                 if self.is_corrected_command:
+                    debug_logger.info(f"[RETRY][Start Mode Correction]")
                     if self.last_unrecognized_command and self.last_unrecognized_command.get('mode') == 'correction':
                         if text:
                             # Обновляем время последней активности при обработке команды
@@ -2420,7 +2418,7 @@ class Assistant(QMainWindow):
                             # Если действие изменилось — обновляем контекст
                             if new_action_type and new_action_type != current_action_type:
                                 self.last_unrecognized_command['pending_commands'][0]['action_type'] = new_action_type
-                                debug_logger.info(f"Действие обновлено на: {new_action_type}")
+                                debug_logger.info(f"[RETRY] Действие обновлено на: {new_action_type}")
 
                             # Блок А. Для поиска совпадений и запуска методов в соответствии с действием
                             default_list = self.find_closest_command(clean_target, default_commands_keys)
@@ -2447,32 +2445,28 @@ class Assistant(QMainWindow):
 
                                 # Восстанавливаем полную команду
                                 restored_command = f"{action_type} {custom_list}"
-                                debug_logger.info(f"Восстановленная команда: {restored_command}")
+                                debug_logger.info(f"[RETRY] Восстановленная команда: {restored_command}")
 
-                                type_processed = self.commands_manager.get_type_command(restored_command)
+                                type_processed = self.commands_manager.get_type_command(custom_list)
+                                debug_logger.info(f"[RETRY] Команда: {custom_list}, тип: {type_processed}")
                                 if type_processed == "shortcut" or type_processed == "url":
-                                    self.handle_app_command(restored_command, action_type)
+                                    self.handle_app_command(custom_list, action_type)
                                 elif type_processed == "folder":
-                                    self.handle_folder_command(restored_command, action_type)
+                                    self.handle_folder_command(custom_list, action_type)
                                 elif type_processed == "script":
-                                    self.handle_script_command(restored_command, action_type)
+                                    self.handle_script_command(custom_list, action_type)
                                 else:
-                                # # Пытаемся обработать как приложение и как папку
-                                # app_processed = self.handle_app_command(restored_command, action_type)
-                                # folder_processed = self.handle_folder_command(restored_command, action_type)
-
-                                # if not folder_processed and not app_processed:
                                     logger.warning(f"Команда не обработана: {restored_command}")
-                                    debug_logger.warning(f"Команда не обработана: {restored_command}")
+                                    debug_logger.warning(f"[RETRY] Команда не обработана: {restored_command}")
                                     self.get_reaction(name="what_folder",
                                                     trace="Реакция в блоке, где режим корректировки команды")
 
                                     self.last_unrecognized_command['pending_commands'][0][
                                         'suggested_command'] = clean_target
 
-                                    debug_logger.info(f"Обновлена цель для уточнения: {clean_target}")
+                                    debug_logger.info(f"[RETRY] Обновлена цель для уточнения: {clean_target}")
                                     self.show_supply_notice(text)
-                                    debug_logger.info(f"Отправлено уведомление ---> {text}")
+                                    debug_logger.info(f"[RETRY] Отправлено уведомление ---> {text}")
                                     self.last_unrecognized_command = None
                                     continue
                             # Конец блока В.
@@ -2520,7 +2514,7 @@ class Assistant(QMainWindow):
                                 self.get_reaction(name="echo_folder")
 
                     final_commands = self.handle_text_smart(text, self.all_actions)
-                    debug_logger.info(f"[handle_text_smart]---> {final_commands}")
+                    debug_logger.info(f"[HAS_NAME][handle_text_smart]---> {final_commands}")
 
                     for command in final_commands:
                         command = command.strip()
@@ -2533,9 +2527,9 @@ class Assistant(QMainWindow):
                             # Ищем совпадение со специальными командами
 
                             default_list = self.find_closest_command(clean_target, default_commands_keys)
-                            debug_logger.info(f"[list] {default_list}")
-                            debug_logger.info(f"[action_type] {action_type}")
-                            debug_logger.info(f"[clean_target] {clean_target}")
+                            debug_logger.info(f"[HAS_NAME][list] {default_list}")
+                            debug_logger.info(f"[HAS_NAME][action_type] {action_type}")
+                            debug_logger.info(f"[HAS_NAME][clean_target] {clean_target}")
 
                             if default_list:
                                 self.command_handled = True
@@ -2547,6 +2541,8 @@ class Assistant(QMainWindow):
                             else:
                                 # Пытаемся обработать команду
                                 type_processed = self.commands_manager.get_type_command(clean_target)
+                                debug_logger.info(f"[HAS_NAME] Команда: {clean_target}, тип: {type_processed}")
+                                self.command_handled = True
                                 if type_processed == "shortcut" or type_processed == "url":
                                     self.handle_app_command(clean_target, action_type)
                                 elif type_processed == "folder":
@@ -2555,8 +2551,6 @@ class Assistant(QMainWindow):
                                     self.handle_script_command(clean_target, action_type)
                                 else:
                                     if clean_target:
-                                        debug_logger.info(f"[clean_target] {clean_target}")
-
                                         # Ищем похожие команды
                                         closest_cmd = self.find_closest_command(clean_target, all_commands)
                                         debug_logger.info(f"[closest_cmd] {closest_cmd}")
@@ -2880,7 +2874,7 @@ class Assistant(QMainWindow):
     def handle_text_smart(self, text, all_actions, threshold=50):
         """
         Умная обработка текста: берёт слова ПОСЛЕ каждого действия как цели.
-        Пример: "джонни запусти калькулятор и пейнт" → ["запустить калькулятор", "запустить пейнт"]
+        ФИКС: сначала ищет цель ЦЕЛИКОМ, только потом по частям.
         """
         if not text:
             return []
@@ -2898,7 +2892,7 @@ class Assistant(QMainWindow):
         if not actions_in_text:
             return []
 
-        # 2. Для каждого действия — определяем "область целей": от следующего слова до следующего действия
+        # 2. Для каждого действия — определяем "область целей"
         command_blocks = []  # [(action, start_idx, end_idx), ...]
 
         for i, (action_index, raw_action, norm_action) in enumerate(actions_in_text):
@@ -2914,44 +2908,91 @@ class Assistant(QMainWindow):
         # 3. Извлекаем цели из каждой области
         final_commands = []
         all_targets = self.get_command_names()
+        
+        # Слова, которые всегда разделяют команды (не являются частью названия)
+        SEPARATORS = {"и", "или", "а", "но", "затем", "потом", "а также"}
+        # Мусорные слова для удаления
+        GARBAGE_WORDS = {"с", "на", "в", "по", "для", "это", "то", "там", "здесь", "же", "бы", "что", "как"}
 
         for action, start, end in command_blocks:
-            # Берём подмассив слов в области
+            # Берем подмассив слов в области
             target_words = words[start:end]
-
-            # Разбиваем на цели — учитываем разделители "и", "или", ","
-            # Сначала соберём все n-граммы и отдельные слова
-            candidates = []
-
-            # Добавляем отдельные слова
-            for i, word in enumerate(target_words):
-                candidates.append((i, word, word))  # (local_index, raw, candidate)
-
-            # Добавляем биграммы и триграммы
-            for n in [2, 3]:
-                for i in range(len(target_words) - n + 1):
-                    ngram = " ".join(target_words[i:i + n])
-                    candidates.append((i, ngram, ngram))
-
-            # Убираем дубликаты по raw-значению
-            seen = set()
-            unique_candidates = []
-            for local_idx, raw, candidate in candidates:
-                if raw not in seen:
-                    seen.add(raw)
-                    unique_candidates.append((local_idx, raw, candidate))
-
-            # Теперь для каждого кандидата ищем ближайшую команду
-            for local_idx, raw, candidate in unique_candidates:
-                # Пробуем найти похожую команду
-                closest_target = self.find_closest_command(candidate, all_targets, threshold=threshold)
-                if closest_target:
-                    final_commands.append(f"{action} {closest_target}")
+            
+            if not target_words:
+                continue
+            
+            # 3.1. УДАЛЯЕМ МУСОРНЫЕ СЛОВА из target_words
+            clean_target_words = [w for w in target_words if w not in GARBAGE_WORDS]
+            if not clean_target_words:
+                continue
+                
+            # 3.2. РАЗБИВАЕМ НА ПОДКОМАНДЫ по разделителям
+            sub_commands = []  # список подкоманд (каждая = список слов)
+            current_sub = []
+            
+            for word in clean_target_words:
+                if word in SEPARATORS:
+                    # Встретили разделитель → завершаем текущую подкоманду
+                    if current_sub:
+                        sub_commands.append(current_sub)
+                        current_sub = []
                 else:
-                    # Если не нашли — всё равно добавляем как есть (можно закомментировать, если не нужно)
-                    final_commands.append(f"{action} {candidate}")
+                    # Обычное слово → добавляем в текущую подкоманду
+                    current_sub.append(word)
+            
+            # Добавляем последнюю подкоманду, если есть
+            if current_sub:
+                sub_commands.append(current_sub)
+            
+            # Если разделителей не было → одна подкоманда со всеми словами
+            if not sub_commands:
+                sub_commands = [clean_target_words]
+            
+            # 3.3. ОБРАБАТЫВАЕМ КАЖДУЮ ПОДКОМАНДУ
+            for sub_words in sub_commands:
+                if not sub_words:
+                    continue
+                    
+                # Вариант А: Пробуем найти цель ЦЕЛИКОМ
+                full_target = " ".join(sub_words)
+                closest_target = self.find_closest_command(full_target, all_targets, threshold=threshold)
+                
+                if closest_target:
+                    # Нашли целиком → добавляем одну команду
+                    cmd = f"{action} {closest_target}"
+                    if cmd not in final_commands:  # избегаем дубликатов
+                        final_commands.append(cmd)
+                    continue
+                
+                # Вариант Б: Не нашли целиком → ищем по частям
+                # Но только если подкоманда из 2+ слов
+                if len(sub_words) >= 2:
+                    # Пробуем все возможные n-граммы (от самых длинных к коротким)
+                    found_any = False
+                    for n in range(len(sub_words), 0, -1):
+                        # Проверяем все n-граммы такой длины
+                        for i in range(len(sub_words) - n + 1):
+                            ngram = " ".join(sub_words[i:i+n])
+                            closest = self.find_closest_command(ngram, all_targets, threshold=threshold)
+                            if closest:
+                                cmd = f"{action} {closest}"
+                                if cmd not in final_commands:
+                                    final_commands.append(cmd)
+                                found_any = True
+                                # Пропускаем слова, которые вошли в найденную n-грамму
+                                    # (можно реализовать, но сложнее)
+                    
+                    if found_any:
+                        continue
+                
+                # Вариант В: Не нашли даже частей → добавляем как есть (только не мусор)
+                # Но проверяем, что это не разделитель
+                if full_target not in SEPARATORS and full_target not in GARBAGE_WORDS:
+                    cmd = f"{action} {full_target}"
+                    if cmd not in final_commands:
+                        final_commands.append(cmd)
 
-        # 4. Убираем дубликаты команд (если вдруг получилось "запустить калькулятор" дважды)
+        # 4. Убираем дубликаты команд
         seen_commands = set()
         unique_commands = []
         for cmd in final_commands:
@@ -3318,16 +3359,16 @@ class Assistant(QMainWindow):
             # Обновляем время активности
             self.last_audio_time = time.time()
 
-            debug_logger.info("✅ Аудиопоток успешно перезапущен (по умолчанию)")
+            debug_logger.info("Аудиопоток успешно перезапущен (по умолчанию)")
 
         except Exception as e:
-            debug_logger.error(f"❌ Не удалось перезапустить поток: {e}")
+            debug_logger.error(f"Не удалось перезапустить поток: {e}")
             # Можно попробовать повторно через 10 сек
             QTimer.singleShot(10000, self.restart_audio_stream)
 
     def handle_app_command(self, text, action):
         """Обработка команд для приложений, ярлыков и ссылок"""
-        debug_logger.error(f"Вызван обработчик команд для ярлыков и ссылок: {text}, {action}")
+        debug_logger.info(f"Вызван обработчик команд для ярлыков и ссылок: {text}, {action}")
         all_commands = {**self.default_commands, **self.commands}
         for keyword, command_data in all_commands.items():
             if keyword in text:
