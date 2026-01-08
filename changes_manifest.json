@@ -1,4 +1,13 @@
 {
+  "2.2.4": {
+    "full_update": false,
+    "changed_files": [
+      "config.ini",
+      "Assistant.exe",
+      "version.txt"
+    ],
+    "deleted_files": []
+  },
   "2.2.3": {
     "full_update": false,
     "changed_files": [

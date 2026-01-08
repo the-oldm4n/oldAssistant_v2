@@ -62,7 +62,7 @@ from logging_config import logger, debug_logger
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.3"
+version_file = "2.2.4"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
