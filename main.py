@@ -33,6 +33,7 @@ from PySide6.QtWidgets import QMainWindow, QPushButton, QLabel, QVBoxLayout, QHB
 from PySide6.QtCore import Signal, QTimer, Qt, QEasingCurve, QPropertyAnimation, QRect, QEvent, QUrl, QPoint, Slot,\
     QThread, QThreadPool
 from bin.apply_color_methods import main_apply_colors
+from bin.bluetooth_controller import bluetooth_controller
 from bin.check_update import GetManifestThread, get_update_strategy, load_changelog, VersionCheckThread
 from bin.custom_widgets import AnimatedSidebar, VersionLabel
 from bin.choose_color_window import ColorSettingsWindow
@@ -62,7 +63,7 @@ from logging_config import logger, debug_logger
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.4"
+version_file = "2.2.5"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -80,17 +81,17 @@ def activate_existing_window():
             socket.write(b'show_window')
 
             if socket.waitForBytesWritten(1000):
-                debug_logger.info("Команда отправлена существующему приложению")
+                debug_logger.info("[MAIN] Команда отправлена существующему приложению")
             else:
-                debug_logger.error("Данные не были отправлены")
+                debug_logger.error("[MAIN] Данные не были отправлены")
                 
             socket.disconnectFromServer()
             return True
         else:
-            debug_logger.error("Не удалось подключиться к IPC серверу")
+            debug_logger.error("[MAIN] Не удалось подключиться к IPC серверу")
             return False
     except Exception as e:
-        debug_logger.error(f"IPC client error: {e}")
+        debug_logger.error(f"[MAIN] IPC client error: {e}")
         return False
 
 
@@ -112,7 +113,7 @@ class Assistant(QMainWindow):
         process = psutil.Process(os.getpid())
         memory_usage = process.memory_info().rss / 1024 / 1024  # В МБ
         if memory_usage > limit_mb:
-            debug_logger.error(f"Превышен лимит памяти: {memory_usage} МБ > {limit_mb} МБ")
+            debug_logger.error(f"[MAIN] Превышен лимит памяти: {memory_usage} МБ > {limit_mb} МБ")
             return False
         return True
 
@@ -125,7 +126,7 @@ class Assistant(QMainWindow):
     def check_memory_with_cleanup(self, limit_mb=800):
         """Проверка памяти с автоматической очисткой"""
         if not self.check_memory_usage(limit_mb):
-            debug_logger.warning("Превышен лимит памяти")
+            debug_logger.warning("[MAIN] Превышен лимит памяти")
             self.show_notification_message(f"Прозошла утечка памяти. Превышен лимит ({limit_mb}Мб).")
 
     def __init__(self):
@@ -203,7 +204,7 @@ class Assistant(QMainWindow):
         self.silence_timer = QTimer()  # Таймер для проверки тишины
         self.silence_timer.timeout.connect(self.check_silence_timeout)
         self.silence_timer.start(5000)
-        
+        self.bluetooth = bluetooth_controller
         self.save_settings_signal.connect(self.restart_bot) # сигнал эмитится при выборе другого устройства ввода
         self.type_version = "stable"
         self.commands = self.commands_manager.commands
@@ -220,8 +221,6 @@ class Assistant(QMainWindow):
         self.splash.check_auth(self, self.auth)
 
     def check_up(self):
-        
-        
         self.check_or_create_folder()
         self.apply_styles()
         # Обновление селекторов стилей в файле
@@ -239,10 +238,7 @@ class Assistant(QMainWindow):
             self.showNormal()
         if self.user_data:
             self.update_user_profile()
-        if self.check_keywords_file():
-            debug_logger.info("Файл keywords.json найден")
-        else:
-            debug_logger.info("Файл keywords.json не найден, создаю...")
+        self.check_keywords_file()
         if self.apply_keywords_for_values():
             self.run_assist()
         self.toggle_update_button()
@@ -705,17 +701,17 @@ class Assistant(QMainWindow):
             
             self.centralWidget().adjustSize()
             self.minimum_size = self.centralWidget().minimumSizeHint()
-            debug_logger.debug(f"Минимальный размер контента: {self.minimum_size.width()}x{self.minimum_size.height()}")      
+            debug_logger.debug(f"[MAIN] Минимальный размер контента: {self.minimum_size.width()}x{self.minimum_size.height()}")      
             self.setup_mouse_tracking_for_children(self.central_widget)
         except Exception as e:
-            debug_logger.error(f"Ошибка при инициализации GUI: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при инициализации GUI: {e}")
             
     def _handle_sidebar_click(self, key: str):
         slot = self._sidebar_slot_map.get(key)
         if slot and callable(slot):
             slot()
         else:
-            debug_logger.error(f"Нет слота для ключа: {key}")
+            debug_logger.error(f"[MAIN] Нет слота для ключа: {key}")
             
     def setup_mouse_tracking_for_children(self, widget):
         """Рекурсивно устанавливает mouse tracking для всех дочерних виджетов"""
@@ -921,14 +917,14 @@ class Assistant(QMainWindow):
         
         # Запускаем сервер
         if not self.ipc_server.listen("assistant_app"):
-            debug_logger.error(f"IPC server error: {self.ipc_server.errorString()}")
+            debug_logger.error(f"[MAIN] IPC server error: {self.ipc_server.errorString()}")
         else:
-            debug_logger.info("IPC server started")
+            debug_logger.info("[MAIN] IPC server started")
 
     def handle_ipc_connection(self):
         """Обрабатывает входящие соединения"""
         socket = self.ipc_server.nextPendingConnection()
-        debug_logger.info(f"New connection: {socket}")
+        debug_logger.info(f"[MAIN] New connection: {socket}")
         
         if socket:
             # Многократные попытки чтения
@@ -936,24 +932,24 @@ class Assistant(QMainWindow):
                 if socket.waitForReadyRead(100):  # Короткие интервалы
                     if socket.bytesAvailable() > 0:
                         data = socket.readAll().data()
-                        debug_logger.info(f"IPC data received (attempt {attempt+1}): {data}")
+                        debug_logger.info(f"[MAIN] IPC data received (attempt {attempt+1}): {data}")
                         if data == b'show_window':
-                            debug_logger.info("Activating window...")
+                            debug_logger.info("[MAIN] Activating window...")
                             self.force_show_window()
                         break
                 else:
-                    debug_logger.warning(f"Attempt {attempt+1}: No data yet")
+                    debug_logger.warning(f"[MAIN] Attempt {attempt+1}: No data yet")
             
             socket.disconnectFromServer()
             socket.deleteLater()
-            debug_logger.info("Connection closed")
+            debug_logger.info("[MAIN] Connection closed")
             
     def read_ipc_data(self, socket):
         """Читает данные из IPC соединения"""
         try:
             if socket.bytesAvailable() > 0:
                 data = socket.readAll().data()
-                debug_logger.debug(f"IPC data received: {data}")
+                debug_logger.debug(f"[MAIN] IPC data received: {data}")
                 if data == b'show_window':
                     self.force_show_window()
             
@@ -962,11 +958,11 @@ class Assistant(QMainWindow):
             socket.deleteLater()
             
         except Exception as e:
-            debug_logger.error(f"Error reading IPC data: {e}")
+            debug_logger.error(f"[MAIN] Error reading IPC data: {e}")
         
     def force_show_window(self):
         """Принудительное открытие окна из любого состояния"""
-        debug_logger.debug(f"force_show_window called. isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}, isHidden: {self.isHidden()}")
+        debug_logger.debug(f"[MAIN] force_show_window called. isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}, isHidden: {self.isHidden()}")
         
         # Всегда показываем окно
         self.show()
@@ -989,7 +985,7 @@ class Assistant(QMainWindow):
         self.repaint()
         self.log_area.start_active_mode()
         
-        debug_logger.debug(f"After force_show: isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}")
+        debug_logger.debug(f"[MAIN] After force_show: isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}")
         
     def update_garland_state(self):
         if self.is_garland:
@@ -1024,10 +1020,10 @@ class Assistant(QMainWindow):
             if self.garland_decorator is not None:
                 self.garland_decorator.next_animation()
             else:
-                debug_logger.error("Не удалось создать гирлянду")
+                debug_logger.error("[MAIN] Не удалось создать гирлянду")
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка при смене анимации гирлянды: {e}")    
+            debug_logger.error(f"[MAIN] Ошибка при смене анимации гирлянды: {e}")    
 
     def update_snow_state(self):
         """Обновляет состояние снега через show/hide"""
@@ -1096,7 +1092,7 @@ class Assistant(QMainWindow):
     
     def logout_user(self):
         """Выход с возвратом к InitScreen"""
-        debug_logger.info("🚪 Выход из системы...")
+        debug_logger.info("[MAIN] Выход из системы...")
         
         # Очищаем данные
         self.user_data = None
@@ -1135,7 +1131,7 @@ class Assistant(QMainWindow):
             """Установить данные пользователя (вызывается из InitScreen)"""
             self.user_data = user_data
             self.update_user_profile(user_data)
-            debug_logger.info(f"👤 Данные пользователя установлены: {user_data['username']}")
+            debug_logger.info(f"[MAIN] Данные пользователя установлены: {user_data['username']}")
     
     def clear_user_data(self):
         """Очистить данные пользователя"""
@@ -1145,7 +1141,7 @@ class Assistant(QMainWindow):
                 
     def update_user_profile(self, user_data=None):
         """Обновить профиль пользователя (можно вызывать без параметров)"""
-        debug_logger.info(f"Обновление профиля...")
+        debug_logger.info(f"[MAIN] Обновление профиля...")
         # Используем переданные данные или локальные
         data = user_data or self.user_data
 
@@ -1199,11 +1195,11 @@ class Assistant(QMainWindow):
                 self.avatar_pixmap_label.setPixmap(rounded_pixmap)
                 
             else:
-                debug_logger.error(f"❌ Ошибка загрузки аватара: {response.status_code}")
+                debug_logger.error(f"[MAIN] Ошибка загрузки аватара: {response.status_code}")
                 self.set_default_avatar_svg()
                 
         except Exception as e:
-            debug_logger.error(f"[EXCEPT] Ошибка загрузки аватара: {e}")
+            debug_logger.error(f"[MAIN] Ошибка загрузки аватара: {e}")
             self.set_default_avatar_svg()
 
     def create_rounded_pixmap(self, pixmap, size):
@@ -1334,7 +1330,7 @@ class Assistant(QMainWindow):
                 self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=50)
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка в методе apply_styles: {e}")
+            debug_logger.error(f"[MAIN] Ошибка в методе apply_styles: {e}")
 
     def apply_menu_styles(self, menu: QMenu):
         """Применяет стили из self.styles к QMenu"""
@@ -1369,7 +1365,7 @@ class Assistant(QMainWindow):
             )
             toast.show()
         except Exception as e:
-            debug_logger.error(f"Ошибка при показе всплывающего уведомления: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при показе всплывающего уведомления: {e}")
 
     def show_message(self, text, title="Уведомление", message_type="info", buttons=QMessageBox.StandardButton.Ok):
         try:
@@ -1382,7 +1378,7 @@ class Assistant(QMainWindow):
             )
             return message.exec_()
         except Exception as e:
-            debug_logger.error(f"Ошибка при показе уведомления(оконного): {e}")
+            debug_logger.error(f"[MAIN] Ошибка при показе уведомления(оконного): {e}")
             # В случае ошибки тоже нужно что-то вернуть, например, QDialog.Rejected или None
             return QDialog.DialogCode.Rejected  # или return None
 
@@ -1392,7 +1388,7 @@ class Assistant(QMainWindow):
             # Отправляем сигнал в главный поток Qt
             self.supply_notice_signal.emit(message, is_confirm)
         except Exception as e:
-            debug_logger.error(f"Ошибка при отправке сигнала уведомления: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при отправке сигнала уведомления: {e}")
 
     def _handle_supply_notice(self, message, is_confirm=False):
         """Выполняется в главном потоке Qt (обработчик сигнала)"""
@@ -1409,7 +1405,7 @@ class Assistant(QMainWindow):
             toast.show()
 
         except Exception as e:
-            debug_logger.error(f"Ошибка при показе всплывающего уведомления: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при показе всплывающего уведомления: {e}")
 
     def keyPressEvent(self, event):
         """Сворачивает основное окно в трей по нажатию на Esc"""
@@ -1428,7 +1424,7 @@ class Assistant(QMainWindow):
         try:
             self.update_app(type_version=self.type_version, batch_update=self.is_batch_update)
         except Exception as e:
-            debug_logger.error(f"Ошибка при запуске программы обновления: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при запуске программы обновления: {e}")
 
     #  тут исправлена логика обработки ручной проверки
     @Slot()
@@ -1438,7 +1434,7 @@ class Assistant(QMainWindow):
             self.is_manual_check = True  # Устанавливаем флаг ручной проверки
             self.check_update_app()
         except Exception as e:
-            debug_logger.error(f"Ошибка при запуске программы обновления: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при запуске программы обновления: {e}")
 
     def handle_update_status(self, is_success, status_text):
         """Обрабатывает результат проверки обновлений"""
@@ -1479,25 +1475,25 @@ class Assistant(QMainWindow):
         if os.path.exists(temp_dir):
             try:
                 send2trash(temp_dir)
-                debug_logger.info(f"Папка update_pack отправлена в корзину: {temp_dir}")
+                debug_logger.info(f"[MAIN] Папка update_pack отправлена в корзину: {temp_dir}")
             except Exception as e:
-                debug_logger.error(f"Не удалось удалить {temp_dir}: {e}")
+                debug_logger.error(f"[MAIN] Не удалось удалить {temp_dir}: {e}")
 
         # Удаление в корзину папки бэкапа
         if os.path.exists(backup_dir):
             try:
                 send2trash(backup_dir)
-                debug_logger.info(f"Папка бэкапа отправлена в корзину: {backup_dir}")
+                debug_logger.info(f"[MAIN] Папка бэкапа отправлена в корзину: {backup_dir}")
             except Exception as e:
-                debug_logger.error(f"Не удалось удалить {backup_dir}: {e}")
+                debug_logger.error(f"[MAIN] Не удалось удалить {backup_dir}: {e}")
                 
         # Удаление в корзину batch_dir
         if os.path.exists(batch_dir):
             try:
                 send2trash(batch_dir)
-                debug_logger.info(f"Папка batch_dir отправлена в корзину: {batch_dir}")
+                debug_logger.info(f"[MAIN] Папка batch_dir отправлена в корзину: {batch_dir}")
             except Exception as e:
-                debug_logger.error(f"Не удалось удалить {batch_dir}: {e}")
+                debug_logger.error(f"[MAIN] Не удалось удалить {batch_dir}: {e}")
 
         # Удаление .zip файлов в корзину
         if os.path.exists(download_dir):
@@ -1506,9 +1502,9 @@ class Assistant(QMainWindow):
                 if os.path.isfile(old_path) and old_file.endswith('.zip'):
                     try:
                         send2trash(old_path)
-                        debug_logger.info(f"Файл отправлен в корзину: {old_path}")
+                        debug_logger.info(f"[MAIN] Файл отправлен в корзину: {old_path}")
                     except Exception as e:
-                        debug_logger.error(f"Не удалось удалить {old_path}: {e}")
+                        debug_logger.error(f"[MAIN] Не удалось удалить {old_path}: {e}")
 
     def animation_start_load(self):
         self.progress_load.show()
@@ -1522,16 +1518,16 @@ class Assistant(QMainWindow):
         try:
             temp_folder_name = f"update/{current_version}_temp"
             temp_dir = get_path(temp_folder_name)
-            debug_logger.info(f"Path update temp: {temp_dir}")
+            debug_logger.info(f"[MAIN] Path update temp: {temp_dir}")
             if os.path.exists(temp_dir):
                 subprocess.Popen([get_path("swap-updater.exe"), "--update-dir", str(temp_dir)], shell=True)
-                debug_logger.info("swap-updater.exe успешно запущен")
+                debug_logger.info("[MAIN] swap-updater.exe успешно запущен")
             else:
                 subprocess.Popen([get_path("swap-updater.exe")], shell=True)
-                debug_logger.info(f"Папка обновления не найдена: {temp_dir}\n"
+                debug_logger.info(f"[MAIN] Папка обновления не найдена: {temp_dir}\n"
                                   "Запуск swap-updater.exe без параметров")
         except Exception as e:
-            debug_logger.error(f"Ошибка при запуске swap-updater.exe: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при запуске swap-updater.exe: {e}")
 
     def check_update_app(self):
         """Проверяет обновления"""
@@ -1550,8 +1546,7 @@ class Assistant(QMainWindow):
 
         except Exception as e:
             self.animation_stop_load()
-            logger.error(f"Неожиданная ошибка")
-            debug_logger.error(f"Неожиданная ошибка: {str(e)}", exc_info=True)
+            debug_logger.error(f"[MAIN] Неожиданная ошибка: {str(e)}", exc_info=True)
             self.update_label.show()
             self.update_label.setText("Ошибка обновления")
             QTimer.singleShot(2000, self.check_update_app)
@@ -1587,10 +1582,10 @@ class Assistant(QMainWindow):
         strategy = get_update_strategy(self.current_ver, self.latest_version, manifest)
         
         if strategy == "full":
-            debug_logger.info("Требуется полная установка (было критическое обновление)")
+            debug_logger.info("[MAIN] Требуется полная установка (было критическое обновление)")
             self.start_full_download()
         else:
-            debug_logger.info("Дельта-обновление доступно")
+            debug_logger.info("[MAIN] Дельта-обновление доступно")
             # Собираем все файлы из всех версий между current и latest
             files_to_update = self.collect_all_changed_files(
                 self.current_ver, self.latest_version, manifest
@@ -1653,9 +1648,9 @@ class Assistant(QMainWindow):
             return list(all_files)
             
         except ValueError as e:
-            debug_logger.error(f"❌ Версия не найдена в collect_all_changed_files: {e}")
-            debug_logger.error(f"❌ Текущая: {current_ver}, Целевая: {target_ver}")
-            debug_logger.error(f"❌ Доступные: {[str(v) for v in version_objects]}")
+            debug_logger.error(f"[MAIN] Версия не найдена в collect_all_changed_files: {e}")
+            debug_logger.error(f"[MAIN] Текущая: {current_ver}, Целевая: {target_ver}")
+            debug_logger.error(f"[MAIN] Доступные: {[str(v) for v in version_objects]}")
             return []
             
     def handle_failed_manifest(self):
@@ -1681,21 +1676,21 @@ class Assistant(QMainWindow):
     def handle_download_complete(self, file_path, success=True, skipped=False, error=None, batch=False):
         self.animation_stop_load()
         self.update_label.show()
-        debug_logger.info(f"Values:", file_path, success, skipped, error, "batch:", batch)
+        debug_logger.info(f"[MAIN] Values:", file_path, success, skipped, error, "batch:", batch)
         self.is_batch_update = batch
         if self.is_batch_update:
             # Обработка дельта-обновления
             if success:
                 self.update_label.setText(f"Доступно обновление")
                 self.show_notification_message(f"Обновление готово к установке")
-                debug_logger.info(f"Файлы обновления по пути: {file_path}")
+                debug_logger.info(f"[MAIN] Файлы обновления по пути: {file_path}")
                 self.stop_checking = True
                 if skipped:
                     self.show_notification_message("Подготовка к процедуре обновления...\n Не выключайте приложение")
-                    debug_logger.info(f"[SKIP] Файлы уже существуют")
+                    debug_logger.info(f"[MAIN][SKIP] Файлы уже существуют")
                     self.open_window_and_update()
                 else:
-                    debug_logger.info(f"[OK] Новый файл загружен")
+                    debug_logger.info(f"[MAIN][OK] Новый файл загружен")
             else:
                 self.update_label.setText(f"Ошибка обновления: {error}")
         else:
@@ -1708,12 +1703,12 @@ class Assistant(QMainWindow):
                 self.stop_checking = True
                 if skipped:
                     self.show_notification_message("Подготовка к процедуре обновления...\n Не выключайте приложение")
-                    debug_logger.info(f"[SKIP] Файл уже существует")
+                    debug_logger.info(f"[MAIN][SKIP] Файл уже существует")
                     self.open_window_and_update()
                 else:
-                    debug_logger.info(f"[OK] Новый файл загружен")
+                    debug_logger.info(f"[MAIN][OK] Новый файл загружен")
             else:
-                debug_logger.error(f"[ERROR] Не удалось скачать: {error}")
+                debug_logger.error(f"[MAIN] Не удалось скачать: {error}")
         
         self.toggle_update_button()
 
@@ -1749,18 +1744,19 @@ class Assistant(QMainWindow):
                                                        batch_update=self.is_batch_update))
 
     def check_or_create_folder(self):
-        folder_path = get_path('user_settings', "links for assist")
+        links_path = get_path('user_settings', "links for assist")
+        screenshot_path = get_path('user_settings', "screenshots")
+        path_list = [links_path, screenshot_path]
 
-        if os.path.exists(folder_path) and os.path.isdir(folder_path):
-            debug_logger.info("Папка links for assist найдена")
-        else:
-            try:
-                os.makedirs(folder_path)  # Создаем папку
-                debug_logger.info('Папка "links for assist" была создана.')
-                debug_logger.info(f"Путь хранения ярлыков: {folder_path}")
-            except Exception as e:
-                logger.error(f'Ошибка при создании папки для хранения ярлыков: {e}')
-                debug_logger.error(f'Ошибка при создании папки для хранения ярлыков: {e}')
+        for folder_path in path_list:
+            if os.path.exists(folder_path) and os.path.isdir(folder_path):
+                debug_logger.info(f"[MAIN] Папка {folder_path} найдена")
+            else:
+                try:
+                    os.makedirs(folder_path)
+                    debug_logger.info(f'[MAIN] Папка {folder_path} была создана.')
+                except Exception as e:
+                    debug_logger.error(f'[MAIN] Ошибка при создании папки {folder_path}: {e}')
 
     def reload_commands(self):
         """Централизованное сохранение команд"""
@@ -1812,10 +1808,10 @@ class Assistant(QMainWindow):
             self.commands_manager.update_vaults()  # Синхронизация настроек в менеджере команд
 
             self.show_notification_message("Настройки сохранены!")
-            debug_logger.debug("Настройки сохранены.")
+            debug_logger.debug("[MAIN] Настройки сохранены.")
         except Exception as e:
-            logger.error(f"Ошибка при сохранении настроек: {e}")
-            debug_logger.error(f"Ошибка при сохранении настроек: {e}")
+            logger.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
             raise  # Повторно выбрасываем исключение, если нужно
 
     def update_settings(self, settings_file, default_settings=None):
@@ -1925,7 +1921,7 @@ class Assistant(QMainWindow):
             self.log_area.stop_monitoring()
             self.force_close()
         except Exception as e:
-            debug_logger.error(f"Ошибка при закрытии приложения: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при закрытии приложения: {e}")
 
     def close_app(self):
         """Закрытие приложения."""
@@ -1966,7 +1962,7 @@ class Assistant(QMainWindow):
             self.close()
             
         except Exception as e:
-            debug_logger.error(f"Ошибка при завершении: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при завершении: {e}")
             # Принудительно закрываем
             self.close()
 
@@ -2000,9 +1996,9 @@ class Assistant(QMainWindow):
         """Остановка ассистента"""
         self.is_assistant_running = False
         self.sidebar.update_element_text("start", "Старт ассистента")
-        debug_logger.info("[Ассистент остановлен]")
+        debug_logger.info("[MAIN][Ассистент остановлен]")
         if reaction:
-            debug_logger.info("Реакция на выключение ассистента...")
+            debug_logger.info("[MAIN] Реакция на выключение ассистента...")
             self.get_reaction(threading=True, name="close_assist_folder", trace="stop_assist in main")
 
         # Безопасная остановка потока
@@ -2011,9 +2007,9 @@ class Assistant(QMainWindow):
                 if self.assistant_thread.is_alive() and self.assistant_thread != threading.current_thread():
                     self.assistant_thread.join(timeout=1.0)  # Уменьшаем таймаут
                     if self.assistant_thread.is_alive():
-                        debug_logger.warning("Поток ассистента не завершился в течение таймаута")
+                        debug_logger.warning("[MAIN] Поток ассистента не завершился в течение таймаута")
             except Exception as e:
-                debug_logger.error(f"Ошибка при остановке потока: {e}")
+                debug_logger.error(f"[MAIN] Ошибка при остановке потока: {e}")
             finally:
                 self.assistant_thread = None
 
@@ -2024,8 +2020,8 @@ class Assistant(QMainWindow):
         try:
             path = self.audio_paths.get(f'{name}')
             if not path:
-                logger.error(f"[assistant.get_reaction] Путь не найден")
-                debug_logger.error(f"[assistant.get_reaction] Путь не найден")
+                logger.error(f"[MAIN][assistant.get_reaction] Путь не найден")
+                debug_logger.error(f"[MAIN][assistant.get_reaction] Путь не найден")
                 return
 
             if threading:
@@ -2037,7 +2033,7 @@ class Assistant(QMainWindow):
                 react(path, trace)
 
         except Exception as e:
-            debug_logger.error(f"[assistant.get_reaction] Ошибка: {e}")
+            debug_logger.error(f"[MAIN][assistant.get_reaction] Ошибка: {e}")
 
     def censor_counter(self):
         """Добавляет запись о матерном слове в счетчик"""
@@ -2057,7 +2053,7 @@ class Assistant(QMainWindow):
                     reader = csv.DictReader(file)
                     
                     if reader.fieldnames != headers:
-                        debug_logger.warning(f"Некорректные заголовки в файле {CSV_FILE}")
+                        debug_logger.warning(f"[MAIN] Некорректные заголовки в файле {CSV_FILE}")
                         file_exists = False
                     else:
                         for row in reader:
@@ -2072,11 +2068,11 @@ class Assistant(QMainWindow):
                                     'total_score': total_score
                                 })
                             except (ValueError, KeyError) as e:
-                                debug_logger.warning(f"Пропущена некорректная строка: {row}, ошибка: {e}")
+                                debug_logger.warning(f"[MAIN] Пропущена некорректная строка: {row}, ошибка: {e}")
                                 continue
             except Exception as e:
-                logger.error(f"Ошибка чтения файла {CSV_FILE}: {e}")
-                debug_logger.error(f"Ошибка чтения файла {CSV_FILE}: {e}")
+                logger.error(f"[MAIN] Ошибка чтения файла {CSV_FILE}: {e}")
+                debug_logger.error(f"[MAIN] Ошибка чтения файла {CSV_FILE}: {e}")
                 file_exists = False
         
         if not file_exists:
@@ -2116,11 +2112,11 @@ class Assistant(QMainWindow):
                 writer.writeheader()
                 writer.writerows(data)
             
-            debug_logger.debug(f"Счетчик обновлен. Сегодняшняя запись: {'обновлена' if today_found else 'добавлена'}")
+            debug_logger.debug(f"[MAIN] Счетчик обновлен. Сегодняшняя запись: {'обновлена' if today_found else 'добавлена'}")
             
         except Exception as e:
-            logger.error(f"Ошибка записи в файл {CSV_FILE}: {e}")
-            debug_logger.error(f"Ошибка записи в файл {CSV_FILE}: {e}")
+            logger.error(f"[MAIN] Ошибка записи в файл {CSV_FILE}: {e}")
+            debug_logger.error(f"[MAIN] Ошибка записи в файл {CSV_FILE}: {e}")
             
     def check_keywords_file(self):
         """
@@ -2130,6 +2126,7 @@ class Assistant(QMainWindow):
         default_keywords_path = get_path("bin", "default_keywords.json")
 
         if not os.path.exists(keywords_path):
+            debug_logger.info(f"[MAIN] Файл keywords.json не найден, создаю...")
             if os.path.exists(default_keywords_path):
                 with open(default_keywords_path, 'r', encoding='utf-8') as f:
                     default_keywords = json.load(f)
@@ -2141,7 +2138,7 @@ class Assistant(QMainWindow):
 
             return True
         else:
-            return False
+            debug_logger.info(f"[MAIN] Файл keywords.json уже существует")
         
     def apply_keywords_for_values(self):
         try:
@@ -2182,7 +2179,6 @@ class Assistant(QMainWindow):
             'микшер': (open_volume_mixer, close_volume_mixer),
             'калькулятор': (open_calc, close_calc),
             'пейнт': (open_paint, close_paint),
-            'пэйнт': (open_paint, close_paint),
             'переменные': (open_path, None),
             'диспетчер': (open_taskmgr, close_taskmgr),
             'корзина': (open_recycle_bin, close_recycle_bin),
@@ -2191,7 +2187,8 @@ class Assistant(QMainWindow):
             'виджет': (self._open_widget_signal, self._close_widget_signal),
             "микрофон": (self.toggle_mute_discord, self.toggle_mute_discord),
             "микро": (self.toggle_mute_discord, self.toggle_mute_discord),
-            "ютуб": (lambda: self.start_default_command("ютуб", "open", "url"), None)
+            "ютуб": (lambda: self.start_default_command("ютуб", "open", "url"), None),
+            "блютуз": (self.bluetooth.enable, self.bluetooth.disable)
         }
         default_commands_keys = list(default_commands.keys())
 
@@ -2217,7 +2214,7 @@ class Assistant(QMainWindow):
                 all_names = [self.assistant_name, self.assist_name2, self.assist_name3]
 
                 # Список фраз действие-команда, ["action command", ...]
-                action_command = self.handle_text_smart(text, self.all_actions)
+                action_command = self.handle_text_smart(text, self.all_actions, threshold=70)
 
                 # Чистая команда без действия, "command"
                 clean_target = self._extract_clean_target(text, self.all_actions)
@@ -2230,17 +2227,17 @@ class Assistant(QMainWindow):
                 # Проверка на наличие команд для управления    
                 self.is_keyword_player = any(self.find_closest_command(word, self.keywords_player, threshold=80) for word in words)
 
-                debug_logger.info(f"[FIRST_HANDLER][has_action_words] {has_action_words}")
+                debug_logger.info(f"[MAIN][FIRST_HANDLER][has_action_words] {has_action_words}")
 
-                debug_logger.info(f"[FIRST_HANDLER][Raw Text] {text}"
-                                  f"\n[FIRST_HANDLER][Action] {action_command}"
-                                  f"\n[FIRST_HANDLER][Clean Command] {clean_target}")
+                debug_logger.info(f"[MAIN][FIRST_HANDLER][Raw Text] {text}")
+                debug_logger.info(f"[MAIN][FIRST_HANDLER][Action] {action_command}")
+                debug_logger.info(f"[MAIN][FIRST_HANDLER][Clean Command] {clean_target}")
 
                 # Сбрасываем контекст, если прошло более 10 секунд без активности
                 if self.last_unrecognized_command and (current_time - last_activity_time) > 10:
                     self.last_unrecognized_command = None
                     logger.info("Сброс контекста из-за неактивности")
-                    debug_logger.info("Сброс контекста из-за неактивности")
+                    debug_logger.info("[MAIN] Сброс контекста из-за неактивности")
 
                 # Обновляем время последней активности при получении текста
                 last_activity_time = current_time
@@ -2250,7 +2247,7 @@ class Assistant(QMainWindow):
                     name_mentioned = False
                     name_mentioned_time = None
                     logger.info("Сброс флага упоминания имени")
-                    debug_logger.info("Сброс флага упоминания имени")
+                    debug_logger.info("[MAIN] Сброс флага упоминания имени")
 
                 # Проверка цензуры
                 if any(self.find_closest_command(word, self.censored_list, threshold=80) for word in words):
@@ -2268,16 +2265,16 @@ class Assistant(QMainWindow):
                         # Проверка таймаута
                         if (current_time - last_activity_time) > 10:
                             logger.info("Таймаут подтверждения — сброс")
-                            debug_logger.info("Таймаут подтверждения — сброс")
+                            debug_logger.info("[MAIN] Таймаут подтверждения — сброс")
                             self.last_unrecognized_command = None
                             message = "Время ожидания истекло."
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
 
                         # Подтверждение — "да"
                         if any(word in text_lower for word in self.keywords_yes):
-                            debug_logger.info("Пользователь подтвердил команду(ы).")
+                            debug_logger.info("[MAIN] Пользователь подтвердил команду(ы).")
 
                             turnoff_value = self.last_unrecognized_command.get('is_shutdown')
                             self.set_shutdown(is_shutdown=turnoff_value)
@@ -2287,21 +2284,21 @@ class Assistant(QMainWindow):
 
                         # Отмена — "нет"
                         elif any(word in text_lower for word in self.keywords_no):
-                            debug_logger.info("Пользователь отменил команду(ы).")
+                            debug_logger.info("[MAIN] Пользователь отменил команду(ы).")
                             self.get_reaction(name="confirm_folder")
                             self.last_unrecognized_command = None
                             message = "Хорошо, отменяю."
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
 
                         else:
                             # Не распознан ответ — переспрашиваем
-                            debug_logger.info("Не удалось распознать ответ на подтверждение.")
+                            debug_logger.info("[MAIN] Не удалось распознать ответ на подтверждение.")
                             self.get_reaction(name="what_folder")
                             message = "Скажите 'да' или 'нет'"
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
                     else:
                         text_lower = text.lower().strip()
@@ -2313,12 +2310,12 @@ class Assistant(QMainWindow):
                             self.last_unrecognized_command = None
                             message = "Время ожидания истекло."
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
 
                         # Подтверждение — "да"
                         if any(word in text_lower for word in self.keywords_yes):
-                            debug_logger.info("Пользователь подтвердил команду(ы).")
+                            debug_logger.info("[MAIN] Пользователь подтвердил команду(ы).")
 
                             pending_commands = self.last_unrecognized_command.get('pending_commands')
 
@@ -2328,7 +2325,7 @@ class Assistant(QMainWindow):
                                 action_type = cmd_info['action_type']
                                 suggested_cmd = cmd_info['suggested_command']
 
-                                debug_logger.info(f"Выполняем: {action_type} {suggested_cmd}")
+                                debug_logger.info(f"[MAIN] Выполняем: {action_type} {suggested_cmd}")
 
                                 # Пробуем стандартные команды
                                 default_list = self.find_closest_command(suggested_cmd, default_commands_keys)
@@ -2360,28 +2357,28 @@ class Assistant(QMainWindow):
                                 self.get_reaction(detail=True, name="error_file")
                                 message = "Не удалось выполнить команду(ы)."
                                 self.show_supply_notice(message, is_confirm=True)
-                                debug_logger.info(f"Отправлено уведомление ---> {message}")
+                                debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
 
                             self.last_unrecognized_command = None
                             continue
 
                         # Отмена — "нет"
                         elif any(word in text_lower for word in self.keywords_no):
-                            debug_logger.info("Пользователь отменил команду(ы).")
+                            debug_logger.info("[MAIN] Пользователь отменил команду(ы).")
                             self.get_reaction(name="confirm_folder")
                             self.last_unrecognized_command = None
                             message = "Хорошо, отменяю."
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
 
                         else:
                             # Не распознан ответ — переспрашиваем
-                            debug_logger.info("Не удалось распознать ответ на подтверждение.")
+                            debug_logger.info("[MAIN] Не удалось распознать ответ на подтверждение.")
                             self.get_reaction(name="what_folder")
                             message = "Скажите 'да' или 'нет'"
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
 
                 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -2405,7 +2402,7 @@ class Assistant(QMainWindow):
 
                 # Режим уточнения команды (если предыдущая попытка не удалась)
                 if self.is_corrected_command:
-                    debug_logger.info(f"[RETRY][Start Mode Correction]")
+                    debug_logger.info(f"[MAIN][RETRY][Start Mode Correction]")
                     if self.last_unrecognized_command and self.last_unrecognized_command.get('mode') == 'correction':
                         if text:
                             # Обновляем время последней активности при обработке команды
@@ -2418,7 +2415,7 @@ class Assistant(QMainWindow):
                             # Если действие изменилось — обновляем контекст
                             if new_action_type and new_action_type != current_action_type:
                                 self.last_unrecognized_command['pending_commands'][0]['action_type'] = new_action_type
-                                debug_logger.info(f"[RETRY] Действие обновлено на: {new_action_type}")
+                                debug_logger.info(f"[MAIN][RETRY] Действие обновлено на: {new_action_type}")
 
                             # Блок А. Для поиска совпадений и запуска методов в соответствии с действием
                             default_list = self.find_closest_command(clean_target, default_commands_keys)
@@ -2445,10 +2442,10 @@ class Assistant(QMainWindow):
 
                                 # Восстанавливаем полную команду
                                 restored_command = f"{action_type} {custom_list}"
-                                debug_logger.info(f"[RETRY] Восстановленная команда: {restored_command}")
+                                debug_logger.info(f"[MAIN][RETRY] Восстановленная команда: {restored_command}")
 
                                 type_processed = self.commands_manager.get_type_command(custom_list)
-                                debug_logger.info(f"[RETRY] Команда: {custom_list}, тип: {type_processed}")
+                                debug_logger.info(f"[MAIN][RETRY] Команда: {custom_list}, тип: {type_processed}")
                                 if type_processed == "shortcut" or type_processed == "url":
                                     self.handle_app_command(custom_list, action_type)
                                 elif type_processed == "folder":
@@ -2457,37 +2454,37 @@ class Assistant(QMainWindow):
                                     self.handle_script_command(custom_list, action_type)
                                 else:
                                     logger.warning(f"Команда не обработана: {restored_command}")
-                                    debug_logger.warning(f"[RETRY] Команда не обработана: {restored_command}")
+                                    debug_logger.warning(f"[MAIN][RETRY] Команда не обработана: {restored_command}")
                                     self.get_reaction(name="what_folder",
                                                     trace="Реакция в блоке, где режим корректировки команды")
 
                                     self.last_unrecognized_command['pending_commands'][0][
                                         'suggested_command'] = clean_target
 
-                                    debug_logger.info(f"[RETRY] Обновлена цель для уточнения: {clean_target}")
+                                    debug_logger.info(f"[MAIN][RETRY] Обновлена цель для уточнения: {clean_target}")
                                     self.show_supply_notice(text)
-                                    debug_logger.info(f"[RETRY] Отправлено уведомление ---> {text}")
+                                    debug_logger.info(f"[MAIN][RETRY] Отправлено уведомление ---> {text}")
                                     self.last_unrecognized_command = None
                                     continue
                             # Конец блока В.
 
                             if any(word in text for word in self.keywords_reject):
-                                debug_logger.info("Пользователь отменил команду(ы).")
+                                debug_logger.info("[MAIN] Пользователь отменил команду(ы).")
                                 self.get_reaction(name="confirm_folder")
                                 self.last_unrecognized_command = None
                                 message = "Хорошо, отменяю."
                                 self.show_supply_notice(message, is_confirm=True)
-                                debug_logger.info(f"Отправлено уведомление ---> {message}")
+                                debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
                                 continue
 
                             if not default_list and not custom_list:
                                 self.get_reaction(name="what_folder",
                                                 trace="Реакция в блоке, где режим корректировки команды")
                                 self.show_supply_notice(text)
-                                debug_logger.info(f"Отправлено уведомление ---> {text}")
+                                debug_logger.info(f"[MAIN] Отправлено уведомление ---> {text}")
 
                 if has_assistant_name:
-                    debug_logger.info("<<< Условие, где есть Имя ассистента >>>")
+                    debug_logger.info("[MAIN] <<< Условие, где есть Имя ассистента >>>")
                     trigger_react = False
                     _, action_type = self.find_action(text, self.action_up, self.action_down, self.all_actions)
                     if self.find_any_command_in_text(clean_target, self.keywords_search, threshold=80):
@@ -2513,12 +2510,12 @@ class Assistant(QMainWindow):
                                 # Если нет слов-действий и в тексте нет команд для управления плеером — воспроизводим эхо
                                 self.get_reaction(name="echo_folder")
 
-                    final_commands = self.handle_text_smart(text, self.all_actions)
-                    debug_logger.info(f"[HAS_NAME][handle_text_smart]---> {final_commands}")
+                    final_commands = self.handle_text_smart(text, self.all_actions, threshold=70)
+                    debug_logger.info(f"[MAIN][HAS_NAME][handle_text_smart]---> {final_commands}")
 
                     for command in final_commands:
                         command = command.strip()
-                        debug_logger.info(f"[Команда в цикле из списка выше] {command}")
+                        debug_logger.info(f"[MAIN][Команда в цикле из списка выше] {command}")
 
                         _, action_type = self.find_action(command, self.action_up, self.action_down, self.all_actions)
 
@@ -2527,9 +2524,9 @@ class Assistant(QMainWindow):
                             # Ищем совпадение со специальными командами
 
                             default_list = self.find_closest_command(clean_target, default_commands_keys)
-                            debug_logger.info(f"[HAS_NAME][list] {default_list}")
-                            debug_logger.info(f"[HAS_NAME][action_type] {action_type}")
-                            debug_logger.info(f"[HAS_NAME][clean_target] {clean_target}")
+                            debug_logger.info(f"[MAIN][HAS_NAME][list] {default_list}")
+                            debug_logger.info(f"[MAIN][HAS_NAME][action_type] {action_type}")
+                            debug_logger.info(f"[MAIN][HAS_NAME][clean_target] {clean_target}")
 
                             if default_list:
                                 self.command_handled = True
@@ -2541,7 +2538,7 @@ class Assistant(QMainWindow):
                             else:
                                 # Пытаемся обработать команду
                                 type_processed = self.commands_manager.get_type_command(clean_target)
-                                debug_logger.info(f"[HAS_NAME] Команда: {clean_target}, тип: {type_processed}")
+                                debug_logger.info(f"[MAIN][HAS_NAME] Команда: {clean_target}, тип: {type_processed}")
                                 self.command_handled = True
                                 if type_processed == "shortcut" or type_processed == "url":
                                     self.handle_app_command(clean_target, action_type)
@@ -2553,13 +2550,13 @@ class Assistant(QMainWindow):
                                     if clean_target:
                                         # Ищем похожие команды
                                         closest_cmd = self.find_closest_command(clean_target, all_commands)
-                                        debug_logger.info(f"[closest_cmd] {closest_cmd}")
+                                        debug_logger.info(f"[MAIN][closest_cmd] {closest_cmd}")
 
                                         if closest_cmd:
                                             message = f"Вы имели в виду: '{closest_cmd}'?\nСкажите: Да/Нет"
                                             self.show_supply_notice(message, is_confirm=True)
                                             thread_play_sound(type_sound="what")
-                                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
 
                                             # Сохраняем контекст с предложенной командой + флаг ожидания подтверждения
                                             self.last_unrecognized_command = {
@@ -2589,19 +2586,19 @@ class Assistant(QMainWindow):
                         self.command_handled = True
                         self.show_supply_notice(text)
                         self.get_reaction(name="what_folder", trace="Реакт из триггера")
-                        debug_logger.info(f"Сработал триггер реакции. Отправлено уведомление ---> {text}")
+                        debug_logger.info(f"[MAIN] Сработал триггер реакции. Отправлено уведомление ---> {text}")
                         continue
 
                 # Флаг для контроля над обработкой команд без имени ассистента (не относится к плееру)
                 if self.is_keep_watch:
                     if has_action_words and not has_assistant_name:
-                        debug_logger.info("<<< Условие без имени ассистента, только действие и команда >>>")
+                        debug_logger.info("[MAIN] <<< Условие без имени ассистента, только действие и команда >>>")
 
                         if self.find_closest_command(clean_target, self.screen_list):
                             self.capture_area()
 
                         final_commands = self.handle_text_smart(text, self.all_actions)
-                        debug_logger.info(f"[final_commands] {final_commands}")
+                        debug_logger.info(f"[MAIN] [final_commands] {final_commands}")
 
                         pending_commands = []
 
@@ -2619,9 +2616,9 @@ class Assistant(QMainWindow):
                             if not closest_cmd:
                                 continue
 
-                            debug_logger.info(f"[command] {command}")
-                            debug_logger.info(f"[clean_target] {clean_target}")
-                            debug_logger.info(f"[closest_cmd] {closest_cmd}")
+                            debug_logger.info(f"[MAIN][command] {command}")
+                            debug_logger.info(f"[MAIN][clean_target] {clean_target}")
+                            debug_logger.info(f"[MAIN][closest_cmd] {closest_cmd}")
 
                             pending_commands.append({
                                 'action_type': action_type,
@@ -2644,7 +2641,7 @@ class Assistant(QMainWindow):
                             message = ";\n".join(parts) + "\n\nСкажите: Да/Нет"
                             self.show_supply_notice(message, is_confirm=True)
                             thread_play_sound(type_sound="what")
-                            debug_logger.info(f"Отправлено уведомление ---> {message}")
+                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
 
                             self.last_unrecognized_command = {
                                 'mode': 'confirm',
@@ -2655,7 +2652,7 @@ class Assistant(QMainWindow):
 
                 # Обработка плеера
                 if not self.command_handled and (self.is_keyword_player or has_assistant_name):
-                    debug_logger.info("Успешное условие для управления плеером")
+                    debug_logger.info("[MAIN] Успешное условие для управления плеером")
                     # Ищем первое подходящее действие (в порядке приоритета: пауза, след, пред)
                     for word in words:
                         if self.find_closest_command(word, self.keywords_playpause, threshold=80):
@@ -2673,10 +2670,9 @@ class Assistant(QMainWindow):
 
         except Exception as e:
             logger.error(f"Ошибка в основном цикле ассистента: {e}")
-            debug_logger.error(f"Ошибка в основном цикле ассистента: {e}")
+            debug_logger.error(f"[MAIN] Ошибка в основном цикле ассистента: {e}")
             debug_logger.error(traceback.format_exc())
-            self.show_message(f"Ошибка в основном цикле ассистента: {e}", "Ошибка",
-                              "warning")
+            self.show_notification_message(f"[MAIN] Ошибка в основном цикле ассистента: {e}")
 
     # "Основной цикл ассистента(конец)"
     # "--------------------------------------------------------------------------------------------------"
@@ -2722,7 +2718,7 @@ class Assistant(QMainWindow):
             message = f"{action_pc} ПК?\n\nСкажите: Да/Нет"
             self.show_supply_notice(message, is_confirm=True)
             thread_play_sound(type_sound="what")
-            debug_logger.info(f"Отправлено уведомление ---> {message}")
+            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
 
             # Сохраняем контекст
             self.last_unrecognized_command = {
@@ -2731,19 +2727,19 @@ class Assistant(QMainWindow):
                 'is_shutdown': action_pc,
             }
         except Exception as e:
-            debug_logger.error(f"Ошибка в методе get_confirm_shutdown: {e}")
+            debug_logger.error(f"[MAIN] Ошибка в методе get_confirm_shutdown: {e}")
 
     def set_shutdown(self, is_shutdown):
         try:
             if is_shutdown == "Выключить":
                 shutdown_windows()
-                debug_logger.info("Выполняется обработка запроса: shutdown windows")
+                debug_logger.info("[MAIN] Выполняется обработка запроса: shutdown windows")
             elif is_shutdown == "Перезагрузить":
                 restart_windows()
-                debug_logger.info("Выполняется обработка запроса: restart windows")
+                debug_logger.info("[MAIN] Выполняется обработка запроса: restart windows")
 
         except Exception as e:
-            debug_logger.error(f"Ошибка в методе set_shutdown: {e}")
+            debug_logger.error(f"[MAIN] Ошибка в методе set_shutdown: {e}")
 
     def _extract_clean_target(self, text, all_actions):
         """
@@ -2773,7 +2769,7 @@ class Assistant(QMainWindow):
         words = clean_text.split()
         filtered_words = []
 
-        # ✅ НЕЧЁТКОЕ УДАЛЕНИЕ слов-действий
+        # НЕЧЁТКОЕ УДАЛЕНИЕ слов-действий
         for word in words:
             # Ищем ближайшее действие для этого слова
             closest_action = self.find_closest_command(word, all_actions)
@@ -3044,21 +3040,21 @@ class Assistant(QMainWindow):
         """Инициализация моделей и аудиопотока через sounddevice."""
         self.cleanup_audio_resources()
         logger.info("Загрузка моделей для распознавания...")
-        debug_logger.debug("Загрузка моделей для распознавания...")
+        debug_logger.debug("[MAIN] Загрузка моделей для распознавания...")
 
         model_path_ru = get_path("bin", "model_ru")
         # model_path_en = get_path("bin", "model_en")
-        debug_logger.debug(f"Загружена модель RU - {model_path_ru}")
+        debug_logger.debug(f"[MAIN] Загружена модель RU - {model_path_ru}")
         # debug_logger.debug(f"Загружена модель EN - {model_path_en}")
 
         try:
             self.model_ru = Model(model_path_ru)
             # self.model_en = Model(model_path_en)
             logger.info("Модели успешно загружены.")
-            debug_logger.info("Модели успешно загружены.")
+            debug_logger.info("[MAIN] Модели успешно загружены.")
         except Exception as e:
             logger.error(f"Ошибка при загрузке модели: {e}. Возможно путь содержит кириллицу.")
-            debug_logger.error(f"Ошибка при загрузке модели: {e}", exc_info=True)
+            debug_logger.error(f"[MAIN] Ошибка при загрузке модели: {e}", exc_info=True)
             return False
 
         try:
@@ -3087,9 +3083,9 @@ class Assistant(QMainWindow):
                 self.input_device_id = target_id  # обновляем ID
                 device_name = sd.query_devices(target_id)['name']
                 self.input_device_name = device_name  # фиксируем имя
-                debug_logger.info(f"Аудиопоток запущен: '{device_name}' (ID={target_id})")
+                debug_logger.info(f"[MAIN] Аудиопоток запущен: '{device_name}' (ID={target_id})")
             except Exception as e:
-                debug_logger.error(f"Не удалось открыть выбранное устройство (ID={target_id}): {e}")
+                debug_logger.error(f"[MAIN] Не удалось открыть выбранное устройство (ID={target_id}): {e}")
                 # Fallback: попробовать без указания устройства (по умолчанию)
                 try:
                     self.audio_stream = sd.InputStream(
@@ -3104,18 +3100,17 @@ class Assistant(QMainWindow):
                     fallback_name = sd.query_devices(fallback_id)['name']
                     self.input_device_id = fallback_id
                     self.input_device_name = fallback_name
-                    debug_logger.warning(f"Используется устройство по умолчанию: '{fallback_name}'")
+                    debug_logger.warning(f"[MAIN] Используется устройство по умолчанию: '{fallback_name}'")
                 except Exception as e2:
-                    debug_logger.error("Не удалось запустить ни одно устройство.", exc_info=True)
+                    debug_logger.error("[MAIN] Не удалось запустить ни одно устройство.", exc_info=True)
                     raise e2
 
-            # ✅ Успешно запущено
             self.microphone_available = True
             self.last_audio_time = time.time()  # начальное значение для watchdog
             return True
 
         except Exception as e:
-            debug_logger.error(f"Критическая ошибка при инициализации аудио: {e}", exc_info=True)
+            debug_logger.error(f"[MAIN] Критическая ошибка при инициализации аудио: {e}", exc_info=True)
             return False
 
     def get_microphone_id(self, preferred_name=None):
@@ -3157,7 +3152,7 @@ class Assistant(QMainWindow):
             return default_in  # fallback
 
         except Exception as e:
-            debug_logger.warning(f"Ошибка выбора микрофона: {e}")
+            debug_logger.warning(f"[MAIN] Ошибка выбора микрофона: {e}")
             return sd.default.device[0]  # двойной fallback
 
     def audio_callback(self, indata, frames, time_info, status):
@@ -3184,7 +3179,7 @@ class Assistant(QMainWindow):
                 self.last_audio_time = time.time()
 
         except Exception as e:
-            debug_logger.error(f"Ошибка при анализе громкости: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при анализе громкости: {e}")
 
         data = indata.tobytes()
         ru_text = ""
@@ -3206,12 +3201,12 @@ class Assistant(QMainWindow):
                 self.on_final_result(final_text)
 
         except Exception as e:
-            debug_logger.error(f"Ошибка в обработке распознавания: {e}")
+            debug_logger.error(f"[MAIN] Ошибка в обработке распознавания: {e}")
 
     def on_final_result(self, text):
         """Вызывается при распознавании фразы. Логирует и отправляет дальше."""
         logger.info(f"[Распознано] {text}")
-        debug_logger.info(f"[Распознано] {text}")
+        debug_logger.info(f"[MAIN] [Распознано] {text}")
 
         # Если есть активная очередь (например, get_audio() ждёт), — кладём туда
         if hasattr(self, '_current_queue') and self._current_queue is not None:
@@ -3249,7 +3244,7 @@ class Assistant(QMainWindow):
     # === ПРОВЕРКА МИКРОФОНА ===
     def check_microphone(self):
         """Проверка доступности микрофона через sounddevice"""
-        debug_logger.info("Проверка микрофона через sounddevice...")
+        debug_logger.info("[MAIN] Проверка микрофона через sounddevice...")
         try:
             devices = sd.query_devices()
             active_mics = []
@@ -3277,16 +3272,16 @@ class Assistant(QMainWindow):
                     continue
 
             if active_mics:
-                debug_logger.info(f"Найдено рабочих микрофонов: {len(active_mics)}")
+                debug_logger.info(f"[MAIN] Найдено рабочих микрофонов: {len(active_mics)}")
                 self.microphone_available = True
                 return True
             else:
-                logger.info("Нет доступных микрофонов.")
+                logger.info("[MAIN] Нет доступных микрофонов.")
                 self.microphone_available = False
                 return False
 
         except Exception as e:
-            debug_logger.error(f"Ошибка проверки микрофона: {e}")
+            debug_logger.error(f"[MAIN] Ошибка проверки микрофона: {e}")
             self.microphone_available = False
             return False
 
@@ -3313,12 +3308,12 @@ class Assistant(QMainWindow):
                     if self.audio_stream.active:
                         self.audio_stream.abort()  # быстро остановить
                 except Exception as e:
-                    debug_logger.error(f"Ошибка при остановке аудиопотока: {e}")
+                    debug_logger.error(f"[MAIN] Ошибка при остановке аудиопотока: {e}")
                 finally:
                     self.audio_stream = None
-                    debug_logger.info("Аудиопоток остановлен и очищен.")
+                    debug_logger.info("[MAIN] Аудиопоток остановлен и очищен.")
         except Exception as e:
-            debug_logger.error(f"Критическая ошибка аудиопотока: {e}", exc_info=True)
+            debug_logger.error(f"[MAIN] Критическая ошибка аудиопотока: {e}", exc_info=True)
 
     def check_silence_timeout(self):
         """Проверяет, сколько времени прошло с последнего звука"""
@@ -3331,12 +3326,12 @@ class Assistant(QMainWindow):
         silent_duration = time.time() - self.last_audio_time
 
         if silent_duration > 10.0:  # 10 секунд тишины
-            debug_logger.warning(f"🔊 Нет звука более 10 сек ({silent_duration:.1f}s) — перезапуск аудиопотока")
+            debug_logger.warning(f"[MAIN] Нет звука более 10 сек ({silent_duration:.1f}s) — перезапуск аудиопотока")
             self.restart_audio_stream()
 
     def restart_audio_stream(self):
         """Перезапускает только InputStream, не трогая модели и ассистента"""
-        debug_logger.info("🔄 Перезапуск аудиопотока...")
+        debug_logger.info("[MAIN] Перезапуск аудиопотока...")
 
         try:
             # Останавливаем старый поток
@@ -3344,7 +3339,7 @@ class Assistant(QMainWindow):
                 if self.audio_stream.active:
                     self.audio_stream.abort()
                 self.audio_stream = None
-                debug_logger.info("Старый аудиопоток остановлен")
+                debug_logger.info("[MAIN] Старый аудиопоток остановлен")
 
             # Создаём новый — без указания устройства → по умолчанию
             self.audio_stream = sd.InputStream(
@@ -3359,16 +3354,16 @@ class Assistant(QMainWindow):
             # Обновляем время активности
             self.last_audio_time = time.time()
 
-            debug_logger.info("Аудиопоток успешно перезапущен (по умолчанию)")
+            debug_logger.info("[MAIN] Аудиопоток успешно перезапущен (по умолчанию)")
 
         except Exception as e:
-            debug_logger.error(f"Не удалось перезапустить поток: {e}")
+            debug_logger.error(f"[MAIN] Не удалось перезапустить поток: {e}")
             # Можно попробовать повторно через 10 сек
             QTimer.singleShot(10000, self.restart_audio_stream)
 
     def handle_app_command(self, text, action):
         """Обработка команд для приложений, ярлыков и ссылок"""
-        debug_logger.info(f"Вызван обработчик команд для ярлыков и ссылок: {text}, {action}")
+        debug_logger.info(f"[MAIN] Вызван обработчик команд для ярлыков и ссылок: {text}, {action}")
         all_commands = {**self.default_commands, **self.commands}
         for keyword, command_data in all_commands.items():
             if keyword in text:
@@ -3381,7 +3376,7 @@ class Assistant(QMainWindow):
 
     def handle_folder_command(self, text, action):
         """Обработка команд для папок"""
-        debug_logger.error(f"Вызван обработчик команд для папок: {text}, {action}")
+        debug_logger.error(f"[MAIN] Вызван обработчик команд для папок: {text}, {action}")
         all_commands = {**self.default_commands, **self.commands}
         for keyword, command_data in all_commands.items():
             if keyword in text:
@@ -3398,11 +3393,11 @@ class Assistant(QMainWindow):
             self.commands_manager.execute_script(script_key, action)
             return True
         except Exception as e:
-            debug_logger.error(f"Ошибка при запуске сценария: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при запуске сценария: {e}")
             return False
         
     def handle_system_command(self, command, action):
-        debug_logger.error(f"Вызван обработчик команд для запуска системных: {command}, {action}")
+        debug_logger.info(f"[MAIN] Вызван обработчик команд для запуска системных: {command}, {action}")
         data_commands = self.default_commands
 
         for keyword, command_data in data_commands.items():
@@ -3430,21 +3425,21 @@ class Assistant(QMainWindow):
         toggle.main()
 
     def start_default_command(self, command, action, type_command):
-        debug_logger.info(f"[start_default_command] Получены аргументы: {command}, {action}, {type_command}")
+        debug_logger.info(f"[MAIN][start_default_command] Получены аргументы: {command}, {action}, {type_command}")
         self.global_handler_command(command, action, type_command)
-        debug_logger.info(f"[start_default_command] Команда {command} выполнена с действием {action}")
+        debug_logger.info(f"[MAIN][start_default_command] Команда {command} выполнена с действием {action}")
 
     def _open_widget_signal(self):
         try:
             gui_signals.open_widget_signal.emit()
         except Exception as e:
-            debug_logger.error(f"Ошибка при запуске сигнала виджета: {e}")
+            debug_logger.error(f"[MAIN] Ошибка при запуске сигнала виджета: {e}")
 
     def _close_widget_signal(self):
         try:
             gui_signals.close_widget_signal.emit()
         except Exception as e:
-            debug_logger.error(f"Ошибка при запуске сигнала виджета (на закрытие): {e}")
+            debug_logger.error(f"[MAIN] Ошибка при запуске сигнала виджета (на закрытие): {e}")
 
     def open_widget(self, is_auto_start=False):
         QTimer.singleShot(100, lambda: self._show_smart_widget(is_auto_start))
@@ -3477,7 +3472,7 @@ class Assistant(QMainWindow):
                 self.get_reaction(name="approve_folder")
 
         except Exception as e:
-            debug_logger.error(f"Ошибка при открытии виджета: {str(e)}")
+            debug_logger.error(f"[MAIN] Ошибка при открытии виджета: {str(e)}")
             self.show_notification_message(f"Ошибка при открытии виджета: {str(e)}")
 
     def _close_smart_widget(self):
@@ -3492,7 +3487,7 @@ class Assistant(QMainWindow):
         """Слот вызывается когда виджет уничтожен"""
         if hasattr(self, 'widget_window'):
             self.widget_window = None
-        debug_logger.info("Виджет полностью уничтожен")
+        debug_logger.info("[MAIN] Виджет полностью уничтожен")
 
     def close_widget(self):
         try:
@@ -3502,7 +3497,7 @@ class Assistant(QMainWindow):
         except Exception as e:
             self.get_reaction(detail=True, name="error_file")
             self.show_notification_message(f"Ошибка при закрытии виджета (close_widget): {e}")
-            debug_logger.error(f"Ошибка при закрытии виджета (close_widget): {e}")
+            debug_logger.error(f"[MAIN] Ошибка при закрытии виджета (close_widget): {e}")
 
     def restore_and_hide(self):
         """Показываем окно и сразу скрываем — чтобы оно стало 'живым'"""
@@ -3515,40 +3510,14 @@ class Assistant(QMainWindow):
     def open_folder_shortcuts(self):
         """Обработка нажатия кнопки 'Открыть папку с ярлыками'"""
         folder_path = get_path('user_settings', "links for assist")
-        debug_logger.info(f"Открытие папки ярлыков , {folder_path}")
-
-        # Проверяем, существует ли папка
-        if os.path.exists(folder_path) and os.path.isdir(folder_path):
-            os.startfile(folder_path)  # Открываем папку
-        else:
-            # Если папка не существует, создаем её
-            try:
-                os.makedirs(folder_path)  # Создаем папку
-                logger.info(f'Папка "{folder_path}" была создана.')
-                debug_logger.info(f'Папка "{folder_path}" была создана.')
-                os.startfile(folder_path)  # Открываем папку после создания
-            except Exception as e:
-                logger.error(f'Ошибка при создании папки: {e}')
-                debug_logger.error(f'Ошибка при создании папки: {e}')
+        debug_logger.info(f"[MAIN] Открытие папки ярлыков , {folder_path}")
+        os.startfile(folder_path)
 
     def open_folder_screenshots(self):
         """Обработка нажатия кнопки 'Открыть папку с ярлыками'"""
         folder_path = get_path('user_settings', "screenshots")
-        debug_logger.info(f"Открытие папки скриншотов, {folder_path}")
-
-        # Проверяем, существует ли папка
-        if os.path.exists(folder_path) and os.path.isdir(folder_path):
-            os.startfile(folder_path)  # Открываем папку
-        else:
-            # Если папка не существует, создаем её
-            try:
-                os.makedirs(folder_path)  # Создаем папку
-                logger.info(f'Папка "{folder_path}" была создана.')
-                debug_logger.info(f'Папка "{folder_path}" была создана.')
-                os.startfile(folder_path)  # Открываем папку после создания
-            except Exception as e:
-                logger.error(f'Ошибка при создании папки: {e}')
-                debug_logger.error(f'Ошибка при создании папки: {e}')
+        debug_logger.info(f"[MAIN] Открытие папки скриншотов, {folder_path}")
+        os.startfile(folder_path)
 
     def open_settings_of_tray(self):
         if self.isVisible():
@@ -5192,7 +5161,7 @@ class LoginWindow(QWidget):
             self.show_message("Нет активной сессии 2FA", "error")
             return
         
-        debug_logger.info(f"🔄 Запрос повторной отправки с токеном: {self.auth.temp_2fa_token}")
+        debug_logger.info(f"Запрос повторной отправки с токеном: {self.auth.temp_2fa_token}")
             
         self.resend_2fa_btn.setEnabled(False)
         self.resend_2fa_btn.setText("Отправка...")

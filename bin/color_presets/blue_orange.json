@@ -323,5 +323,13 @@
     },
     "CreateRunWidgets": {
         "background-color": "transparent"
+    },
+    "TitleBarPanel": {
+        "background-color": "transparent",
+        "border-bottom": "1px solid qlineargradient(x1:0.96, y1:0.30, x2:0.04, y2:0.70, stop:0 #547cff, stop:1 #f19a72)"
+    },
+    "AudioPlayerWidget": {
+        "background-color": "transparent",
+        "border-top": "1px solid qlineargradient(x1:0.96, y1:0.30, x2:0.04, y2:0.70, stop:0 #547cff, stop:1 #f19a72)"
     }
 }

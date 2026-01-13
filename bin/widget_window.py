@@ -1,18 +1,21 @@
 import json
 import os
 import subprocess
+from threading import Thread
+from queue import Queue
 import wmi
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, \
     QDialog, QLabel, QGridLayout, QStackedWidget, QSizePolicy, QTextEdit, QApplication
 from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve
 
-from bin.apply_color_methods import ApplyColor
+from bin.apply_color_methods import main_apply_colors
 from bin.audio_control import controller
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.frosted_widget import SnowOverlay
 from bin.function_list_main import shutdown_windows
 from bin.lists import fonts_list
+from bin.sensors_monitor import SensorTab
 from bin.signals import color_signal, widget_btns_signal
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from logging_config import debug_logger
@@ -25,26 +28,33 @@ class WindowStateManager:
         self.default_state = {
             "window_position": {"x": 100, "y": 100},
             "window_size": {"width": 300, "height": 350},
+            "delay": 10,
+            "wait_to_delay": 1,
             "is_compact": False,
             "is_pinned": False,
             "is_locked": False, 
             "is_snow": True
         }
+        self.save_state(self.load_state())
 
         # Создаем файл при инициализации, если его нет
         if not os.path.exists(self.config_path):
             self.save_state(self.default_state)
 
     def load_state(self):
-        """Загружает состояние окна из JSON файла"""
+        """Загружает состояние, добавляя отсутствующие поля из default_state"""
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
-                state = json.load(f)
-                # Объединяем с default_state для обратной совместимости
-                return {**self.default_state, **state}
-        except (json.JSONDecodeError, IOError) as e:
-            debug_logger.error(f"Ошибка загрузки состояния: {e}, используются значения по умолчанию")
-            return self.default_state.copy()
+                existing_state = json.load(f)
+        except:
+            existing_state = {}
+
+        result = self.default_state.copy()
+
+        for key, value in existing_state.items():
+            result[key] = value
+        
+        return result
 
     def save_state(self, state):
         """Сохраняет состояние окна в JSON файл"""
@@ -55,7 +65,7 @@ class WindowStateManager:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(state, f, indent=4)
         except IOError as e:
-            debug_logger.error(f"Ошибка сохранения состояния: {e}")
+            debug_logger.error(f"[PANEL] Ошибка сохранения состояния: {e}")
 
     def save_window_state(self, window, pos_x=None, pos_y=None):
         """Специальный метод для сохранения состояния QWidget"""
@@ -119,11 +129,8 @@ class WindowStateManager:
         
     def set_is_snow(self, value):
         """Устанавливает новое значение для is_snow"""
-        # Загружаем текущее состояние
         state = self.load_state()
-        # Обновляем значение
         state["is_snow"] = bool(value)
-        # Сохраняем обратно
         self.save_state(state)
 
     def get_is_snow(self):
@@ -148,10 +155,11 @@ class SmartWidget(QWidget):
         widget_btns_signal.buttons_updated.connect(self.repaint_main_buttons)
         self.buttons_data = {}
         self.player_buttons = {}
+        self.title_buttons = {}
         self.is_paused = False
         self.is_muted = False
         self.snow_on_label = None
-
+        self.is_height_compact = False
         color_signal.color_changed.connect(self.update_colors)
         self.notes_file = get_path("user_settings", "notes.txt")
         self.widget_state = get_path("user_settings", "widget_state.json")
@@ -167,7 +175,6 @@ class SmartWidget(QWidget):
         self.pause_track = get_path("bin", "icons", "pause.svg")
         self.play_track = get_path("bin", "icons", "play.svg")
         self.pin_path = get_path("bin", "icons", "pin.svg")
-        self.active_pin_path = get_path("bin", "icons", "active_pin.svg")
         self.lock_path = get_path("bin", "icons", "lock.svg")
         self.partial_lock_path = get_path("bin", "icons", "partial_lock.svg")
         self.unlock_path = get_path("bin", "icons", "unlock.svg")
@@ -178,9 +185,25 @@ class SmartWidget(QWidget):
         self.youtube_path = get_path("bin", "icons", "logo-youtube.svg")
         self.ohm_path = self.assistant.ohm_path
         self.ohm_namespace = "root\\OpenHardwareMonitor"
-
+        self.cpu_path = get_path("bin", "icons", "hardware-monitor", "cpu.svg")
+        self.gpu_path = get_path("bin", "icons", "hardware-monitor", "gpu.svg")
+        self.ram_path = get_path("bin", "icons", "hardware-monitor", "ram.svg")
+        self.rate_path = get_path("bin", "icons", "hardware-monitor", "rate.svg")
+        self.thermo_path = get_path("bin", "icons", "hardware-monitor", "thermo.svg")
+        self.percent_path = get_path("bin", "icons", "hardware-monitor", "percent.svg")
+        self.power_monitor_path = get_path("bin", "icons", "hardware-monitor", "power.svg")
+        self.hardware_monitor_svg = None
+        self.icon_paths = {
+            'cpu': self.cpu_path,
+            'gpu': self.gpu_path,
+            'ram': self.ram_path,
+            'thermo': self.thermo_path,
+            'percent': self.percent_path,
+            'power': self.power_monitor_path,
+            'clock': self.rate_path
+        }
         # Стили
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
 
@@ -195,6 +218,8 @@ class SmartWidget(QWidget):
         self.is_compact = saved_state["is_compact"]
         self.is_pinned = saved_state["is_pinned"]
         self.is_snow = saved_state["is_snow"]
+        self.delay = saved_state["delay"] * 1000
+        self.wait_to_delay = saved_state["wait_to_delay"] * 1000
         self.is_locked = 0
         self.check_widget_pos()
 
@@ -209,10 +234,12 @@ class SmartWidget(QWidget):
         base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
         if self.is_pinned:
             base_flags |= Qt.WindowType.WindowStaysOnTopHint
-            self.pin_svg.load(self.active_pin_path)
             self.style_manager.apply_color_svg(self.pin_svg, strength=0.95)
+        else:
+            base_flags &= ~Qt.WindowType.WindowStaysOnTopHint
+            self.style_manager.apply_color_svg(self.pin_svg, strength=0.95, specified_color="#ffffff")
         self.setWindowFlags(base_flags)
-        
+
         self.style_manager.apply_color_svg(self.resize_svg, strength=0.95, specified_color="#FFFFFF")
         self.style_manager.apply_color_svg(self.close_svg, strength=0.95, specified_color="#FFFFFF")
 
@@ -221,10 +248,6 @@ class SmartWidget(QWidget):
         self.is_dragging = False
         self.current_position = {"x": 0, "y": 0}
 
-        # Таймеры
-        self.sensor_timer = QTimer()
-        self.sensor_timer.timeout.connect(self.update_sensors)
-
         self.load_notes()
         self.animation = None
 
@@ -232,6 +255,12 @@ class SmartWidget(QWidget):
         self.update_time()
         self.update_ui_for_mode()
         self.update_snow_state()
+
+        self.init_delay_timers()
+        QTimer.singleShot(500, lambda: (
+            self.hide_delay_timer.start(self.wait_to_delay) 
+            if hasattr(self, 'wait_to_delay') else None
+        ))
         
     def update_snow_state(self):
         """Обновляет состояние снега через show/hide"""
@@ -310,6 +339,9 @@ class SmartWidget(QWidget):
                     border-radius: 10px;
                 }}
             """)
+        
+        self.setMouseTracking(True)
+        self.main_container.setMouseTracking(True)
 
         self.content_layout = QVBoxLayout(self.main_container)
         self.content_layout.setContentsMargins(5, 5, 5, 5)
@@ -328,9 +360,11 @@ class SmartWidget(QWidget):
         self.audio_widget = self.create_audio_controls()
         self.content_layout.addWidget(self.audio_widget, alignment=Qt.AlignmentFlag.AlignCenter)
 
+        self.content_layout.addStretch()
+
         # Кнопка-тогл для переключения показа основных кнопок
         self.hide_btns = QPushButton()
-        self.hide_btns.setStyleSheet("height: 5px; border-radius: 2px; background: transparent")
+        self.hide_btns.setStyleSheet("height: 7px; border-radius: 2px; background: transparent")
         self.hide_btns.clicked.connect(self.hide_main_btns)
         self.content_layout.addWidget(self.hide_btns)
 
@@ -344,21 +378,61 @@ class SmartWidget(QWidget):
 
         self.layout().addWidget(self.main_container)
 
+        self.switch_tab(1)
         if not self.is_compact:
             self.switch_tab(1)
 
+    def init_delay_timers(self):
+        # Таймер для автоскрытия
+        self.hide_timer = QTimer()
+        self.hide_timer.setSingleShot(True)
+        self.hide_timer.timeout.connect(self.auto_hide_buttons)
+        
+        # Флаг чтобы не скрывать при активном использовании
+        self.mouse_over_widget = False
+        
+        # Таймер задержки (чтобы не сразу скрывать после ухода мыши)
+        self.hide_delay_timer = QTimer()
+        self.hide_delay_timer.setSingleShot(True)
+        self.hide_delay_timer.timeout.connect(self.start_hide_countdown)
+
+        # Флаг включения автоскрытия
+        self.auto_hide_enabled = True
+
+    def enterEvent(self, event):
+        """Курсор вошел в область виджета"""
+        self.mouse_over_widget = True
+        self.hide_timer.stop()
+        self.hide_delay_timer.stop()
+
+        if self.is_height_compact:
+            self.hide_main_btns()
+        
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Курсор вышел из области виджета"""
+        self.mouse_over_widget = False
+        if not self.is_height_compact and self.auto_hide_enabled:
+            self.hide_delay_timer.start(self.wait_to_delay)
+        super().leaveEvent(event)
+
+    def update_delay(self):
+        state = self.state_manager.load_state()
+        self.delay = state["delay"] * 1000
+
+        self.auto_hide_enabled = (self.delay > 0)
+        
+        if not self.auto_hide_enabled:
+            self.hide_timer.stop()
+            self.hide_delay_timer.stop()
+        elif self.hide_timer.isActive():
+            self.hide_timer.start(self.delay)
+
     def create_title_bar(self):
         title_bar = QWidget()
-        title_bar.setObjectName("TitleBar")
+        title_bar.setObjectName("TitleBarPanel")
         title_bar.setFixedHeight(25)
-        title_bar.setStyleSheet("""
-            #TitleBar {
-                background: transparent;
-                border-top-left-radius: 5px;
-                border-top-right-radius: 5px;
-                border-bottom: 1px solid rgba(70, 70, 70, 100);
-            }
-        """)
         layout = QHBoxLayout(title_bar)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -374,89 +448,40 @@ class SmartWidget(QWidget):
 
         clock_layout.addWidget(self.clock_title)
         layout.addWidget(self.clock_widget)
+        layout.addStretch()
 
         # Кнопки
-        self.pin_btn = QPushButton()
-        self.pin_btn.setFixedSize(20, 20)
-        self.pin_btn.setToolTip("Поверх других окон")
-        self.pin_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-            }
-            QPushButton:hover {
-                background: rgba(40, 110, 230, 80%);
-            }
-        """)
-        self.pin_svg = CustomSvgWidget(self.pin_path, self.pin_btn)
-        self.pin_svg.setFixedSize(13, 13)
-        self.pin_svg.move(3, 3)
-        self.pin_svg.setStyleSheet("background: transparent; border: none;")
-        self.pin_btn.clicked.connect(self.pin_widget)
-        self.pin_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.title_config = {
+            "pin_btn": {"icon": self.pin_path, 'tooltip': 'Поверх других окон', "action": self.pin_widget},
+            "lock_btn": {"icon": self.unlock_path, 'tooltip': 'Запретить перетаскивание', "action": self.lock_state},
+            "resize_btn": {"icon": self.resize_path, 'tooltip': 'Компактный режим', "action": self.resize_widget},
+            "close_btn": {"icon": self.close_path, 'tooltip': 'Закрыть', "action": self.close},
+        }
 
-        self.lock_btn = QPushButton()
-        self.lock_btn.setFixedSize(20, 20)
-        self.lock_btn.setToolTip("Запретить перетаскивание")
-        self.lock_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-            }
-            QPushButton:hover {
-                background: rgba(40, 110, 230, 80%);
-            }
-        """)
-        self.lock_svg = CustomSvgWidget(self.unlock_path, self.lock_btn)
-        self.lock_svg.setFixedSize(13, 13)
-        self.lock_svg.move(3, 3)
-        self.lock_svg.setStyleSheet("background: transparent; border: none;")
-        self.lock_btn.clicked.connect(self.lock_state)
-        self.lock_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-
-        self.resize_btn = QPushButton()
-        self.resize_btn.setFixedSize(20, 20)
-        self.resize_btn.setToolTip("Компактный режим")
-        self.resize_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-            }
-            QPushButton:hover {
-                background: rgba(40, 110, 230, 80%);
-            }
-        """)
-        self.resize_svg = CustomSvgWidget(self.resize_path, self.resize_btn)
-        self.resize_svg.setFixedSize(13, 13)
-        self.resize_svg.move(3, 3)
-        self.resize_svg.setStyleSheet("background: transparent; border: none;")
-        self.resize_btn.clicked.connect(self.resize_widget)
-
-        self.close_btn = QPushButton()
-        self.close_btn.setFixedSize(20, 20)
-        self.close_btn.setToolTip("Закрыть")
-        self.close_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                border: none;
-            }
-            QPushButton:hover {
-                background: rgba(230, 37, 37, 80%);
-            }
-        """)
-        self.close_svg = CustomSvgWidget(self.close_path, self.close_btn)
-        self.close_svg.setFixedSize(13, 13)
-        self.close_svg.move(3, 3)
-        self.close_svg.setStyleSheet("background: transparent; border: none;")
-        self.close_btn.clicked.connect(self.close)
-
-        # Применяем цвет
-        for svg in [self.pin_svg, self.lock_svg, self.resize_svg, self.close_svg]:
+        for btn_name, config in self.title_config.items():
+            btn = QPushButton()
+            btn.setFixedSize(18, 18)
+            btn.setToolTip(config['tooltip'])
+            self.back_btn_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=150)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    border: none;
+                }}
+                QPushButton:hover {{
+                    background: {self.back_btn_color};
+                    border-radius: 5px;
+                }}
+            """)
+            svg = CustomSvgWidget(config['icon'], btn)
+            svg.setFixedSize(14, 14)
+            svg.move(2, 2)
+            self.title_buttons[btn_name] = {'button': btn, 'svg': svg}
             self.style_manager.apply_color_svg(svg, strength=0.90)
-
-        # Добавляем в layout
-        layout.addStretch()
-        for btn in [self.pin_btn, self.lock_btn, self.resize_btn, self.close_btn]:
+            btn.clicked.connect(config['action'])
+            svg_attr_name = btn_name.replace('_btn', '')
+            setattr(self, svg_attr_name + "_svg", svg)
+            setattr(self, btn_name, btn)
             layout.addWidget(btn)
 
         return title_bar
@@ -520,7 +545,7 @@ class SmartWidget(QWidget):
             custom_buttons = settings_data.get("custom_buttons", [])
             
         except Exception as e:
-            debug_logger.error(f"Ошибка чтения настроек: {e}")
+            debug_logger.error(f"[PANEL] Ошибка чтения настроек: {e}")
             buttons_order = {}
             custom_buttons = []
 
@@ -546,10 +571,10 @@ class SmartWidget(QWidget):
         # Создаем кнопки в порядке из buttons_order
         for checkbox_key, is_visible in buttons_order.items():
             if not is_visible:
-                continue  # Пропускаем скрытые
+                continue
                 
             if checkbox_key not in buttons_config:
-                continue  # Пропускаем несуществующие
+                continue
                 
             config = buttons_config[checkbox_key]
             btn = QPushButton()
@@ -592,6 +617,7 @@ class SmartWidget(QWidget):
 
     def create_audio_controls(self):
         widget = QWidget()
+        widget.setObjectName("AudioPlayerWidget")
         widget.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 5, 0, 0)
@@ -606,8 +632,7 @@ class SmartWidget(QWidget):
         layout.addStretch()
         for btn_name, config in player_config.items():
             btn = QPushButton()
-            btn.setObjectName("BTNonPanel")
-            btn.setFixedSize(25, 20)
+            btn.setFixedSize(22, 20)
             btn.setToolTip(config['tooltip'])
             self.back_btn_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=200)
             btn.setStyleSheet(f"""
@@ -621,72 +646,13 @@ class SmartWidget(QWidget):
                 }}
             """)
             svg = CustomSvgWidget(config['icon'], btn)
-            svg.setFixedSize(20, 20)
-            svg.move(3, 0)
+            svg.setFixedSize(22, 20)
+            svg.move(0, 0)
             self.player_buttons[btn_name] = {'button': btn, 'svg': svg}
             self.style_manager.apply_color_svg(svg, strength=0.90)
             btn.clicked.connect(config['action'])
             setattr(self, btn_name, btn)
             layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        return widget
-
-    def create_sensors_tab(self):
-        """Создаёт вкладку с датчиками (CPU, GPU, RAM)"""
-        widget = QWidget()
-        widget.setObjectName("SensorsTab")
-        widget.setStyleSheet("background: transparent; color: white;")
-
-        layout = QGridLayout(widget)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(5)
-
-        # Заголовки
-        cpu_label = QLabel("CPU")
-        gpu_label = QLabel("GPU")
-        ram_label = QLabel("RAM")
-
-        for label in [cpu_label, gpu_label, ram_label]:
-            label.setStyleSheet("font-weight: bold; color: #ddd;")
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        layout.addWidget(cpu_label, 0, 0, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(gpu_label, 0, 1, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(ram_label, 0, 2, Qt.AlignmentFlag.AlignCenter)
-
-        # CPU датчики
-        self.cpu_temp_label = QLabel("🌡--°C")
-        self.cpu_core_label = QLabel("📈--%")
-        self.cpu_watt_label = QLabel("⚡--W")
-        self.cpu_clock_label = QLabel("⚙--МГц")
-
-        layout.addWidget(self.cpu_temp_label, 1, 0, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.cpu_core_label, 2, 0, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.cpu_watt_label, 3, 0, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.cpu_clock_label, 4, 0, Qt.AlignmentFlag.AlignCenter)
-
-        # GPU датчики
-        self.gpu_temp_label = QLabel("🌡--°C")
-        self.gpu_core_label = QLabel("📈--%")
-        self.gpu_watt_label = QLabel("⚡--W")
-        self.gpu_clock_label = QLabel("⚙--МГц")
-
-        layout.addWidget(self.gpu_temp_label, 1, 1, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.gpu_core_label, 2, 1, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.gpu_watt_label, 3, 1, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.gpu_clock_label, 4, 1, Qt.AlignmentFlag.AlignCenter)
-
-        # RAM датчики
-        self.ram_usage_label = QLabel("💾--Гб")
-        self.ram_over_label = QLabel("💾--Гб")
-
-        layout.addWidget(self.ram_usage_label, 1, 2, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.ram_over_label, 2, 2, Qt.AlignmentFlag.AlignCenter)
-
-        # Пустые ячейки для выравнивания
-        empty = QLabel("")
-        layout.addWidget(empty, 3, 2)
-        layout.addWidget(QLabel(""), 4, 2)
 
         return widget
 
@@ -736,8 +702,14 @@ class SmartWidget(QWidget):
         self.tab_content.setStyleSheet("background: transparent; padding: 0 0 20px 0;")
 
         # Вкладка датчиков
-        self.sensors_tab = self.create_sensors_tab()
+        self.sensors_tab = SensorTab(
+            icon_paths=self.icon_paths,
+            ohm_path=self.ohm_path
+        )
         self.tab_content.addWidget(self.sensors_tab)
+
+        self.sensors_tab.showEvent = self._on_sensor_tab_show
+        self.sensors_tab.hideEvent = self._on_sensor_tab_hide
 
         # Вкладка заметок
         self.notes_tab = QTextEdit("Тут можно писать заметки")
@@ -757,11 +729,9 @@ class SmartWidget(QWidget):
         self.notes_save_timer.timeout.connect(self.save_notes)
         self.notes_tab.textChanged.connect(self.start_notes_save_timer)
 
-        # Собираем
         layout.addWidget(tab_buttons)
         layout.addWidget(self.tab_content)
 
-        # Подключаем переключение
         self.btn_sensors.clicked.connect(lambda: self.switch_tab(0))
         self.btn_notes.clicked.connect(lambda: self.switch_tab(1))
 
@@ -789,32 +759,61 @@ class SmartWidget(QWidget):
             else:
                 content_layout.addWidget(self.buttons_widget, alignment=Qt.AlignmentFlag.AlignCenter)
         except Exception as e:
-            debug_logger.error(f"Ошибка в relayout_buttons: {e}")
+            debug_logger.error(f"[PANEL] Ошибка в relayout_buttons: {e}")
 
     # Методы для перемещения окна
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and not getattr(self, 'is_locked', 0):
             self.old_pos = event.globalPos()
-            self.is_dragging = False  # Флаг для отслеживания начала перемещения
+            self.is_dragging = False
+
+            self.auto_hide_enabled = False
+            self.hide_timer.stop()
+            self.hide_delay_timer.stop()
+            
+            event.accept()
+        else:
+            super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if hasattr(self, 'old_pos') and self.old_pos and not getattr(self, 'is_locked', 0):
-            delta = event.globalPos() - self.old_pos
-            new_pos = self.pos() + delta
-            self.move(new_pos)
-            self.old_pos = event.globalPos()
+        if event.buttons() & Qt.LeftButton:
+            if hasattr(self, 'old_pos') and self.old_pos and not getattr(self, 'is_locked', 0):
+                delta = event.globalPos() - self.old_pos
 
-            # Сохраняем текущие координаты в переменные (но не в файл)
-            self.current_position = {"x": new_pos.x(), "y": new_pos.y()}
-            self.is_dragging = True
+                # Если движение достаточно большое - начинаем перетаскивание
+                if delta.manhattanLength() > 2:
+                    new_pos = self.pos() + delta
+                    self.move(new_pos)
+                    self.old_pos = event.globalPos()
+                    
+                    self.current_position = {"x": new_pos.x(), "y": new_pos.y()}
+                    self.is_dragging = True
+                    
+                    event.accept()
+                    return
+        super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and self.is_dragging:
-            # Сохраняем окончательные координаты в файл
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.finish_dragging()
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
+
+    def finish_dragging(self):
+        """Завершает перетаскивание"""
+        if self.is_dragging:
+
             state = self.state_manager.load_state()
             state["window_position"] = self.current_position
             self.state_manager.save_state(state)
-            self.is_dragging = False
+
+        self.is_dragging = False
+        self.old_pos = None
+
+        QTimer.singleShot(100, lambda: setattr(self, 'auto_hide_enabled', True))
+        if not self.is_height_compact:
+            QTimer.singleShot(150, self.start_hide_countdown)
             
     def check_widget_pos(self, min_visibility_percent=15):
         """Проверяет положение виджета используя сохраненные данные"""
@@ -826,8 +825,8 @@ class SmartWidget(QWidget):
             saved_width = state["window_size"]["width"]
             saved_height = state["window_size"]["height"]
             
-            debug_logger.info(f"Сохраненная позиция: ({saved_x}, {saved_y})")
-            debug_logger.info(f"Сохраненный размер: {saved_width}x{saved_height}")
+            debug_logger.info(f"[PANEL] Сохраненная позиция: ({saved_x}, {saved_y})")
+            debug_logger.info(f"[PANEL] Сохраненный размер: {saved_width}x{saved_height}")
             
             # Создаем прямоугольник виджета на основе сохраненных данных
             widget_rect = QRect(saved_x, saved_y, saved_width, saved_height)
@@ -839,7 +838,7 @@ class SmartWidget(QWidget):
             
             for screen in screens:
                 screen_geometry = screen.availableGeometry()
-                debug_logger.info(f"Экран: {screen_geometry}")
+                debug_logger.info(f"[PANEL] Экран: {screen_geometry}")
                 
                 if screen_geometry.intersects(widget_rect):
                     # Вычисляем сколько процентов виджета видно
@@ -848,26 +847,26 @@ class SmartWidget(QWidget):
                     total_area = saved_width * saved_height
                     visibility_percent = (visible_area / total_area) * 100
                     
-                    debug_logger.info(f"Видимость на экране: {visibility_percent:.1f}%")
+                    debug_logger.info(f"[PANEL] Видимость на экране: {visibility_percent:.1f}%")
                     
                     # Запоминаем максимальную видимость
                     if visibility_percent > max_visibility:
                         max_visibility = visibility_percent
                         best_screen = screen
             
-            debug_logger.info(f"Максимальная видимость виджета: {max_visibility:.1f}%")
+            debug_logger.info(f"[PANEL] Максимальная видимость виджета: {max_visibility:.1f}%")
             
             # Проверяем достаточно ли видно
             if max_visibility < min_visibility_percent:
-                debug_logger.info(f"Видимость менее {min_visibility_percent}%! Центрируем...")
+                debug_logger.info(f"[PANEL] Видимость менее {min_visibility_percent}%! Центрируем...")
                 self.center_widget()
                 return False
             else:
-                debug_logger.info(f"Виджет в пределах экрана (видимость: {max_visibility:.1f}%)")
+                debug_logger.info(f"[PANEL] Виджет в пределах экрана (видимость: {max_visibility:.1f}%)")
                 return True
                 
         except Exception as e:
-            debug_logger.info(f"Ошибка при проверке положения виджета: {e}")
+            debug_logger.info(f"[PANEL] Ошибка при проверке положения виджета: {e}")
             return False
 
     def center_widget(self):
@@ -911,7 +910,7 @@ class SmartWidget(QWidget):
         """Применить шрифт с индивидуальным размером для каждого семейства"""
         font_size = self.get_font_size_for_family(font_name)
 
-        debug_logger.info(f"Применение шрифта: {font_family} с размером: {font_size}")
+        debug_logger.info(f"[PANEL] Применение шрифта: {font_family} с размером: {font_size}")
 
         styles = f"""
             /* Основные часы */
@@ -933,7 +932,6 @@ class SmartWidget(QWidget):
             }}
         """
 
-        # ✅ ОБЯЗАТЕЛЬНО УСТАНАВЛИВАЕМ objectName ПЕРЕД применением стилей
         if hasattr(self, 'clock_mini') and not self.clock_mini.objectName():
             self.clock_mini.setObjectName("clock_mini")
 
@@ -943,7 +941,6 @@ class SmartWidget(QWidget):
         if hasattr(self, 'clock_widget') and not self.clock_widget.objectName():
             self.clock_widget.setObjectName("clock_widget")
 
-        # ✅ ПРИМЕНЯЕМ СТИЛИ К КОНКРЕТНЫМ ВИДЖЕТАМ
         if hasattr(self, 'clock_mini'):
             self.clock_mini.setStyleSheet(styles)
 
@@ -952,33 +949,23 @@ class SmartWidget(QWidget):
 
     def load_font_clock(self):
         try:
-            # Загружаем состояние
             state = self.state_manager.load_state()
-
-            # Получаем название шрифта из файла
             font_name = state.get("font_family", "digital")
 
-            # ✅ Ищем путь к шрифту в fonts_list
             if font_name in self.fonts_list:
                 font_path = self.fonts_list[font_name]
-
-                # Загружаем шрифт
                 font_id = QFontDatabase.addApplicationFont(font_path)
                 if font_id != -1:
                     font_families = QFontDatabase.applicationFontFamilies(font_id)
                     if font_families:
-                        font_family_name = font_families[0]  # переименовали переменную
-
+                        font_family_name = font_families[0]
                         self.apply_font_styles(font_family_name, font_name)
-
-                        debug_logger.info(f"Шрифт '{font_name}' успешно загружен и применен")
+                        debug_logger.info(f"[PANEL] Шрифт '{font_name}' успешно загружен и применен")
                         return True
 
         except Exception as e:
-            debug_logger.error(f"Ошибка в load_font_clock: {e}")
-            # Fallback через стили
+            debug_logger.error(f"[PANEL] Ошибка в load_font_clock: {e}")
             self.apply_fallback_styles()
-
         return False
 
     def apply_fallback_styles(self):
@@ -1028,7 +1015,7 @@ class SmartWidget(QWidget):
             # Применяем цвет к SVG
             self.style_manager.apply_color_svg(svg, strength=0.95)
         except Exception as e:
-            debug_logger.error(f"Ошибка в toggle_mute: {e}")
+            debug_logger.error(f"[PANEL] Ошибка в toggle_mute: {e}")
 
     def pin_widget(self):
         try:
@@ -1040,11 +1027,10 @@ class SmartWidget(QWidget):
             # Обновляем флаг поверх окон
             if self.is_pinned:
                 flags |= Qt.WindowType.WindowStaysOnTopHint
-                self.pin_svg.load(self.active_pin_path)
                 self.style_manager.apply_color_svg(self.pin_svg, strength=0.95)
             else:
                 flags &= ~Qt.WindowType.WindowStaysOnTopHint
-                self.pin_svg.load(self.pin_path)
+                self.style_manager.apply_color_svg(self.pin_svg, strength=0.95, specified_color="#ffffff")
 
             # Применяем флаги и обновляем окно
             self.setWindowFlags(flags)
@@ -1052,7 +1038,7 @@ class SmartWidget(QWidget):
 
             self.state_manager.save_window_state(self)
         except Exception as e:
-            debug_logger.error(f"Ошибка {e}")
+            debug_logger.error(f"[PANEL] Ошибка pin widget: {e}")
 
     def update_ui_for_mode(self):
         """Обновляет UI в зависимости от режима"""
@@ -1075,6 +1061,7 @@ class SmartWidget(QWidget):
         self.hide_main_btns()
         self.recreate_buttons()
         self.load_font_clock()
+        self.update_delay()
         self.hide_main_btns()
         self.toggle_snow()
 
@@ -1083,7 +1070,6 @@ class SmartWidget(QWidget):
         if not hasattr(self, 'buttons_widget') or not self.buttons_widget:
             return
 
-        # Находим позицию кнопок в layout
         button_index = -1
         for i in range(self.content_layout.count()):
             item = self.content_layout.itemAt(i)
@@ -1094,28 +1080,40 @@ class SmartWidget(QWidget):
         if button_index == -1:
             return
 
-        # Сохраняем старый виджет
         old_buttons_widget = self.buttons_widget
 
-        # Создаем новые кнопки
         if self.is_compact:
             self.buttons_widget = self.create_main_buttons(vertical=True)
         else:
             self.buttons_widget = self.create_main_buttons(vertical=False)
 
-        # Вставляем новые кнопки на ту же позицию
         self.content_layout.insertWidget(button_index, self.buttons_widget, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        # Удаляем старые кнопки
         self.content_layout.removeWidget(old_buttons_widget)
         old_buttons_widget.deleteLater()
 
         if self.is_locked != 0:
             self.buttons_widget.setEnabled(False)
 
+    def start_hide_countdown(self):
+        """Запускает отсчет до скрытия кнопок"""
+        if (self.auto_hide_enabled and 
+            not self.mouse_over_widget and 
+            not self.is_height_compact):
+            
+            self.hide_timer.start(self.delay)
+
+    def auto_hide_buttons(self):
+        """Автоматически скрывает кнопки"""
+        if self.auto_hide_enabled:
+            self.hide_main_btns()
+
     def hide_main_btns(self):
         """Переключает компактный режим по высоте (только для скрытия кнопок)"""
         try:
+            self.hide_timer.stop()
+            self.hide_delay_timer.stop()
+
             if self.animation and self.animation.state() == QPropertyAnimation.State.Running:
                 self.animation.stop()
 
@@ -1140,7 +1138,7 @@ class SmartWidget(QWidget):
             self.animation = QPropertyAnimation(self, b"geometry")
             self.animation.setDuration(300)
             self.animation.setStartValue(old_geometry)
-            self.animation.setEndValue(QRect(new_x, old_geometry.y(), new_width, 70))
+            self.animation.setEndValue(QRect(new_x, old_geometry.y(), new_width, 112))
             self.animation.setEasingCurve(QEasingCurve.Type.InBack)
 
             def on_animation_finished():
@@ -1148,9 +1146,11 @@ class SmartWidget(QWidget):
 
             self.animation.finished.connect(on_animation_finished)
             self.animation.start()
+            if not self.is_height_compact:
+                QTimer.singleShot(1000, self.start_hide_countdown)
 
         except Exception as e:
-            debug_logger.error(f"Ошибка в toggle_compact_height_mode: {e}")
+            debug_logger.error(f"[PANEL] Ошибка в toggle_compact_height_mode: {e}")
 
     def resize_widget(self):
         """Переключает между компактным и нормальным режимом"""
@@ -1162,8 +1162,10 @@ class SmartWidget(QWidget):
                 self.animation.stop()
 
             old_geometry = self.geometry()
-            new_width = 90 if not self.is_compact else max(300, self.buttons_widget.height() + 20) # 20px это отступы
-            new_height = self.buttons_widget.width() + 115 if not self.is_compact else 300 # 115px отступы и другие виджеты
+            # Сначала вычисляются величины исходя из текущей геометрии, а уже после изменяется флаг self.in_compact
+            # Поэтому условие инвертированное "if not"
+            new_width = 82 if not self.is_compact else max(300, self.buttons_widget.height() + 20) # 20px это отступы
+            new_height = self.buttons_widget.width() + 100 if not self.is_compact else 300 # 100px отступы и другие виджеты
 
             # Сохраняем правый край
             right_edge = old_geometry.x() + old_geometry.width()
@@ -1190,7 +1192,7 @@ class SmartWidget(QWidget):
             self.animation.start()
 
         except Exception as e:
-            debug_logger.error(f"Ошибка в resize_widget: {e}")
+            debug_logger.error(f"[PANEL] Ошибка в resize_widget: {e}")
 
     def shutdown_system(self):
         """Выключает компьютер после подтверждения"""
@@ -1281,7 +1283,7 @@ class SmartWidget(QWidget):
             self.confirm_dialog.activateWindow()
 
         except Exception as e:
-            debug_logger.error(f"Ошибка диалога: {e}")
+            debug_logger.error(f"[PANEL] Ошибка диалога: {e}")
 
     def on_shutdown_yes(self):
         """Обработчик кнопки Да"""
@@ -1290,7 +1292,7 @@ class SmartWidget(QWidget):
                 self.cleanup_dialog()
                 shutdown_windows()
         except Exception as e:
-            debug_logger.error(f"Ошибка выключения: {e}")
+            debug_logger.error(f"[PANEL] Ошибка выключения: {e}")
 
     def on_shutdown_no(self):
         """Обработчик кнопки Нет"""
@@ -1332,7 +1334,7 @@ class SmartWidget(QWidget):
                 if not (hasattr(self.assistant, 'mutable_panel') and self.assistant.mutable_panel.isVisible()):
                     self.assistant.open_main_settings()
         except Exception as e:
-            debug_logger.error(f"Ошибка при переключении окна настроек: {e}")
+            debug_logger.error(f"[PANEL] Ошибка при переключении окна настроек: {e}")
 
     def open_main_window(self):
         try:
@@ -1341,7 +1343,7 @@ class SmartWidget(QWidget):
             else:
                 self.assistant.proper_show()
         except Exception as e:
-            debug_logger.error(f"Ошибка при открытии основного окна через виджет {e}")
+            debug_logger.error(f"[PANEL] Ошибка при открытии основного окна через виджет {e}")
 
     def lock_state(self):
         """Переключает возможность перетаскивания виджета между тремя состояниями"""
@@ -1385,7 +1387,7 @@ class SmartWidget(QWidget):
             # Сохраняем состояние блокировки
             self.save_state()
         except Exception as e:
-            debug_logger.error(f"Ошибка в методе lock_state: {e}")
+            debug_logger.error(f"[PANEL] Ошибка в методе lock_state: {e}")
 
     def _set_widgets_enabled(self, audio_enabled, buttons_enabled, tabs_enabled):
         """Вспомогательный метод для управления состоянием виджетов"""
@@ -1417,7 +1419,7 @@ class SmartWidget(QWidget):
         try:
             controller.previous_track()
         except Exception as e:
-            debug_logger.error(f"Ошибка при переключении трека: {e}")
+            debug_logger.error(f"[PANEL] Ошибка при переключении трека: {e}")
 
     def pause_track_action(self):
         try:
@@ -1439,21 +1441,20 @@ class SmartWidget(QWidget):
             self.style_manager.apply_color_svg(svg, strength=0.95)
             controller.play_pause()
         except Exception as e:
-            debug_logger.error(f"Ошибка при попытке поставить паузу: {e}")
+            debug_logger.error(f"[PANEL] Ошибка при попытке поставить паузу: {e}")
 
     def next_track_action(self):
         try:
             controller.next_track()
         except Exception as e:
-            debug_logger.error(f"Ошибка при переключении трека: {e}")
+            debug_logger.error(f"[PANEL] Ошибка при переключении трека: {e}")
 
     def closeEvent(self, event):
         # Сохраняем состояние виджета
         self.save_state()
         self.save_notes()
+        self.sensors_tab.stop_monitoring()
 
-        if hasattr(self, 'wmi_conn'):
-            self.close_ohm()
         # Проверяем состояние главного окна
         if self.assistant:
             if self.assistant.isVisible() and not self.assistant.isMinimized():
@@ -1464,7 +1465,6 @@ class SmartWidget(QWidget):
                 self.assistant.restore_and_hide()
                 
         self.deleteLater()
-
         super().closeEvent(event)
 
     def apply_styles(self):
@@ -1474,9 +1474,9 @@ class SmartWidget(QWidget):
             # Применяем стили к текущему окну
             style_sheet = ""
             for widget, styles in self.styles.items():
-                if widget.startswith("Q"):  # Для стандартных виджетов (например, QMainWindow, QPushButton)
+                if widget.startswith("Q"):
                     selector = widget
-                else:  # Для виджетов с objectName (например, TitleBar, CentralWidget)
+                else:
                     selector = f"#{widget}"
 
                 style_sheet += f"{selector} {{\n"
@@ -1487,7 +1487,7 @@ class SmartWidget(QWidget):
             # Устанавливаем стиль для текущего окна
             self.setStyleSheet(style_sheet)
         except Exception as e:
-            debug_logger.error(f"Ошибка в методе apply_styles: {e}")
+            debug_logger.error(f"[PANEL] Ошибка в методе apply_styles: {e}")
             
     def update_background_style(self):
         """Применяет/обновляет стиль фона"""
@@ -1501,6 +1501,7 @@ class SmartWidget(QWidget):
             """)
             
             self.back_btn_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=200)
+            self.back_btn_title_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=150)
             
             for btn_data in self.buttons_data.values():
                 btn = btn_data['button']
@@ -1527,8 +1528,21 @@ class SmartWidget(QWidget):
                         border-radius: 5px;
                     }}
                 """)
+
+            for btn_data in self.title_buttons.values():
+                btn = btn_data['button']
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        background-color: transparent;
+                        border: none;
+                    }}
+                    QPushButton:hover {{
+                        background-color: {self.back_btn_title_color};
+                        border-radius: 5px;
+                    }}
+                """)
         except Exception as e:
-            debug_logger.error(f"Ошибка применения фона: {e}")
+            debug_logger.error(f"[PANEL] Ошибка применения фона: {e}")
 
     def update_colors(self):
         self.styles = self.style_manager.load_styles()
@@ -1547,18 +1561,15 @@ class SmartWidget(QWidget):
         if hasattr(self, "snow_on_label") and self.snow_on_label is not None:
             self.snow_on_label.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=40)
 
-    def set_default_sensor_values(self):
-        """Устанавливает значения по умолчанию для всех датчиков"""
-        self.cpu_temp_label.setText("🌡--°C")
-        self.cpu_core_label.setText("📈--%")
-        self.cpu_watt_label.setText("⚡--W")
-        self.cpu_clock_label.setText("⚙️--МГц")
-        self.gpu_temp_label.setText("🌡--°C")
-        self.gpu_core_label.setText("📈--%")
-        self.gpu_watt_label.setText("⚡--W")
-        self.gpu_clock_label.setText("⚙️--МГц")
-        self.ram_usage_label.setText("💾--Гб")
-        self.ram_over_label.setText("💾--Гб")
+    def _on_sensor_tab_show(self, event):
+        """Когда вкладка показана"""
+        self.sensors_tab.start_monitoring()
+        super(type(self.sensors_tab), self.sensors_tab).showEvent(event)
+    
+    def _on_sensor_tab_hide(self, event):
+        """Когда вкладка скрыта"""
+        self.sensors_tab.stop_monitoring()
+        super(type(self.sensors_tab), self.sensors_tab).hideEvent(event)
 
     def switch_tab(self, index):
         """Переключает вкладки и подсвечивает активную кнопку"""
@@ -1568,21 +1579,17 @@ class SmartWidget(QWidget):
         if hasattr(self, 'current_tab') and self.current_tab == 0:
             self.close_sensors()
 
-            # Переключаем вкладку
         self.tab_content.setCurrentIndex(index)
         self.tab_content.show()
-        self.current_tab = index  # Запоминаем текущую вкладку
+        self.current_tab = index
 
         if index == 0:
-            self.set_default_sensor_values()
             self.tab_content.setCurrentIndex(index)
-            self.tab_content.show()
-            self.open_sensors()  # Затем запускаем обновление
+            self.open_sensors()
         else:
             self.tab_content.setCurrentIndex(index)
             self.tab_content.show()
 
-        # Сбрасываем стиль всех кнопок
         for btn in [self.btn_sensors, self.btn_notes]:
             btn.setStyleSheet("""
                 QPushButton {
@@ -1598,7 +1605,6 @@ class SmartWidget(QWidget):
                 }
             """)
 
-        # Подсвечиваем активную кнопку
         active_btn = [self.btn_sensors, self.btn_notes][index]
         active_btn.setStyleSheet("""
             QPushButton {
@@ -1623,180 +1629,18 @@ class SmartWidget(QWidget):
     def open_sensors(self):
         try:
             self.sensors_tab.show()
-            self.init_ohm()
-            self.sensor_timer.start(1000)
+            if hasattr(self, 'sensor_tab'):
+                self.sensors_tab.start_monitoring()
         except Exception as e:
-            debug_logger.error(f"Ошибка в open_sensors: {e}")
+            debug_logger.error(f"[PANEL] Ошибка в open_sensors: {e}")
 
     def close_sensors(self):
         try:
-            self.sensor_timer.stop()
-            self.close_ohm()
+            if hasattr(self, 'sensor_tab'):
+                self.sensors_tab.stop_monitoring()
+            self.sensors_tab.hide()
         except Exception as e:
-            debug_logger.error(f"Ошибка в close_sensors: {e}")
-
-    def init_ohm(self):
-        """Запускает OpenHardwareMonitor и подключается к WMI"""
-        try:
-            self.set_default_sensor_values()
-            self.assistant.load_settings()
-            self.ohm_path = self.assistant.ohm_path
-            # 1. Проверка существования файла OHM
-            if not os.path.exists(self.ohm_path):
-                error_msg = (f"Файл OpenHardwareMonitor не найден\n"
-                             f"Укажите корректный путь к файлу в настройках")
-                self.assistant.show_notification_message(error_msg)
-                debug_logger.error(error_msg)
-                return  # Прекращаем выполнение если файла нет
-
-            # 2. Проверка уже запущенного процесса
-            tasks = subprocess.check_output('tasklist', shell=True).decode('cp866', errors='ignore')
-            if "OpenHardwareMonitor.exe" in tasks:
-                debug_logger.debug("OpenHardwareMonitor уже запущен")
-                return
-
-            # 3. Запуск с повышенными правами через PowerShell
-            debug_logger.debug(f"Попытка запуска OHM: {self.ohm_path}")
-            result = subprocess.run([
-                "powershell",
-                "-Command",
-                f'Start-Process "{self.ohm_path}" -WindowStyle Hidden -Verb runAs'
-
-            ],
-                shell=True,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
-
-            # 4. Проверка результата запуска
-            if result.returncode != 0:
-                error_msg = f"Ошибка запуска OHM (код {result.returncode}): {result.stderr.decode('cp866')}"
-                debug_logger.error(error_msg)
-                return
-
-            # 5. Подключение к WMI (с задержкой для инициализации OHM)
-            try:
-                self.wmi_conn = wmi.WMI(namespace=self.ohm_namespace)
-                debug_logger.debug("Успешное подключение к WMI")
-                self.update_sensors()
-            except wmi.x_wmi as wmi_error:
-                debug_logger.error(f"Ошибка подключения к WMI: {str(wmi_error)}")
-
-        except subprocess.CalledProcessError as proc_error:
-            debug_logger.error(f"Ошибка при проверке процессов: {str(proc_error)}")
-        except Exception as e:
-            debug_logger.error(f"Неожиданная ошибка в init_ohm: {str(e)}", exc_info=True)
-
-    def close_ohm(self):
-        """Завершает OHM"""
-        try:
-            result = subprocess.run(
-                ['taskkill', '/IM', "OpenHardwareMonitor.exe", '/F'],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                text=True,
-                encoding='cp866'
-            )
-            debug_logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
-            debug_logger.info(f"Процесс успешно завершен.")
-        except subprocess.CalledProcessError:
-            debug_logger.error(f"Не удалось завершить процесс.")
-        except Exception as e:
-            debug_logger.error(f"Ошибка: {e}")
-
-    def update_sensors(self):
-        """Обновляет данные датчиков"""
-        if not hasattr(self, 'wmi_conn'):
-            self.set_default_sensor_values()
-            return
-
-        try:
-            sensors = self.wmi_conn.Sensor()
-
-            # CPU данные
-            cpu_temp = next(
-                (round(float(s.Value)) for s in sensors
-                 if s.SensorType == 'Temperature' and (
-                         'CPU Core' in s.Name or 'CPU Package' in s.Name or 'Core #' in s.Name)),
-                '--'
-            )
-
-            cpu_core = next(
-                (round(float(s.Value)) for s in sensors
-                 if s.SensorType == 'Load' and 'CPU Total' in s.Name),
-                '--'
-            )
-
-            cpu_watt = next(
-                (round(float(s.Value)) for s in sensors
-                 if s.SensorType == 'Power' and 'CPU Package' in s.Name),
-                '--'
-            )
-
-            cpu_clock = next(
-                (round(float(s.Value)) for s in sensors
-                 if s.SensorType == 'Clock' and 'CPU Core #1' in s.Name),
-                '--'
-            )
-
-            # GPU данные
-            gpu_temp = next(
-                (round(float(s.Value)) for s in sensors
-                 if s.SensorType == 'Temperature' and 'GPU Core' in s.Name),
-                '--'
-            )
-
-            gpu_core = next(
-                (round(float(s.Value)) for s in sensors
-                 if s.SensorType == 'Load' and 'GPU Core' in s.Name),
-                '--'
-            )
-
-            gpu_watt = next(
-                (round(float(s.Value)) for s in sensors
-                 if s.SensorType == 'Power' and 'GPU' in s.Name),
-                '--'
-            )
-
-            gpu_clock = next(
-                (round(float(s.Value)) for s in sensors
-                 if s.SensorType == 'Clock' and 'GPU Core' in s.Name),
-                '--'
-            )
-
-            # RAM данные
-            ram_usage = next(
-                (round(float(s.Value), 2) for s in sensors
-                 if s.SensorType == 'Data' and 'Used Memory' in s.Name),
-                '--'
-            )
-
-            ram_free = next(
-                (round(float(s.Value), 2) for s in sensors
-                 if s.SensorType == 'Data' and 'Available Memory' in s.Name),
-                '--'
-            )
-
-            ram_total = round(float(ram_usage + ram_free))
-
-            # Обновляем UI
-            self.cpu_temp_label.setText(f"🌡{cpu_temp}°C")
-            self.cpu_core_label.setText(f"📈{cpu_core}%")
-            self.cpu_watt_label.setText(f"⚡{cpu_watt}W")
-            self.cpu_clock_label.setText(f"⚙️{cpu_clock}МГц")
-
-            self.gpu_temp_label.setText(f"🌡{gpu_temp}°C")
-            self.gpu_core_label.setText(f"📈{gpu_core}%")
-            self.gpu_watt_label.setText(f"⚡{gpu_watt}W")
-            self.gpu_clock_label.setText(f"⚙️{gpu_clock}МГц")
-
-            self.ram_usage_label.setText(f"💾{ram_usage}Гб")
-            self.ram_over_label.setText(f"💾{ram_total}Гб")
-
-        except Exception as e:
-            debug_logger.error(f"Sensor update failed: {e}")
+            debug_logger.error(f"[PANEL] Ошибка в close_sensors: {e}")
 
     def start_notes_save_timer(self):
         """Запускает таймер автосохранения при изменении текста"""
@@ -1810,7 +1654,7 @@ class SmartWidget(QWidget):
             with open(self.notes_file, 'w', encoding='utf-8') as f:
                 f.write(notes_text)
         except Exception as e:
-            debug_logger.error(f"Ошибка сохранения заметок: {e}")
+            debug_logger.error(f"[PANEL] Ошибка сохранения заметок: {e}")
 
     def load_notes(self):
         """Загружает заметки из файла"""
@@ -1820,5 +1664,5 @@ class SmartWidget(QWidget):
                     notes_text = f.read()
                     self.notes_tab.setPlainText(notes_text)
         except Exception as e:
-            debug_logger.error(f"Ошибка загрузки заметок: {e}")
+            debug_logger.error(f"[PANEL] Ошибка загрузки заметок: {e}")
             self.notes_tab.setPlainText("Тут можно писать заметки")

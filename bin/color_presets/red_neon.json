@@ -323,5 +323,13 @@
     },
     "CreateRunWidgets": {
         "background-color": "transparent"
+    },
+    "TitleBarPanel": {
+        "background-color": "transparent",
+        "border-bottom": "1px solid #D62D2D"
+    },
+    "AudioPlayerWidget": {
+        "background-color": "transparent",
+        "border-top": "1px solid #D62D2D"
     }
 }

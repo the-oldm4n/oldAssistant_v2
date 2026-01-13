@@ -7,6 +7,7 @@ from bin.function_list_main import (
     open_recycle_bin, close_recycle_bin,
     open_appdata, close_appdata
 )
+from bin.bluetooth_controller import bluetooth_controller
 
 system_commands_data = {
     "mixer": {
@@ -36,5 +37,10 @@ system_commands_data = {
     "appdata": {
         "open": open_appdata,
         "close": close_appdata
+    },
+    "bluetooth": {
+        "open": bluetooth_controller.toggle,
+        "close": bluetooth_controller.toggle
     }
+
 }

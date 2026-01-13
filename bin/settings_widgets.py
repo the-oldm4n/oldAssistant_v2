@@ -15,11 +15,11 @@ from bin.choose_color_window import ColorSettingsWindow
 from bin.widget_window import WindowStateManager
 from path_builder import get_path
 from logging_config import logger, debug_logger
-from PySide6.QtGui import QAction, QFontDatabase
+from PySide6.QtGui import QAction, QFontDatabase, QRegularExpressionValidator
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QApplication, QWidget,\
     QDialog, QMenu, QMessageBox, QLineEdit, QComboBox, QSlider, QListWidget, QScrollArea, QFrame,\
     QListWidgetItem, QCheckBox
-from PySide6.QtCore import Signal, QTimer, Qt, QEvent
+from PySide6.QtCore import Signal, QTimer, Qt, QEvent, QRegularExpression
 
 
 speakers = dict(Персик="persik", Джарвис="jarvis", Пласид='placide', Бестия='rogue',
@@ -1652,6 +1652,28 @@ class SettingsWidgetPanel(QWidget):
         self.toggles_label = setup_custom_font_label("Прочие параметры", font_style="Comfortaa", weight="Medium")
         self.toggles_label.setStyleSheet("background: transparent; font-size: 16px")
         layout.addWidget(self.toggles_label)
+
+        self.delay_layout = QHBoxLayout()
+
+
+        self.delay_label = QLabel("Задержка перед скрытием кнопок:")
+        self.delay_label.setProperty("helpId", "delay_label")
+        self.delay_layout.addWidget(self.delay_label)
+
+        self.txt_delay = QLineEdit()
+        self.txt_delay.setProperty("helpId", "delay_label")
+        self.txt_delay.setFixedSize(50, 30)
+        self.txt_delay.setPlaceholderText("10")
+        self.txt_delay.setText(str(self.load_saved_delay()))
+
+        # Добавляем валидатор для чисел с плавающей точкой
+        regex = QRegularExpression(r'^\d{0,2}$')  # Пусто или 0-99
+        validator = QRegularExpressionValidator(regex, self)
+        self.txt_delay.setValidator(validator)
+        self.delay_layout.addWidget(self.txt_delay)
+        self.delay_layout.addStretch()
+
+        layout.addLayout(self.delay_layout)
         
         self.snow_panel_checkbox = CustomToggle("Частицы снега на панели")
         self.snow_panel_checkbox.setStyleSheet("background: transparent;")
@@ -1800,6 +1822,17 @@ class SettingsWidgetPanel(QWidget):
             default_index = self.font_combo.findText("digital")
             if default_index >= 0:
                 self.font_combo.setCurrentIndex(default_index)
+
+    def load_saved_delay(self):
+        with open(self.widget_state, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+        if "delay" in data:
+            delay = data["delay"]
+        else:
+            delay = 10
+
+        return delay
 
     def create_checkboxes(self):
         checkboxes_data = [
@@ -2028,6 +2061,8 @@ class SettingsWidgetPanel(QWidget):
             with open(self.widget_state, 'r', encoding='utf-8') as f:
                 existing_data = json.load(f)
 
+            existing_data["delay"] = int(self.txt_delay.text().strip())
+
             existing_data["font_family"] = self.font_combo.currentText()
             
             existing_data["buttons"] = self.get_buttons_data()
@@ -2072,6 +2107,8 @@ class SettingsWidgetPanel(QWidget):
         except Exception as e:
             debug_logger.error(f"Ошибка загрузки кастомных кнопок: {e}")
 
+    
+
     def add_custom_button(self, button_data):
         """Добавляет кастомную кнопку в список"""
         key = f"custom_{button_data['id']}"
@@ -2085,8 +2122,6 @@ class SettingsWidgetPanel(QWidget):
         
         self.checkboxes[key] = checkbox
         self.drag_container.layout.addWidget(checkbox)
-        
-        # self.save_order()
 
     def delete_custom_button_by_id(self, custom_id):
         """Удаляет кастомную кнопку по ID"""
