@@ -241,7 +241,7 @@ class SensorTab(QWidget):
     def _create_cpu_section(self):
         """Создать секцию CPU"""
         layout = QHBoxLayout()
-        layout.setSpacing(5)
+        layout.setSpacing(0)
         
         cpu_icon = CustomSvgWidget(self.icon_paths['cpu'])
         cpu_icon.setFixedSize(30, 30)
@@ -286,7 +286,7 @@ class SensorTab(QWidget):
     def _create_gpu_section(self):
         """Создать секцию GPU"""
         layout = QHBoxLayout()
-        layout.setSpacing(5)
+        layout.setSpacing(0)
         
         gpu_icon = CustomSvgWidget(self.icon_paths['gpu'])
         gpu_icon.setFixedSize(30, 30)
@@ -331,7 +331,7 @@ class SensorTab(QWidget):
     def _create_ram_section(self):
         """Создать секцию RAM"""
         layout = QHBoxLayout()
-        layout.setSpacing(5)
+        layout.setSpacing(0)
         
         ram_icon = CustomSvgWidget(self.icon_paths['ram'])
         ram_icon.setFixedSize(30, 30)

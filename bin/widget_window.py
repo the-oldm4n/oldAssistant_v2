@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer,
 from bin.apply_color_methods import main_apply_colors
 from bin.audio_control import controller
 from bin.custom_svg_widget import CustomSvgWidget
+from bin.custom_widgets import CustomToggleSimple
 from bin.frosted_widget import SnowOverlay
 from bin.function_list_main import shutdown_windows
 from bin.lists import fonts_list
@@ -25,11 +26,25 @@ from path_builder import get_path
 class WindowStateManager:
     def __init__(self, config_path=get_path("user_settings", "widget_state.json")):
         self.config_path = config_path
+        self.base_keys = [
+            "window_position",
+            "window_size", 
+            "delay",
+            "is_autohide",
+            "is_compact",
+            "is_pinned",
+            "is_locked",
+            "is_snow",
+            "buttons",
+            "font_family",
+            "default_buttons",
+            "custom_buttons"
+        ]
         self.default_state = {
             "window_position": {"x": 100, "y": 100},
-            "window_size": {"width": 300, "height": 350},
-            "delay": 10,
-            "wait_to_delay": 1,
+            "window_size": {"width": 310, "height": 350},
+            "delay": 5,
+            "is_autohide": False,
             "is_compact": False,
             "is_pinned": False,
             "is_locked": False, 
@@ -41,20 +56,43 @@ class WindowStateManager:
         if not os.path.exists(self.config_path):
             self.save_state(self.default_state)
 
+    def get_default_value(self, key):
+        """Возвращает значение по умолчанию для ключа"""
+        defaults = {
+            "window_position": {"x": 100, "y": 100},
+            "window_size": {"width": 310, "height": 350},
+            "delay": 5,
+            "is_autohide": False,
+            "is_compact": False,
+            "is_pinned": False,
+            "is_locked": 0,
+            "is_snow": False,
+            "buttons": {},
+            "font_family": "nova_round",
+            "default_buttons": {},
+            "custom_buttons": []
+        }
+        return defaults.get(key, None)
+
     def load_state(self):
         """Загружает состояние, добавляя отсутствующие поля из default_state"""
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
-                existing_state = json.load(f)
+                data = json.load(f)
         except:
-            existing_state = {}
+            data = {}
 
-        result = self.default_state.copy()
+        cleaned_data = {}
+        for key in self.base_keys:
+            if key in data:
+                cleaned_data[key] = data[key]
+            else:
+                cleaned_data[key] = self.get_default_value(key)    
 
-        for key, value in existing_state.items():
-            result[key] = value
-        
-        return result
+        with open(self.config_path, 'w', encoding='utf-8') as f:
+            json.dump(cleaned_data, f, ensure_ascii=False, indent=4)
+
+        return cleaned_data
 
     def save_state(self, state):
         """Сохраняет состояние окна в JSON файл"""
@@ -218,9 +256,10 @@ class SmartWidget(QWidget):
         self.is_compact = saved_state["is_compact"]
         self.is_pinned = saved_state["is_pinned"]
         self.is_snow = saved_state["is_snow"]
+        self.is_autohide = saved_state["is_autohide"]
         self.delay = saved_state["delay"] * 1000
-        self.wait_to_delay = saved_state["wait_to_delay"] * 1000
         self.is_locked = 0
+        self.temp_delay = 1
         self.check_widget_pos()
 
         # Шрифт
@@ -258,8 +297,8 @@ class SmartWidget(QWidget):
 
         self.init_delay_timers()
         QTimer.singleShot(500, lambda: (
-            self.hide_delay_timer.start(self.wait_to_delay) 
-            if hasattr(self, 'wait_to_delay') else None
+            self.hide_timer.start(self.delay) 
+            if hasattr(self, 'delay') else None
         ))
         
     def update_snow_state(self):
@@ -356,17 +395,29 @@ class SmartWidget(QWidget):
         self.clock_mini.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.content_layout.addWidget(self.clock_mini)
 
+        self.toggles_layout = QHBoxLayout()
+
+        self.toggle_hide_btns = CustomToggleSimple()
+        self.toggle_hide_btns.setToolTip("Автоматически прятать кнопки")
+        self.toggle_hide_btns.setChecked(self.is_autohide)
+        self.toggle_hide_btns.stateChanged.connect(self.toggle_autohide)
+        self.toggles_layout.addWidget(self.toggle_hide_btns, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        self.toggles_layout.addStretch()
+
+        self.hide_btns = CustomToggleSimple()
+        self.hide_btns.setToolTip("Показать/свернуть кнопки")
+        self.hide_btns.setChecked(self.is_height_compact)
+        self.hide_btns.stateChanged.connect(self.hide_main_btns)
+        self.toggles_layout.addWidget(self.hide_btns, alignment=Qt.AlignmentFlag.AlignRight)
+
+        self.content_layout.addLayout(self.toggles_layout)
+
         # Аудио
         self.audio_widget = self.create_audio_controls()
-        self.content_layout.addWidget(self.audio_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.content_layout.addWidget(self.audio_widget, alignment=Qt.AlignmentFlag.AlignCenter)   
 
         self.content_layout.addStretch()
-
-        # Кнопка-тогл для переключения показа основных кнопок
-        self.hide_btns = QPushButton()
-        self.hide_btns.setStyleSheet("height: 7px; border-radius: 2px; background: transparent")
-        self.hide_btns.clicked.connect(self.hide_main_btns)
-        self.content_layout.addWidget(self.hide_btns)
 
         # Кнопки
         self.buttons_widget = self.create_main_buttons()
@@ -390,44 +441,55 @@ class SmartWidget(QWidget):
         
         # Флаг чтобы не скрывать при активном использовании
         self.mouse_over_widget = False
-        
-        # Таймер задержки (чтобы не сразу скрывать после ухода мыши)
-        self.hide_delay_timer = QTimer()
-        self.hide_delay_timer.setSingleShot(True)
-        self.hide_delay_timer.timeout.connect(self.start_hide_countdown)
-
-        # Флаг включения автоскрытия
-        self.auto_hide_enabled = True
 
     def enterEvent(self, event):
         """Курсор вошел в область виджета"""
         self.mouse_over_widget = True
-        self.hide_timer.stop()
-        self.hide_delay_timer.stop()
-
+        self.hide_timer.stop()  # Останавливаем отсчет
+        
+        # Показываем кнопки если они скрыты (компактный режим)
         if self.is_height_compact:
-            self.hide_main_btns()
+            self.hide_main_btns()  # Разворачиваем панель
         
         super().enterEvent(event)
 
     def leaveEvent(self, event):
         """Курсор вышел из области виджета"""
         self.mouse_over_widget = False
-        if not self.is_height_compact and self.auto_hide_enabled:
-            self.hide_delay_timer.start(self.wait_to_delay)
+        
+        # Запускаем таймер автоскрытия если включено
+        if (self.is_autohide and 
+            not self.is_height_compact and 
+            self.delay > 0):  # Проверяем что задержка > 0
+            
+            self.hide_timer.start(self.delay)
+        
         super().leaveEvent(event)
 
     def update_delay(self):
         state = self.state_manager.load_state()
         self.delay = state["delay"] * 1000
 
-        self.auto_hide_enabled = (self.delay > 0)
+        self.is_autohide = (self.delay > 0)
         
-        if not self.auto_hide_enabled:
+        if not self.is_autohide:
             self.hide_timer.stop()
-            self.hide_delay_timer.stop()
         elif self.hide_timer.isActive():
             self.hide_timer.start(self.delay)
+
+    def toggle_autohide(self):
+        if self.delay <= 0:
+            self.is_autohide = False
+        if not self.is_autohide:
+            self.delay = self.temp_delay * 1000
+            self.is_autohide = True
+        else:
+            if self.delay > 0:
+                self.temp_delay = self.delay / 1000
+            self.delay = 0
+            self.is_autohide = False
+        self.state_manager.update_value("is_autohide", self.is_autohide)
+        self.state_manager.update_value("delay", self.delay / 1000)
 
     def create_title_bar(self):
         title_bar = QWidget()
@@ -767,10 +829,9 @@ class SmartWidget(QWidget):
             self.old_pos = event.globalPos()
             self.is_dragging = False
 
-            self.auto_hide_enabled = False
+            self.is_autohide = False
             self.hide_timer.stop()
-            self.hide_delay_timer.stop()
-            
+
             event.accept()
         else:
             super().mousePressEvent(event)
@@ -811,7 +872,7 @@ class SmartWidget(QWidget):
         self.is_dragging = False
         self.old_pos = None
 
-        QTimer.singleShot(100, lambda: setattr(self, 'auto_hide_enabled', True))
+        QTimer.singleShot(100, lambda: setattr(self, 'is_autohide', True))
         if not self.is_height_compact:
             QTimer.singleShot(150, self.start_hide_countdown)
             
@@ -1096,23 +1157,25 @@ class SmartWidget(QWidget):
             self.buttons_widget.setEnabled(False)
 
     def start_hide_countdown(self):
-        """Запускает отсчет до скрытия кнопок"""
-        if (self.auto_hide_enabled and 
+        """Запускает отсчет до скрытия кнопок (только если условия выполнены)"""
+        if (self.is_autohide and 
             not self.mouse_over_widget and 
-            not self.is_height_compact):
+            not self.is_height_compact and
+            self.delay > 0):  # Добавил проверку задержки
             
             self.hide_timer.start(self.delay)
 
     def auto_hide_buttons(self):
-        """Автоматически скрывает кнопки"""
-        if self.auto_hide_enabled:
+        """Автоматически скрывает кнопки (вызывается по таймеру)"""
+        if (self.is_autohide and 
+            not self.mouse_over_widget and 
+            not self.is_height_compact):
             self.hide_main_btns()
 
     def hide_main_btns(self):
         """Переключает компактный режим по высоте (только для скрытия кнопок)"""
         try:
             self.hide_timer.stop()
-            self.hide_delay_timer.stop()
 
             if self.animation and self.animation.state() == QPropertyAnimation.State.Running:
                 self.animation.stop()
@@ -1129,6 +1192,12 @@ class SmartWidget(QWidget):
 
             # Переключаем состояние
             self.is_height_compact = not self.is_height_compact
+
+            # Обновляем кнопку (блокируя сигналы чтобы не было рекурсии)
+            if hasattr(self, 'hide_btns'):
+                self.hide_btns.blockSignals(True)
+                self.hide_btns.setChecked(self.is_height_compact)
+                self.hide_btns.blockSignals(False)
 
             # Сохраняем правый край и ширину
             new_width = old_geometry.width()
@@ -1164,8 +1233,8 @@ class SmartWidget(QWidget):
             old_geometry = self.geometry()
             # Сначала вычисляются величины исходя из текущей геометрии, а уже после изменяется флаг self.in_compact
             # Поэтому условие инвертированное "if not"
-            new_width = 82 if not self.is_compact else max(300, self.buttons_widget.height() + 20) # 20px это отступы
-            new_height = self.buttons_widget.width() + 100 if not self.is_compact else 300 # 100px отступы и другие виджеты
+            new_width = 87 if not self.is_compact else max(310, self.buttons_widget.height() + 20) # 20px это отступы
+            new_height = self.buttons_widget.width() + 100 if not self.is_compact else 310 # 100px отступы и другие виджеты
 
             # Сохраняем правый край
             right_edge = old_geometry.x() + old_geometry.width()
@@ -1395,8 +1464,6 @@ class SmartWidget(QWidget):
             self.audio_widget.setEnabled(audio_enabled)
         if hasattr(self, "buttons_widget"):
             self.buttons_widget.setEnabled(buttons_enabled)
-        if hasattr(self, "hide_btns"):
-            self.hide_btns.setEnabled(buttons_enabled)
         if hasattr(self, "tab_widget"):
             self.tab_widget.setEnabled(tabs_enabled)
 

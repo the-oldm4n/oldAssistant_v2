@@ -63,7 +63,7 @@ from logging_config import logger, debug_logger
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.5"
+version_file = "2.2.6"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -2214,7 +2214,7 @@ class Assistant(QMainWindow):
                 all_names = [self.assistant_name, self.assist_name2, self.assist_name3]
 
                 # Список фраз действие-команда, ["action command", ...]
-                action_command = self.handle_text_smart(text, self.all_actions, threshold=70)
+                action_command = self.handle_text_smart(text, self.all_actions, threshold=60)
 
                 # Чистая команда без действия, "command"
                 clean_target = self._extract_clean_target(text, self.all_actions)
@@ -2510,8 +2510,8 @@ class Assistant(QMainWindow):
                                 # Если нет слов-действий и в тексте нет команд для управления плеером — воспроизводим эхо
                                 self.get_reaction(name="echo_folder")
 
-                    final_commands = self.handle_text_smart(text, self.all_actions, threshold=70)
-                    debug_logger.info(f"[MAIN][HAS_NAME][handle_text_smart]---> {final_commands}")
+                    final_commands = self.handle_text_smart(text, self.all_actions, threshold=60)
+                    debug_logger.info(f"[MAIN][HAS_NAME][handle_text_smart] {final_commands}")
 
                     for command in final_commands:
                         command = command.strip()
@@ -2597,7 +2597,7 @@ class Assistant(QMainWindow):
                         if self.find_closest_command(clean_target, self.screen_list):
                             self.capture_area()
 
-                        final_commands = self.handle_text_smart(text, self.all_actions)
+                        final_commands = self.handle_text_smart(text, self.all_actions, threshold=60)
                         debug_logger.info(f"[MAIN] [final_commands] {final_commands}")
 
                         pending_commands = []
@@ -2881,7 +2881,7 @@ class Assistant(QMainWindow):
         # 1. Находим все действия с позициями
         actions_in_text = []  # [(index, raw_word, normalized_action), ...]
         for i, word in enumerate(words):
-            closest_action = self.find_closest_command(word, all_actions, threshold=threshold)
+            closest_action = self.find_closest_command(word, all_actions, threshold=50)
             if closest_action:
                 actions_in_text.append((i, word, closest_action))
 

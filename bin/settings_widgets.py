@@ -1657,6 +1657,7 @@ class SettingsWidgetPanel(QWidget):
 
 
         self.delay_label = QLabel("Задержка перед скрытием кнопок:")
+        self.delay_label.setStyleSheet("background: transparent;")
         self.delay_label.setProperty("helpId", "delay_label")
         self.delay_layout.addWidget(self.delay_label)
 
@@ -1667,7 +1668,7 @@ class SettingsWidgetPanel(QWidget):
         self.txt_delay.setText(str(self.load_saved_delay()))
 
         # Добавляем валидатор для чисел с плавающей точкой
-        regex = QRegularExpression(r'^\d{0,2}$')  # Пусто или 0-99
+        regex = QRegularExpression(r'^(\d{1,2}(\.\d)?|\.\d)$')
         validator = QRegularExpressionValidator(regex, self)
         self.txt_delay.setValidator(validator)
         self.delay_layout.addWidget(self.txt_delay)
@@ -2061,7 +2062,7 @@ class SettingsWidgetPanel(QWidget):
             with open(self.widget_state, 'r', encoding='utf-8') as f:
                 existing_data = json.load(f)
 
-            existing_data["delay"] = int(self.txt_delay.text().strip())
+            existing_data["delay"] = float(self.txt_delay.text().strip())
 
             existing_data["font_family"] = self.font_combo.currentText()
             

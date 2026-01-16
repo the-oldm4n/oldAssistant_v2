@@ -1,4 +1,21 @@
 {
+  "2.2.6": {
+    "full_update": false,
+    "changed_files": [
+      "bin/custom_widgets.py",
+      "bin/__pycache__/custom_widgets.cpython-311.pyc",
+      "bin/sensors_monitor.py",
+      "bin/__pycache__/sensors_monitor.cpython-311.pyc",
+      "bin/settings_widgets.py",
+      "bin/__pycache__/settings_widgets.cpython-311.pyc",
+      "bin/widget_window.py",
+      "bin/__pycache__/widget_window.cpython-311.pyc",
+      "config.ini",
+      "Assistant.exe",
+      "version.txt"
+    ],
+    "deleted_files": []
+  },
   "2.2.5": {
     "full_update": false,
     "changed_files": [
