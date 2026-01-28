@@ -330,7 +330,7 @@ class SmartWidget(QWidget):
         self.snow_on_label.resize(self.main_container.size())
         self.snow_on_label.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.snow_on_label.raise_()
-        self.snow_on_label.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=40)
+        self.snow_on_label.setSnowColor(self.style_manager.get_snow_color(), white_balance=40)
         
         # Изначально показываем или скрываем в зависимости от состояния
         if self.is_snow:
@@ -1626,7 +1626,7 @@ class SmartWidget(QWidget):
         self.update_background_style()
         
         if hasattr(self, "snow_on_label") and self.snow_on_label is not None:
-            self.snow_on_label.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=40)
+            self.snow_on_label.setSnowColor(self.style_manager.get_snow_color(), white_balance=40)
 
     def _on_sensor_tab_show(self, event):
         """Когда вкладка показана"""

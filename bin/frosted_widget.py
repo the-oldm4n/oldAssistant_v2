@@ -1,310 +1,10 @@
 ﻿import math
 import random
+import re
 from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt, QTimer, QPointF, QSize, QPoint
-from PySide6.QtGui import QPainter, QColor, QBrush, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import Qt, QTimer, QPointF
+from PySide6.QtGui import QPainter, QColor, QBrush
 
-class FrostedWidget(QWidget):
-    def __init__(self, content_widget: QWidget, frost_width=10, parent=None):
-        super().__init__(parent)
-        self._border_width = frost_width
-        self.content = content_widget
-        self.content.setParent(self)
-        self.content.resize(self.size())
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        
-        # Кэш для инея
-        self._frost_cache = None
-        self._cached_size = QSize(-1, -1)
-
-    def resizeEvent(self, event):
-        self.content.resize(self.size())
-        # Сбрасываем кэш при изменении размера
-        self._frost_cache = None
-        self._cached_size = QSize(-1, -1)
-        super().resizeEvent(event)
-
-    def paintEvent(self, event):
-        # Используем кэш, если он актуален
-        current_size = self.size()
-        if self._frost_cache is None or self._cached_size != current_size:
-            self._render_frost_to_cache()
-        
-        # Рисуем кэш
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.drawPixmap(0, 0, self._frost_cache)
-
-    def _render_frost_to_cache(self):
-        """Отрисовывает иней в QPixmap один раз."""
-        size = self.size()
-        self._frost_cache = QPixmap(size)
-        self._frost_cache.fill(Qt.transparent)  # полностью прозрачный
-
-        painter = QPainter(self._frost_cache)
-        painter.setRenderHint(QPainter.Antialiasing)
-        self.draw_frost_border(painter)
-        painter.end()
-
-        self._cached_size = size
-
-    def draw_frost_border(self, painter):
-        border_width = self._border_width
-        density = 0.7
-        min_size = 7
-        max_size = 10
-        grid_size = min_size // 2
-
-        random.seed(123)  # для воспроизводимости
-
-        left_bound = border_width
-        right_bound = self.width() - border_width
-        top_bound = border_width
-        bottom_bound = self.height() - border_width
-
-        for x in range(-grid_size, self.width() + grid_size, grid_size):
-            for y in range(-grid_size, self.height() + grid_size, grid_size):
-                in_left = x <= left_bound
-                in_right = x >= right_bound
-                in_top = y <= top_bound
-                in_bottom = y >= bottom_bound
-
-                if (in_left or in_right or in_top or in_bottom) and random.random() < density:
-                    size = random.randint(min_size, max_size)
-                    crystal_type = random.randint(1, 8)
-                    offset_x = random.randint(-grid_size//2, grid_size//2)
-                    offset_y = random.randint(-grid_size//2, grid_size//2)
-                    center_x = x + offset_x
-                    center_y = y + offset_y
-
-                    # Ограничиваем центр, чтобы кристалл не вылезал за border_width
-                    if in_left:
-                        center_x = min(center_x, border_width + size // 2)
-                    elif in_right:
-                        center_x = max(center_x, self.width() - border_width - size // 2)
-                    if in_top:
-                        center_y = min(center_y, border_width + size // 2)
-                    elif in_bottom:
-                        center_y = max(center_y, self.height() - border_width - size // 2)
-
-                    self.draw_advanced_crystal(painter, center_x, center_y, size, crystal_type)
-                    
-    def draw_advanced_crystal(self, painter, x, y, size, crystal_type):
-        """Рисуем различные типы сложных кристаллов"""
-        
-        # Общие настройки
-        alpha = random.randint(80, 180)
-        color = QColor(200, 220, 255, alpha)
-        painter.setPen(QPen(color, 1))
-        painter.setBrush(QBrush(QColor(200, 220, 255, alpha // 3)))
-        
-        center_x = x + size // 2
-        center_y = y + size // 2
-        base_radius = size // 3
-        
-        if crystal_type == 1:
-            self.draw_star_crystal(painter, center_x, center_y, base_radius)
-        elif crystal_type == 2:
-            self.draw_fern_crystal(painter, center_x, center_y, base_radius)
-        elif crystal_type == 3:
-            self.draw_dendrite_crystal(painter, center_x, center_y, base_radius)
-        elif crystal_type == 4:
-            self.draw_hexagonal_crystal(painter, center_x, center_y, base_radius)
-        elif crystal_type == 5:
-            self.draw_needle_crystal(painter, center_x, center_y, base_radius)
-        elif crystal_type == 6:
-            self.draw_plate_crystal(painter, center_x, center_y, base_radius)
-        elif crystal_type == 7:
-            self.draw_columnar_crystal(painter, center_x, center_y, base_radius)
-        else:
-            self.draw_complex_star_crystal(painter, center_x, center_y, base_radius)
-    
-    def draw_star_crystal(self, painter, cx, cy, radius):
-        """Звездообразный кристалл с 6 лучами"""
-        points = []
-        for i in range(12):  # 12 точек для 6 лучей
-            angle = math.pi * i / 6
-            if i % 2 == 0:
-                r = radius * 1.5  # Длинные лучи
-            else:
-                r = radius * 0.5  # Короткие лучи
-            
-            px = cx + r * math.cos(angle)
-            py = cy + r * math.sin(angle)
-            points.append(QPoint(int(px), int(py)))
-        
-        painter.drawPolygon(points)
-    
-    def draw_fern_crystal(self, painter, cx, cy, radius):
-        """Папоротниковый дендритный кристалл"""
-        path = QPainterPath()
-        path.moveTo(cx, cy - radius)
-        
-        # Основные ветви
-        for angle in [0, 72, 144, 216, 288]:
-            rad_angle = math.radians(angle)
-            end_x = cx + radius * 0.8 * math.cos(rad_angle)
-            end_y = cy + radius * 0.8 * math.sin(rad_angle)
-            
-            path.moveTo(cx, cy)
-            path.lineTo(end_x, end_y)
-            
-            # Вторичные ветви
-            for sub_angle in [angle - 20, angle + 20]:
-                sub_rad = math.radians(sub_angle)
-                sub_x = end_x + radius * 0.4 * math.cos(sub_rad)
-                sub_y = end_y + radius * 0.4 * math.sin(sub_rad)
-                path.moveTo(end_x, end_y)
-                path.lineTo(sub_x, sub_y)
-        
-        painter.drawPath(path)
-    
-    def draw_dendrite_crystal(self, painter, cx, cy, radius):
-        """Сложный дендритный кристалл"""
-        path = QPainterPath()
-        
-        # Основные 6 направлений
-        for i in range(6):
-            angle = math.pi * i / 3
-            self.draw_dendrite_branch(path, cx, cy, angle, radius, 3)
-        
-        painter.drawPath(path)
-    
-    def draw_dendrite_branch(self, path, start_x, start_y, angle, length, depth):
-        """Рекурсивное рисование ветвей дендрита"""
-        if depth == 0:
-            return
-        
-        end_x = start_x + length * math.cos(angle)
-        end_y = start_y + length * math.sin(angle)
-        
-        path.moveTo(start_x, start_y)
-        path.lineTo(end_x, end_y)
-        
-        # Рекурсивно рисуем подветви
-        if depth > 1:
-            new_length = length * 0.6
-            for branch_angle in [angle - math.pi/4, angle + math.pi/4]:
-                self.draw_dendrite_branch(path, end_x, end_y, branch_angle, new_length, depth - 1)
-    
-    def draw_hexagonal_crystal(self, painter, cx, cy, radius):
-        """Сложный гексагональный кристалл с внутренним узором"""
-        # Внешний шестиугольник
-        outer_points = []
-        for i in range(6):
-            angle = 2 * math.pi * i / 6
-            px = cx + radius * 1.2 * math.cos(angle)
-            py = cy + radius * 1.2 * math.sin(angle)
-            outer_points.append(QPoint(int(px), int(py)))
-        
-        painter.drawPolygon(outer_points)
-        
-        # Внутренний шестиугольник
-        inner_points = []
-        for i in range(6):
-            angle = 2 * math.pi * i / 6
-            px = cx + radius * 0.6 * math.cos(angle)
-            py = cy + radius * 0.6 * math.sin(angle)
-            inner_points.append(QPoint(int(px), int(py)))
-        
-        painter.drawPolygon(inner_points)
-        
-        # Соединяющие линии
-        for i in range(6):
-            painter.drawLine(outer_points[i], inner_points[i])
-            painter.drawLine(inner_points[i], outer_points[(i + 1) % 6])
-    
-    def draw_needle_crystal(self, painter, cx, cy, radius):
-        """Игольчатый кристалл"""
-        path = QPainterPath()
-        
-        # Длинные тонкие иглы в 4 направлениях
-        for angle in [0, math.pi/2, math.pi, 3*math.pi/2]:
-            end_x = cx + radius * 2 * math.cos(angle)
-            end_y = cy + radius * 2 * math.sin(angle)
-            
-            path.moveTo(cx, cy)
-            path.lineTo(end_x, end_y)
-            
-            # Короткие боковые иглы
-            for side_angle in [angle - math.pi/6, angle + math.pi/6]:
-                side_x = cx + radius * 0.8 * math.cos(side_angle)
-                side_y = cy + radius * 0.8 * math.sin(side_angle)
-                path.moveTo(cx, cy)
-                path.lineTo(side_x, side_y)
-        
-        painter.drawPath(path)
-    
-    def draw_plate_crystal(self, painter, cx, cy, radius):
-        """Пластинчатый кристалл с сложным узором"""
-        # Внешний круг
-        painter.drawEllipse(QPoint(cx, cy), radius, radius)
-        
-        # Внутренние концентрические круги
-        painter.drawEllipse(QPoint(cx, cy), int(radius * 0.7), int(radius * 0.7))
-        painter.drawEllipse(QPoint(cx, cy), int(radius * 0.4), int(radius * 0.4))
-        
-        # Радиальные линии
-        for i in range(12):
-            angle = math.pi * i / 6
-            end_x = cx + radius * math.cos(angle)
-            end_y = cy + radius * math.sin(angle)
-            painter.drawLine(cx, cy, int(end_x), int(end_y))
-    
-    def draw_columnar_crystal(self, painter, cx, cy, radius):
-        """Столбчатый кристалл с шестиугольными торцами"""
-        # Основной столбик
-        rect_width = radius * 0.8
-        rect_height = radius * 1.5
-        painter.drawRect(int(cx - rect_width/2), int(cy - rect_height/2), 
-                        int(rect_width), int(rect_height))
-        
-        # Шестиугольные торцы
-        for y_offset in [-rect_height/2, rect_height/2]:
-            hex_points = []
-            for i in range(6):
-                angle = 2 * math.pi * i / 6
-                px = cx + rect_width * 0.6 * math.cos(angle)
-                py = cy + y_offset + rect_width * 0.3 * math.sin(angle)
-                hex_points.append(QPoint(int(px), int(py)))
-            painter.drawPolygon(hex_points)
-    
-    def draw_complex_star_crystal(self, painter, cx, cy, radius):
-        """Очень сложный звездчатый кристалл"""
-        path = QPainterPath()
-        
-        # Многоуровневая звезда
-        levels = 3
-        for level in range(levels):
-            level_radius = radius * (1 - level * 0.2)
-            points_count = 6 + level * 2  # Увеличиваем количество лучей
-            
-            points = []
-            for i in range(points_count * 2):
-                angle = math.pi * i / points_count
-                if i % 2 == 0:
-                    r = level_radius * 1.3
-                else:
-                    r = level_radius * 0.7
-                
-                px = cx + r * math.cos(angle)
-                py = cy + r * math.sin(angle)
-                points.append(QPoint(int(px), int(py)))
-            
-            if level == 0:
-                path.moveTo(points[0])
-                for point in points[1:]:
-                    path.lineTo(point)
-                path.closeSubpath()
-            else:
-                for i in range(len(points)):
-                    next_i = (i + 1) % len(points)
-                    path.moveTo(points[i])
-                    path.lineTo(points[next_i])
-        
-        painter.drawPath(path)
-      
-#################################  #################################  #################################  
 
 class SnowOverlay(QWidget):
     def __init__(self,
@@ -324,13 +24,18 @@ class SnowOverlay(QWidget):
         self.setWindowFlags(Qt.Widget)
         
         # Цвет снежинок
-        self.snow_color = QColor(snow_color)  # Конвертируем hex в QColor
-        self.snow_color.setAlpha(150)  # Прозрачность по умолчанию
+        self.snow_color = QColor(snow_color) if not isinstance(snow_color, QColor) else snow_color
         
         # Параметры интерполяции
         self.interpolate_duration_sec = 3.0  # секунды на переход
         self.interpolate_steps = 0
         self.interpolate_max_steps = 1
+
+        self.alpha_min = 50
+        self.alpha_max = 200
+
+        self.gradient_start_color = None
+        self.gradient_end_color = None
         
         # Инициализируем from_params с текущими значениями
         self.from_params = {
@@ -347,16 +52,16 @@ class SnowOverlay(QWidget):
             self.presets = [
                 {"count": 20, "speed": 0.4, "size_min": 0.5, "size_max": 4.0, "weight": 100},
                 {"count": 50, "speed": 0.6, "size_min": 1.5, "size_max": 6.0, "weight": 70},
-                {"count": 300, "speed": 0.8, "size_min": 1.0, "size_max": 5.5, "weight": 50},
-                {"count": 400, "speed": 0.6, "size_min": 1.0, "size_max": 4.0, "weight": 30},
+                {"count": 200, "speed": 0.8, "size_min": 1.0, "size_max": 5.5, "weight": 50},
+                {"count": 200, "speed": 0.4, "size_min": 1.0, "size_max": 4.0, "weight": 50},
                 {"count": 800, "speed": 4.0, "size_min": 1.0, "size_max": 5.0, "weight": 10},
             ]
         else:
             self.presets = [
-                {"count": 20, "speed": 0.4, "size_min": 1.0, "size_max": 3.0, "weight": 70},
-                {"count": 50, "speed": 0.3, "size_min": 1.0, "size_max": 4.0, "weight": 30},
                 {"count": 10, "speed": 0.4, "size_min": 1.0, "size_max": 3.5, "weight": 150},
-                {"count": 200, "speed": 4.4, "size_min": 1.0, "size_max": 4.0, "weight": 1},
+                {"count": 20, "speed": 0.4, "size_min": 1.0, "size_max": 3.0, "weight": 70},
+                {"count": 30, "speed": 0.3, "size_min": 1.0, "size_max": 4.0, "weight": 30},
+                {"count": 50, "speed": 4.4, "size_min": 1.0, "size_max": 4.0, "weight": 1},
             ]
         
         self.change_interval_ms = int(change_interval_sec * 1000)
@@ -376,7 +81,7 @@ class SnowOverlay(QWidget):
         # Таймер анимации
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._update_snow)
-        self.timer.start(20)  # 50 FPS
+        self.timer.start(30)  # 33 FPS
         
         self.preset_timer = QTimer(self)
         self.preset_timer.timeout.connect(self._try_change_preset)
@@ -485,7 +190,8 @@ class SnowOverlay(QWidget):
             size = random.uniform(self.flake_size_min, self.flake_size_max)
             speed_factor = random.uniform(0.7, 1.3)
             sway_offset = random.uniform(0, 1000)
-            self.flakes.append([x, y, size, speed_factor, sway_offset])
+            alpha = random.randint(self.alpha_min, self.alpha_max)
+            self.flakes.append([x, y, size, speed_factor, sway_offset, alpha])
 
     def _remove_distant_flakes(self, count):
         """Удаляет самые дальние снежинки"""
@@ -536,11 +242,23 @@ class SnowOverlay(QWidget):
             size = random.uniform(self.flake_size_min, self.flake_size_max)
             speed_factor = random.uniform(0.7, 1.3)
             sway_offset = random.uniform(0, 1000)
-            self.flakes.append([x, y, size, speed_factor, sway_offset])
+            alpha = random.randint(self.alpha_min, self.alpha_max)
+            self.flakes.append([x, y, size, speed_factor, sway_offset, alpha])
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._init_snowflakes()  # пересоздаём при изменении размера
+
+    def _interpolate_color(self, color1, color2, t):
+        """Интерполяция между двумя цветами"""
+        t = max(0.0, min(1.0, t))
+        
+        r = int(color1.red() + (color2.red() - color1.red()) * t)
+        g = int(color1.green() + (color2.green() - color1.green()) * t)
+        b = int(color1.blue() + (color2.blue() - color1.blue()) * t)
+        a = int(color1.alpha() + (color2.alpha() - color1.alpha()) * t)
+        
+        return QColor(r, g, b, a)
 
     def _update_snow(self):
         # Обновляем интерполяцию если она активна
@@ -549,28 +267,73 @@ class SnowOverlay(QWidget):
         
         h = self.height()
         w = self.width()
+        
         for flake in self.flakes:
-            x, y, size, speed_factor, sway_offset = flake
+            x, y, size, speed_factor, sway_offset, alpha = flake[:6]
+            
             # Падение
             y += self.fall_speed * speed_factor
+            
             # Лёгкое колебание (ветер)
             x += math.sin(y * 0.01 + sway_offset) * 0.3
+            
+            # Обновляем прогресс цвета если есть градиент
+            if hasattr(self, 'gradient_start_color') and self.gradient_start_color and len(flake) >= 7:
+                # Прогресс меняется в зависимости от положения снежинки
+                # Чем ниже снежинка, тем ближе к конечному цвету
+                progress = y / h if h > 0 else flake[6]
+                progress = max(0.0, min(1.0, progress))
+                flake[6] = progress  # обновляем прогресс
+            
             # Сброс, если ушла вниз
             if y > h + 20:
                 y = -10
                 x = random.uniform(0, w)
+                # Сбрасываем прогресс цвета для новой снежинки
+                if len(flake) >= 7:
+                    flake[6] = random.uniform(0.0, 0.3)  # начинаем с начального цвета
+            
             flake[0], flake[1] = x, y
         
-        self.update()  # запрос на перерисовку
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QBrush(self.snow_color))
         painter.setPen(Qt.NoPen)
-
-        for x, y, size, _, _ in self.flakes:
-            # Рисуем простую круглую снежинку
+        
+        # Проверяем, есть ли градиент
+        has_gradient = (hasattr(self, 'gradient_start_color') and 
+                    self.gradient_start_color is not None and
+                    hasattr(self, 'gradient_end_color') and 
+                    self.gradient_end_color is not None)
+        
+        for flake in self.flakes:
+            x, y, size, _, _, alpha = flake[:6]
+            
+            # КРИТИЧНО: Правильная проверка и получение прогресса
+            if has_gradient:
+                # Проверяем, есть ли прогресс в снежинке
+                if len(flake) >= 7:
+                    progress = flake[6]
+                else:
+                    # Если прогресса нет - создаем случайный
+                    progress = random.random()
+                    flake.append(progress)
+                
+                # Интерполируем цвет
+                color = self._interpolate_color(
+                    self.gradient_start_color, 
+                    self.gradient_end_color, 
+                    progress
+                )
+                color.setAlpha(alpha)
+            else:
+                # Обычный цвет
+                color = QColor(self.snow_color)
+                color.setAlpha(alpha)
+            
+            painter.setBrush(QBrush(color))
             painter.drawEllipse(QPointF(x, y), size, size)
 
     def setSnowParameters(self, count=None, speed=None, size_min=None, size_max=None):
@@ -584,34 +347,61 @@ class SnowOverlay(QWidget):
         if size_max is not None:
             self.flake_size_max = size_max
         self._init_snowflakes()
-        
-    def setSnowColor(self, color, alpha=None, white_balance=100):
+
+    def setSnowColor(self, color, white_balance=100):
         """Установка цвета снежинок с балансом белого"""
+        self.gradient_start_color = None
+        self.gradient_end_color = None
+
+        if isinstance(color, str) and color.startswith("qlineargradient"):
+            try:
+                pattern = r"stop:\d+(?:\.\d+)?\s+(#[0-9a-fA-F]{6})"
+                colors = re.findall(pattern, color)
+                
+                if len(colors) >= 2:
+                    self.gradient_start_color = QColor(colors[0])
+                    self.gradient_end_color = QColor(colors[1])
+
+                    for flake in self.flakes:
+                        if len(flake) == 6:
+                            flake.append(random.random())
+                        elif len(flake) >= 7:
+                            flake[6] = random.random()
+
+                    if white_balance != 0:
+                        self.gradient_start_color = self._blend_with_white(self.gradient_start_color, white_balance)
+                        self.gradient_end_color = self._blend_with_white(self.gradient_end_color, white_balance)
+
+                    self.snow_color = self.gradient_start_color
+
+                    self.update()
+                    return
+                    
+            except Exception as e:
+                debug_logger.error(f"Ошибка парсинга градиента: {e}")
+
+        for flake in self.flakes:
+            if len(flake) > 6:
+                flake.pop()
+
         if isinstance(color, str):
-            # Если передан hex-строка
             base_color = QColor(color)
         elif isinstance(color, QColor):
-            # Если передан QColor
             base_color = color
         elif isinstance(color, (list, tuple)):
-            # Если передан RGB/RGBA список
             if len(color) == 3:
                 base_color = QColor(*color)
             elif len(color) == 4:
                 base_color = QColor(*color)
-        
-        # Применяем баланс белого (0-100%)
-        # 0% = полностью переданный цвет, 100% = полностью белый
+        else:
+            base_color = QColor("#FFFFFF")
+
         if white_balance != 0:
             self.snow_color = self._blend_with_white(base_color, white_balance)
         else:
             self.snow_color = base_color
-        
-        # Устанавливаем прозрачность
-        if alpha is not None:
-            self.snow_color.setAlpha(alpha)
-        
-        self.update()  # Перерисовываем
+
+        self.update()
         
     def _blend_with_white(self, color, white_balance_percent):
         """Смешивает цвет с белым"""
@@ -709,30 +499,6 @@ class GarlandDecorator:
             self.light_count = max(10, int(self.width * self.lights_density))
             self.generate_lights()
             self.target_widget.update()
-    
-    # def generate_lights(self):
-    #     self.lights = []
-    #     colors = self.color_palettes[self.current_palette]
-
-    #     padding = 10
-        
-    #     for i in range(self.light_count):
-    #         # Расчет позиции с учетом отступов
-    #         available_width = self.width - (2 * padding)
-    #         x = padding + (available_width * i) / max(1, self.light_count - 1)
-            
-    #         wave_height = 15
-    #         y_offset = (math.sin(i * 0.8) - 1) * (wave_height / 2)
-            
-    #         base_color = QColor(random.choice(colors))
-    #         self.lights.append({
-    #             'x': x, 
-    #             'y_offset': y_offset,
-    #             'base_color': base_color, 
-    #             'brightness': 0,
-    #             'size': self.light_size,
-    #             'phase': random.uniform(0, 2 * math.pi)
-    #         })
     
     def generate_lights(self):
         self.lights = []

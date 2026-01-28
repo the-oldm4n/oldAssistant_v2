@@ -7,6 +7,7 @@ import winshell
 from bin.apply_color_methods import main_apply_colors
 from bin.custom_svg_widget import CustomSvgWidget
 from bin.custom_widgets import CustomToggle
+from bin.edit_dialog import EditDialog
 from bin.lists import fonts_list, default_keywords_data, setup_custom_font_label
 from bin.shortcut_monitor import ShortcutMonitor
 from bin.signals import color_signal, widget_btns_signal, update_presets_signal
@@ -18,7 +19,7 @@ from logging_config import logger, debug_logger
 from PySide6.QtGui import QAction, QFontDatabase, QRegularExpressionValidator
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QApplication, QWidget,\
     QDialog, QMenu, QMessageBox, QLineEdit, QComboBox, QSlider, QListWidget, QScrollArea, QFrame,\
-    QListWidgetItem, QCheckBox
+    QListWidgetItem, QCheckBox, QSizePolicy, QGridLayout
 from PySide6.QtCore import Signal, QTimer, Qt, QEvent, QRegularExpression
 
 
@@ -34,7 +35,7 @@ class InterfaceWidget(QWidget):
         self.assistant = assistant
         self._help_initialized = False
         self.setProperty("helpId", "style_widget")
-        update_presets_signal.presets_updated.connect(self.load_custom_presets)
+        update_presets_signal.presets_updated.connect(self.load_custom_styles)
         self.init_ui()
 
     style_applied = Signal(dict)  # Сигнал для передачи стиля
@@ -51,105 +52,230 @@ class InterfaceWidget(QWidget):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(20)
 
-        # Заголовок
         title = setup_custom_font_label("Выбор стиля интерфейса", font_style="Comfortaa", weight="Medium")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("background: transparent; font-size: 18px;")
         layout.addWidget(title)
 
-        # Контейнер для двух колонок
-        cols = QHBoxLayout()
-        left_col = QVBoxLayout()
-        right_col = QVBoxLayout()
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        # Левая колонка
-        btn_dark_orange = QPushButton("Оранжевый неон")
-        btn_dark_orange.clicked.connect(lambda: self.apply_style_file("orange_neon.json"))
-        left_col.addWidget(btn_dark_orange)
+        self.styles_widget = QWidget()
+        self.styles_layout = QVBoxLayout(self.styles_widget)
+        self.styles_layout.setSpacing(15)
+        self.styles_layout.setContentsMargins(5, 5, 5, 5)
 
-        btn_dark_blue = QPushButton("Синий неон")
-        btn_dark_blue.clicked.connect(lambda: self.apply_style_file("blue_neon.json"))
-        left_col.addWidget(btn_dark_blue)
+        base_presets = get_path('bin', 'color_presets')
+        self.load_styles_from_folder(base_presets, self.styles_layout, is_custom=False)
 
-        btn_dark_green = QPushButton("Зеленый неон")
-        btn_dark_green.clicked.connect(lambda: self.apply_style_file("green_neon.json"))
-        left_col.addWidget(btn_dark_green)
+        self.custom_label = setup_custom_font_label("Кастомные стили", font_style="Comfortaa", weight="Medium")
+        self.custom_label.setStyleSheet("background: transparent; font-size: 14px;")
+        self.styles_layout.addWidget(self.custom_label)
 
-        btn_dark_purple = QPushButton("Розовый неон")
-        btn_dark_purple.clicked.connect(lambda: self.apply_style_file("pink_neon.json"))
-        left_col.addWidget(btn_dark_purple)
+        self.custom_styles_container = QWidget()
+        self.custom_styles_layout = QVBoxLayout(self.custom_styles_container)
+        self.custom_styles_layout.setContentsMargins(0, 0, 0, 0)
+        self.styles_layout.addWidget(self.custom_styles_container)
 
-        btn_dark_red = QPushButton("Красный неон")
-        btn_dark_red.clicked.connect(lambda: self.apply_style_file("red_neon.json"))
-        left_col.addWidget(btn_dark_red)
+        self.load_custom_styles()
 
-        btn_dark_blue = QPushButton("Голубой неон")
-        btn_dark_blue.clicked.connect(lambda: self.apply_style_file("dark_blue.json"))
-        left_col.addWidget(btn_dark_blue)
+        self.styles_layout.addStretch()
 
-        btn_purple_neon = QPushButton("Фиолетовый неон")
-        btn_purple_neon.clicked.connect(lambda: self.apply_style_file("purple_neon.json"))
-        left_col.addWidget(btn_purple_neon)
+        scroll_area.setWidget(self.styles_widget)
+        layout.addWidget(scroll_area, stretch=1)
 
-        # Правая колонка
-        btn_dark = QPushButton("Dark")
-        btn_dark.clicked.connect(lambda: self.apply_style_file("dark.json"))
-        right_col.addWidget(btn_dark)
-
-        btn_legacy = QPushButton("Legacy")
-        btn_legacy.clicked.connect(lambda: self.apply_style_file("legacy.json"))
-        # right_col.addWidget(btn_legacy)
-
-        btn_white = QPushButton("White")
-        btn_white.clicked.connect(lambda: self.apply_style_file("white.json"))
-        # right_col.addWidget(btn_white)
-
-        btn_white_orange = QPushButton("Blue-Orange")
-        btn_white_orange.clicked.connect(lambda: self.apply_style_file("blue_orange.json"))
-        right_col.addWidget(btn_white_orange)
-
-        btn_purple = QPushButton("MoonLight")
-        btn_purple.clicked.connect(lambda: self.apply_style_file("moonlight.json"))
-        right_col.addWidget(btn_purple)
-
-        btn_pink_blue = QPushButton("Pink-Blue")
-        btn_pink_blue.clicked.connect(lambda: self.apply_style_file("pink_blue.json"))
-        right_col.addWidget(btn_pink_blue)
-
-        btn_orange_purple = QPushButton("Закат")
-        btn_orange_purple.clicked.connect(lambda: self.apply_style_file("sunset.json"))
-        right_col.addWidget(btn_orange_purple)
-
-        btn_mint = QPushButton("Mint")
-        btn_mint.clicked.connect(lambda: self.apply_style_file("mint.json"))
-        right_col.addWidget(btn_mint)
-        
-        btn_snow_night = QPushButton("Night Snow")
-        btn_snow_night.clicked.connect(lambda: self.apply_style_file("snow_night.json"))
-        right_col.addWidget(btn_snow_night)
-
-        cols.addLayout(left_col)
-        cols.addLayout(right_col)
-        layout.addLayout(cols)
-
-        # Выпадающий список для кастомных стилей
-        self.custom_presets_combo = QComboBox()
-        self.custom_presets_combo.addItem("Выберите пользовательский стиль...")
-        self.load_custom_presets()
-        self.custom_presets_combo.currentIndexChanged.connect(self.apply_custom_style)
-
-        layout.addWidget(self.custom_presets_combo)
-
-        layout.addStretch()
-
-        btn_default = QPushButton("Default")
-        btn_default.clicked.connect(lambda: self.apply_style_file("dark.json"))
-        layout.addWidget(btn_default)
-
-        # Кнопка создания своего стиля
-        create_btn = QPushButton("Создать свой стиль")
+        create_btn = QPushButton("Настроить свой стиль")
+        create_btn.setMinimumHeight(40)
         create_btn.clicked.connect(self.open_color_settings)
         layout.addWidget(create_btn)
+
+    def load_custom_styles(self):
+        """Загружает пользовательские стили в отдельный контейнер"""
+        # Полностью очищаем контейнер - удаляем все дочерние layout и виджеты
+        while self.custom_styles_layout.count():
+            child = self.custom_styles_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+            elif child.layout():  # Важно: также удаляем вложенные layout
+                self.clear_nested_layout(child.layout())
+        
+        custom_presets = get_path('user_settings', 'presets')
+        
+        # Создаем новую сетку для кнопок кастомных стилей
+        custom_grid = QGridLayout()
+        custom_grid.setSpacing(10)
+        custom_grid.setContentsMargins(0, 5, 0, 5)
+        
+        # Загружаем файлы кастомных стилей
+        if os.path.exists(custom_presets):
+            try:
+                style_files = [f for f in os.listdir(custom_presets) 
+                            if f.endswith('.json') and os.path.isfile(os.path.join(custom_presets, f))]
+                style_files.sort()
+                
+                if not style_files:
+                    # Если нет кастомных стилей - показываем сообщение
+                    no_styles_label = QLabel("Пусто")
+                    no_styles_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    no_styles_label.setStyleSheet("color: #777; font-style: italic; padding: 10px;")
+                    custom_grid.addWidget(no_styles_label, 0, 0, 1, 3)
+                else:
+                    # Добавляем кнопки в сетку (3 колонки)
+                    for i, filename in enumerate(style_files):
+                        row = i // 3
+                        col = i % 3
+                        
+                        btn = self.create_style_button(filename, custom_presets, is_custom=True)
+                        if btn:
+                            custom_grid.addWidget(btn, row, col)
+            except Exception as e:
+                debug_logger.error(f"[SETTINGS-WIDGET] Ошибка чтения кастомных стилей: {e}")
+                error_label = QLabel("Ошибка загрузки стилей")
+                error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                error_label.setStyleSheet("color: red; padding: 10px;")
+                custom_grid.addWidget(error_label, 0, 0, 1, 3)
+        else:
+            # Если папки нет - показываем сообщение
+            no_styles_label = QLabel("Пусто")
+            no_styles_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            no_styles_label.setStyleSheet("color: #777; font-style: italic; padding: 10px;")
+            custom_grid.addWidget(no_styles_label, 0, 0, 1, 3)
+        
+        # Добавляем новую сетку в контейнер
+        self.custom_styles_layout.addLayout(custom_grid)
+
+    def clear_nested_layout(self, layout):
+        """Рекурсивно очищает вложенные layout"""
+        while layout.count():
+            child = layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+            elif child.layout():
+                self.clear_nested_layout(child.layout())
+
+    def load_styles_from_folder(self, folder_path, container_layout, is_custom=False):
+        """Загружает стили из папки и создает кнопки"""
+        if not os.path.exists(folder_path):
+            if is_custom:
+                # Если нет папки с пользовательскими стилями - показываем сообщение
+                no_styles_label = QLabel("Пусто")
+                no_styles_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                no_styles_label.setStyleSheet("color: #777; font-style: italic; padding: 10px;")
+                container_layout.addWidget(no_styles_label)
+            return
+
+        # Получаем все JSON файлы
+        try:
+            style_files = [f for f in os.listdir(folder_path) 
+                        if f.endswith('.json') and os.path.isfile(os.path.join(folder_path, f))]
+        except Exception as e:
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка чтения папки {folder_path}: {e}")
+            return
+
+        if not style_files:
+            if is_custom:
+                no_styles_label = QLabel("Пусто")
+                no_styles_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                no_styles_label.setStyleSheet("color: #777; font-style: italic; padding: 10px;")
+                container_layout.addWidget(no_styles_label)
+            return
+
+        # Сортируем файлы
+        style_files.sort()
+
+        # Создаем сетку для кнопок
+        grid_layout = QGridLayout()
+        grid_layout.setSpacing(10)
+        grid_layout.setContentsMargins(0, 5, 0, 5)
+
+        # Добавляем кнопки в сетку (3 колонки)
+        for i, filename in enumerate(style_files):
+            row = i // 3
+            col = i % 3
+            
+            btn = self.create_style_button(filename, folder_path, is_custom)
+            if btn:
+                grid_layout.addWidget(btn, row, col)
+
+        container_layout.addLayout(grid_layout)
+
+    def apply_style_from_button(self, file_path, filename, is_custom=False):
+        """Применяет стиль при клике на кнопку"""
+        try:
+            file_name_only = os.path.basename(filename) if isinstance(filename, str) else filename
+            self.apply_style_file(file_name_only)
+            
+        except Exception as e:
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка применения стиля {filename}: {e}")
+            self.assistant.show_notification_message(f"Ошибка: {str(e)[:50]}...")
+
+    def create_style_button(self, filename, folder_path, is_custom=False):
+        """Создает кнопку стиля с предпросмотром цвета"""
+        file_path = os.path.join(folder_path, filename)
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                style_data = json.load(f)
+
+            preview_color = self.extract_preview_color(style_data)
+            style_name = os.path.splitext(filename)[0]
+            style_name = style_name.replace('_', ' ').replace('-', ' ').title()
+
+            btn = QPushButton(f"{style_name}")
+            btn.setMinimumHeight(30)
+            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+            btn_widget = QWidget()
+            btn_layout = QHBoxLayout(btn_widget)
+            btn_layout.setContentsMargins(10, 5, 10, 5)
+            btn_layout.setSpacing(10)
+
+            btn_layout.addStretch()
+            btn.setLayout(btn_layout)
+
+            btn_style = self.create_button_style(preview_color)
+            btn.setStyleSheet(btn_style)
+
+            if is_custom:
+                btn.setContextMenuPolicy(Qt.CustomContextMenu)
+                btn.customContextMenuRequested.connect(
+                    lambda pos, f=filename, p=folder_path: self.show_style_context_menu(pos, f, p, btn)
+                )
+                # Сохраняем оригинальное имя файла в свойстве кнопки
+                btn.setProperty("original_filename", filename)
+                btn.setProperty("folder_path", folder_path)
+
+            btn.clicked.connect(lambda checked, fp=file_path, fn=filename: 
+                            self.apply_style_from_button(fp, fn, is_custom))
+
+            return btn
+            
+        except Exception as e:
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка создания кнопки для {filename}: {e}")
+            btn = QPushButton(filename.replace('.json', ''))
+            btn.clicked.connect(lambda: self.apply_style_file(filename))
+            return btn
+
+    def extract_preview_color(self, style_data):
+        """Извлекает цвет/градиент ТОЛЬКО из BasedColors["svg"]"""
+        if "BasedColors" in style_data and "svg" in style_data["BasedColors"]:
+            return style_data["BasedColors"]["svg"]  # Возвращаем как есть
+        
+        return "#4A90E2"  # Простой цвет по умолчанию
+
+    def create_button_style(self, color_str):
+        """Создает стиль кнопки на основе цвета/градиента"""
+        return f"""
+            QPushButton {{
+                background: {color_str};
+                color: white;
+                border: 1px solid {color_str};
+            }}
+            QPushButton:hover {{
+                border: 1px solid rgba(255, 255, 255, 0.4);
+            }}
+        """
 
     def apply_style_file(self, filename):
         """Применяет стиль из указанного файла, проверяя обе директории."""
@@ -167,7 +293,7 @@ class InterfaceWidget(QWidget):
             preset_path = base_path
         else:
             logger.error(f"Пресет '{filename}' не найден ни в одной из папок.")
-            debug_logger.error(f"Пресет '{filename}' не найден ни в одной из папок.")
+            debug_logger.error(f"[SETTINGS-WIDGET] Пресет '{filename}' не найден ни в одной из папок.")
             return
 
         try:
@@ -184,40 +310,106 @@ class InterfaceWidget(QWidget):
                 self.assistant.check_start_win()
                 color_signal.color_changed.emit()
                 self.assistant.show_notification_message(message=f"Стиль успешно применен!")
-                debug_logger.info(f"Применён стиль из файла: {filename}")
+                debug_logger.info(f"[SETTINGS-WIDGET] Применён стиль из файла: {filename}")
 
         except json.JSONDecodeError:
             logger.error(f"Ошибка: файл пресета повреждён ({preset_path}).")
-            debug_logger.error(f"Ошибка: файл пресета повреждён ({preset_path}).")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка: файл пресета повреждён ({preset_path}).")
         except Exception as e:
             logger.error(f"Ошибка загрузки пресета: {e}")
-            debug_logger.error(f"Ошибка загрузки пресета: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка загрузки пресета: {e}")
             self.assistant.show_message(f"Ошибка загрузки пресета: {e}", "Ошибка", "error")
 
-    def load_custom_presets(self):
-        """Загружает список пользовательских пресетов в выпадающий список"""
-        self.custom_presets_combo.clear()
-        self.custom_presets_combo.addItem("Тут Ваши созданные стили...")
+    def show_style_context_menu(self, pos, filename, folder_path, button):
+        """Показывает контекстное меню для кастомного стиля"""
+        menu = QMenu(self)
+        
+        # Действие редактирования названия
+        edit_action = QAction("Редактировать название", self)
+        edit_action.triggered.connect(lambda: self.edit_style_name(filename, folder_path, button))
+        
+        # Действие удаления
+        delete_action = QAction("Удалить стиль", self)
+        delete_action.triggered.connect(lambda: self.delete_custom_style(filename, folder_path))
+        
+        menu.addAction(edit_action)
+        menu.addAction(delete_action)
+        
+        # Показываем меню в позиции клика
+        menu.exec_(button.mapToGlobal(pos))
 
-        custom_presets_dir = get_path('user_settings', 'presets')
+    def edit_style_name(self, filename, folder_path, button):
+        """Редактирует название кастомного стиля"""
+        current_display_name = button.text()
 
-        if os.path.exists(custom_presets_dir):
-            for filename in sorted(os.listdir(custom_presets_dir)):
-                if filename.endswith('.json'):
-                    preset_name = filename[:-5]  # Убираем расширение .json
-                    self.custom_presets_combo.addItem(preset_name)
+        dialog = EditDialog(
+            self.assistant, 
+            title="Редактирование названия стиля", 
+            text=current_display_name
+        )
 
-    def apply_custom_style(self, index):
-        """Применяет выбранный пользовательский стиль"""
-        if index == 0:  # Первый элемент - заглушка
+        if dialog.exec_() != QDialog.DialogCode.Accepted:
+            return
+        
+        new_name = dialog.get_text().strip()
+        
+        if not new_name or new_name == current_display_name:
             return
 
-        preset_name = self.custom_presets_combo.currentText()
-        if preset_name:
-            # Добавляем расширение .json, если его нет
-            if not preset_name.endswith('.json'):
-                preset_name += '.json'
-            self.apply_style_file(preset_name)
+        old_file_path = os.path.join(folder_path, filename)
+        new_filename = new_name.lower().replace(' ', '_') + '.json'
+        new_file_path = os.path.join(folder_path, new_filename)
+        
+        try:
+            if os.path.exists(new_file_path):
+                self.assistant.show_notification_message(f"Файл с именем '{new_name}' уже существует!")
+                return
+
+            os.rename(old_file_path, new_file_path)
+            button.setText(new_name)
+            button.setProperty("original_filename", new_filename)
+            self.load_custom_styles()
+
+            update_presets_signal.presets_updated.emit()
+            
+            self.assistant.show_notification_message(f"Название изменено на: {new_name}")
+            
+        except FileNotFoundError:
+            debug_logger.error(f"[SETTINGS-WIDGET] Файл не найден: {old_file_path}")
+            self.assistant.show_notification_message("Ошибка: файл не найден!")
+        except PermissionError:
+            debug_logger.error(f"[SETTINGS-WIDGET] Нет прав на переименование файла: {old_file_path}")
+            self.assistant.show_notification_message("Ошибка: нет прав на изменение файла!")
+        except Exception as e:
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка при переименовании файла: {e}")
+            self.assistant.show_notification_message(f"Ошибка: {str(e)}")
+
+    def delete_custom_style(self, filename, folder_path):
+        """Удаляет кастомный стиль"""
+        file_path = os.path.join(folder_path, filename)
+        
+        # Подтверждение удаления
+        reply = self.assistant.show_message(
+            text=f"Вы уверены, что хотите удалить стиль '{filename.replace('.json', '')}'?",
+            title="Подтверждение удаления",
+            message_type="question",
+            buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            debug_logger.info("[SETTINGS-WIDGET] Удаление стиля отменено")
+            return
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                os.remove(file_path)
+                self.assistant.show_notification_message(f"Стиль '{filename.replace('.json', '')}' удален")
+                self.load_custom_styles()
+                update_presets_signal.presets_updated.emit()
+                
+            except Exception as e:
+                debug_logger.error(f"[SETTINGS-WIDGET] Ошибка удаления стиля {filename}: {e}")
+                self.assistant.show_notification_message(f"Ошибка удаления: {str(e)[:50]}...")
 
     def open_color_settings(self):
         """Открывает диалоговое окно для настройки цветов."""
@@ -227,7 +419,7 @@ class InterfaceWidget(QWidget):
             color_dialog.exec_()
         except Exception as e:
             logger.error(f"Ошибка при открытии окна настроек цветов: {e}")
-            debug_logger.error(f"Ошибка при открытии окна настроек цветов: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка при открытии окна настроек цветов: {e}")
             self.assistant.show_message(f"Не удалось открыть настройки цветов: {e}", "Ошибка", "error")
 
 
@@ -265,7 +457,7 @@ class SettingsWidget(QWidget):
         if hasattr(self.assistant, 'hide_widget'):
             self.assistant.hide_widget()
         else:
-            debug_logger.error("Метод close_settings не найден в assistant")
+            debug_logger.error("[SETTINGS-WIDGET] Метод close_settings не найден в assistant")
             
     def showEvent(self, event):
         """При показе панели настраиваем help system"""
@@ -412,7 +604,7 @@ class SettingsWidget(QWidget):
             thread_react(get_path)
         except Exception as e:
             logger.error(f"При тесте голоса произошла ошибка:{e}")
-            debug_logger.error(f"При тесте голоса произошла ошибка:{e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] При тесте голоса произошла ошибка:{e}")
 
     def update_ui(self):
         """Обновляет UI виджета текущими настройками"""
@@ -675,9 +867,9 @@ class OtherSettingsWidget(QWidget):
                     shortcut.description = f"Ярлык для {app_name}"
                     shortcut.icon_location = (executable_path, 0)
                 shortcuts_created = True
-                debug_logger.info(f"Ярлык создан на рабочем столе: {desktop_shortcut}")
+                debug_logger.info(f"[SETTINGS-WIDGET] Ярлык создан на рабочем столе: {desktop_shortcut}")
             else:
-                debug_logger.error(f"Ярлык на рабочем столе уже существует: {desktop_shortcut}")
+                debug_logger.error(f"[SETTINGS-WIDGET] Ярлык на рабочем столе уже существует: {desktop_shortcut}")
 
         except Exception as e:
             self.assistant.show_notification_message(f"Ошибка создания ярлыка на рабочем столе: {e}")
@@ -699,9 +891,9 @@ class OtherSettingsWidget(QWidget):
                     shortcut.description = f"Ярлык для {app_name}"
                     shortcut.icon_location = (executable_path, 0)
                 shortcuts_created = True
-                debug_logger.info(f"Ярлык создан в меню 'Пуск': {startup_shortcut}")
+                debug_logger.info(f"[SETTINGS-WIDGET] Ярлык создан в меню 'Пуск': {startup_shortcut}")
             else:
-                debug_logger.error(f"Ярлык в меню 'Пуск' уже существует: {startup_shortcut}")
+                debug_logger.error(f"[SETTINGS-WIDGET] Ярлык в меню 'Пуск' уже существует: {startup_shortcut}")
 
         except Exception as e:
             self.assistant.show_notification_message(f"Ошибка создания ярлыка в меню 'Пуск': {e}")
@@ -728,7 +920,7 @@ class OtherSettingsWidget(QWidget):
         except Exception as e:
             self.device_list.addItem("Нет активных микрофонов")
             self.assistant.show_notification_message(f"Ошибка при получении данных аудиоустройств: {str(e)}")
-            debug_logger.error(f"Ошибка при получении данных аудиоустройств: {str(e)}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка при получении данных аудиоустройств: {str(e)}")
 
     def get_input_devices(self):
         devices = sd.query_devices()
@@ -782,7 +974,7 @@ class OtherSettingsWidget(QWidget):
 
             return active_mics
         except Exception as e:
-            debug_logger.error(f"Ошибка в проверке активных микрофонов: {str(e)}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка в проверке активных микрофонов: {str(e)}")
 
     def on_microphone_selected(self):
         device_id = self.device_list.currentData()  # int или None
@@ -799,14 +991,14 @@ class OtherSettingsWidget(QWidget):
             self.assistant.save_settings()
             self.assistant.save_settings_signal.emit()
 
-            debug_logger.info(f"Выбрано устройство: '{device_name}' (ID={device_id})")
+            debug_logger.info(f"[SETTINGS-WIDGET] Выбрано устройство: '{device_name}' (ID={device_id})")
 
     def hide_method(self):
         """Закрывает панель настроек через главный класс"""
         if hasattr(self.assistant, 'hide_widget'):
             self.assistant.hide_widget()
         else:
-            debug_logger.error("Метод close_settings не найден в assistant")     
+            debug_logger.error("[SETTINGS-WIDGET] Метод close_settings не найден в assistant")     
             
 class SpeechHookManagerWidget(QWidget):
     def __init__(self, parent=None):
@@ -1751,7 +1943,7 @@ class SettingsWidgetPanel(QWidget):
         """Применить шрифт с индивидуальным размером для каждого семейства"""
         font_size = self.get_font_size_for_family(font_name)
 
-        debug_logger.info(f"Применение шрифта для превью: {font_family} с размером: {font_size}")
+        debug_logger.info(f"[SETTINGS-WIDGET] Применение шрифта для превью: {font_family} с размером: {font_size}")
 
         styles = f"""
             #preview_clock {{
@@ -1818,7 +2010,7 @@ class SettingsWidgetPanel(QWidget):
                         self.font_combo.setCurrentIndex(index)
 
         except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-            debug_logger.warning(f"Не удалось загрузить сохраненный шрифт: {e}")
+            debug_logger.warning(f"[SETTINGS-WIDGET] Не удалось загрузить сохраненный шрифт: {e}")
             # Устанавливаем шрифт по умолчанию
             default_index = self.font_combo.findText("digital")
             if default_index >= 0:
@@ -1986,7 +2178,7 @@ class SettingsWidgetPanel(QWidget):
             return True
 
         except Exception as e:
-            debug_logger.error(f"Ошибка загрузки кнопок: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка загрузки кнопок: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -2055,7 +2247,7 @@ class SettingsWidgetPanel(QWidget):
             self.load_buttons_settings()
             
         except Exception as e:
-            debug_logger.error(f"Ошибка сброса настроек: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка сброса настроек: {e}")
 
     def save_order(self):
         try:
@@ -2081,7 +2273,7 @@ class SettingsWidgetPanel(QWidget):
             QTimer.singleShot(100, widget_btns_signal.buttons_updated.emit)
             
         except Exception as e:
-            debug_logger.error(f"Ошибка сохранения порядка: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка сохранения порядка: {e}")
 
     def show_create_custom_widget(self):
         """Показывает виджет создания кастомной кнопки"""
@@ -2106,7 +2298,7 @@ class SettingsWidgetPanel(QWidget):
                 self.add_custom_button(button_data)
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка загрузки кастомных кнопок: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка загрузки кастомных кнопок: {e}")
 
     
 
@@ -2158,10 +2350,10 @@ class SettingsWidgetPanel(QWidget):
                     button_data = btn
                     break
         except Exception as e:
-            debug_logger.error(f"Ошибка загрузки данных кнопки: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка загрузки данных кнопки: {e}")
         
         if not button_data:
-            QMessageBox.warning(self, "Ошибка", "Кнопка не найдена")
+            self.assistant.show_message("Кнопка не найдена", "Ошибка", "warning")
             return
         
         # Открываем диалог с данными кнопки для редактирования
@@ -2211,7 +2403,7 @@ class SettingsWidgetPanel(QWidget):
                 json.dump(data, f, indent=4, ensure_ascii=False)
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка обновления кнопки в JSON: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка обновления кнопки в JSON: {e}")
 
 
     def remove_btn_from_json(self, custom_id):
@@ -2239,7 +2431,7 @@ class SettingsWidgetPanel(QWidget):
                 json.dump(data, f, indent=4, ensure_ascii=False)
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка удаления кастомной кнопки из JSON: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка удаления кастомной кнопки из JSON: {e}")
 
 
 class CustomBtnForPanel(QDialog):
@@ -2491,7 +2683,7 @@ class CustomBtnForPanel(QDialog):
                 self.style_manager.apply_color_svg(self.preview_svg, strength=0.9)
                 self.preview_svg.update()
             except Exception as e:
-                debug_logger.error(f"Ошибка загрузки превью: {e}")
+                debug_logger.error(f"[SETTINGS-WIDGET] Ошибка загрузки превью: {e}")
                 self.preview_svg.load("")
         else:
             self.preview_svg.load("")
@@ -2512,15 +2704,15 @@ class CustomBtnForPanel(QDialog):
                     pass
                 else:
                     os.makedirs(path)
-                    debug_logger.info(f'Папка "{path}" была создана.')
+                    debug_logger.info(f'[SETTINGS-WIDGET] Папка "{path}" была создана.')
         except Exception as e:
-            debug_logger.error(f'Ошибка при создании папки: {e}')
+            debug_logger.error(f'[SETTINGS-WIDGET] Ошибка при создании папки: {e}')
 
     def open_folder(self, path):
         try:
             os.startfile(path)
         except Exception as e:
-            debug_logger.error(f'Ошибка при открытии папки: {e}')
+            debug_logger.error(f'[SETTINGS-WIDGET] Ошибка при открытии папки: {e}')
 
     def save_button(self):
         """Создает или обновляет объект кастомной кнопки"""
@@ -2587,7 +2779,7 @@ class CustomBtnForPanel(QDialog):
                 json.dump(existing_data, f, indent=4, ensure_ascii=False)
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка сохранения кнопки: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка сохранения кнопки: {e}")
 
     def update_btn_data(self, custom_data):
         """Обновляет существующую кнопку в JSON"""
@@ -2616,7 +2808,7 @@ class CustomBtnForPanel(QDialog):
                 json.dump(existing_data, f, indent=4, ensure_ascii=False)
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка обновления кнопки: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка обновления кнопки: {e}")
 
     def generate_unique_id(self, length=8):
         """Генерирует уникальный ID с проверкой на существование"""
@@ -2638,7 +2830,7 @@ class CustomBtnForPanel(QDialog):
                     return new_id
                     
         except Exception as e:
-            debug_logger.error(f"Ошибка генерации ID: {e}")
+            debug_logger.error(f"[SETTINGS-WIDGET] Ошибка генерации ID: {e}")
             # Fallback: обычная генерация без проверки
             alphabet = string.ascii_lowercase + string.digits
             return ''.join(secrets.choice(alphabet) for _ in range(length))

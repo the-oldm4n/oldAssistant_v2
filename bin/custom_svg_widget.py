@@ -2,6 +2,7 @@ from PySide6.QtWidgets import QGraphicsColorizeEffect, QGraphicsEffect
 from PySide6.QtGui import QColor, QPixmap, QPainter, QLinearGradient, QBrush, QRadialGradient, QConicalGradient
 from PySide6.QtCore import Qt, Property
 from PySide6.QtSvgWidgets import QSvgWidget
+from logging_config import debug_logger
 
 class CustomSvgWidget(QSvgWidget):
     """
@@ -56,7 +57,7 @@ class CustomSvgWidget(QSvgWidget):
             return True
 
         except Exception as e:
-            print(f"❌ Ошибка применения цвета: {e}")
+            debug_logger.error(f"[CUSTOMSVG] Ошибка применения цвета: {e}")
             return False
 
     def applyGradientEffect(self, gradient_data, strength=1.0):
@@ -64,37 +65,24 @@ class CustomSvgWidget(QSvgWidget):
         БЕЗОПАСНЫЙ метод для применения градиента
         """
         try:
-            # print("applyGradientEffect вызван")
-            # print(f"gradient_data: {gradient_data}")
-            
-            # Удаляем цветовой эффект если был
             if self._color_effect:
-                # print("🗑️ Удаляем старый color effect")
                 self._color_effect.deleteLater()
                 self._color_effect = None
 
-            # Удаляем старый градиентный эффект
             if self._gradient_effect:
-                # print("🗑️ Удаляем старый gradient effect")
                 self._gradient_effect.deleteLater()
 
-            # Создаем и применяем градиентный эффект
-            # print("Создаем GradientColorizeEffect")
             self._gradient_effect = GradientColorizeEffect(self)
             self._gradient_effect.setGradient(gradient_data)
             self._gradient_effect.setStrength(strength)
             self.setGraphicsEffect(self._gradient_effect)
 
-            # print("Принудительное обновление")
             self._forceUpdate()
             return True
 
         except Exception as e:
-            # print(f"❌ Ошибка применения градиента: {e}")
-            # Fallback: пробуем применить первый цвет градиента как обычный цвет
             if gradient_data and gradient_data.get('colors'):
                 first_color = gradient_data['colors'][0][1]
-                # print(f"Fallback на цвет: {first_color}")
                 return self.applyColorEffect(first_color, strength)
             return False
 
@@ -105,7 +93,6 @@ class CustomSvgWidget(QSvgWidget):
         if self._parent_button:
             self._parent_button.update()
 
-    # Свойства (оригинальные - НЕ ТРОГАЕМ)
     def getEffectColor(self):
         return self._current_color
 

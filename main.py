@@ -17,7 +17,6 @@ import sys
 import time
 import traceback
 import zipfile
-import markdown2
 from packaging import version
 import psutil
 import threading
@@ -29,11 +28,12 @@ from PySide6.QtGui import QCursor, QIcon, QFont, QDesktopServices, QAction, QPix
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QMainWindow, QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QApplication, QWidget,\
     QDialog, QGraphicsColorizeEffect, QSizePolicy, QSystemTrayIcon, QMenu, QMessageBox, QTabBar, QTabWidget,\
-    QSpacerItem, QTextBrowser, QLineEdit
+    QSpacerItem, QLineEdit
 from PySide6.QtCore import Signal, QTimer, Qt, QEasingCurve, QPropertyAnimation, QRect, QEvent, QUrl, QPoint, Slot,\
     QThread, QThreadPool
 from bin.apply_color_methods import main_apply_colors
 from bin.bluetooth_controller import bluetooth_controller
+from bin.changelog_window import ChangelogWindow
 from bin.check_update import GetManifestThread, get_update_strategy, load_changelog, VersionCheckThread
 from bin.custom_widgets import AnimatedSidebar, VersionLabel
 from bin.choose_color_window import ColorSettingsWindow
@@ -41,6 +41,7 @@ from bin.custom_svg_widget import CustomSvgWidget
 from bin.download_thread import DeltaDownloadThread, DownloadThread
 from bin.frosted_widget import GarlandDecorator, SnowOverlay
 from bin.help_widget import HelpWidget
+from bin.login_widget import LoginWindow
 from bin.monitoring_log_widget import MonitorLogWidget
 from bin.progress_bar_widget import SVGProgressBar
 from bin.register_module import AuthManager
@@ -57,16 +58,18 @@ from bin.function_list_main import *
 from bin.audio_control import controller
 from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel, SpeechHookManagerWidget
 from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react
-from bin.lists import get_audio_paths, commands_list, default_keywords_data, setup_custom_font_label, setup_global_font
+from bin.lists import get_audio_paths, commands_list, default_keywords_data, setup_global_font
 from path_builder import get_path
 from logging_config import logger, debug_logger
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.6"
+version_file = "2.2.7"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
+is_fast_start = False
+is_login_widget = True
 
 def activate_existing_window():
     """Пытается отправить команду существующему приложению"""
@@ -214,20 +217,39 @@ class Assistant(QMainWindow):
         self.user_data = self.auth.user_data
         self.is_admin = True if self.auth.load_auth_data_id() == 1 else False
         self.get_btns_data()
+        # self.update_style_selector()
         self.init_ui()
-        self.splash = InitScreen()
-        self.splash.init_complete.connect(self.handle_init_result)
-        self.splash.show()
-        self.splash.check_auth(self, self.auth)
+        
+        self.preload_utils()
+        if is_login_widget:
+            self.check_auth(self.auth)
+        else:
+            self.check_up()
 
-    def check_up(self):
-        self.check_or_create_folder()
-        self.apply_styles()
+    # def update_style_selector(self):
+    #     if "BasedColors" not in self.styles:
+    #         new_style = self.styles.get("TitleBar", {}).get("border-bottom", "1px solid #0973ff")
+    #         print(new_style)
+    #         short_style = new_style[len("1px solid "):]
+    #         self.styles["BasedColors"] = {
+    #             "svg": f"{short_style}",
+    #             "border": f"{new_style}"
+    #         }
+    #         with open(self.color_path, 'w', encoding='utf-8') as f:
+    #             json.dump(self.styles, f, indent=4, ensure_ascii=False)
+    #     debug_logger.info(f"цвета заменены")
+
+    def preload_utils(self):
+        self.check_or_create_folders()
         # Обновление селекторов стилей в файле
-        self.update_style_list()
-        # Проверка автозапуска при старте программы
+        self.update_style_list() # Внутри вызывается apply_styles
         self.check_autostart()
         self.check_start_win()
+        self.check_keywords_file()
+        self.toggle_update_button()
+        self.setup_memory_monitor()
+
+    def check_up(self):
         self.check_start_widget()
         # Прятать ли программу в трей
         if self.is_min_tray:
@@ -238,10 +260,8 @@ class Assistant(QMainWindow):
             self.showNormal()
         if self.user_data:
             self.update_user_profile()
-        self.check_keywords_file()
         if self.apply_keywords_for_values():
             self.run_assist()
-        self.toggle_update_button()
         if self.isVisible():
             self.log_area.start_active_mode()
         else:
@@ -251,12 +271,62 @@ class Assistant(QMainWindow):
         self.update_checker.timeout.connect(self.check_update_app)
         self.update_checker.start(3600000)  # Чек обновлений раз в 60 минут (3600000)
         QTimer.singleShot(5000, lambda: self.check_update_app()) # Первый чек через 5 сек. после запуска
-        self.setup_memory_monitor()
 
     def handle_init_result(self, success):
         """Обработчик результата инициализации"""
         if success:
             self.check_up()
+
+    def start_splash_screen(self):
+        try:
+            self.splash = InitScreen()
+            self.splash.init_complete.connect(self.handle_init_result)
+            self.splash.show()
+        except Exception as e:
+            debug_logger.error(f"[MAIN] Ошибка при инициализации программы: {e}")
+
+    def open_login(self):
+        try:
+            self.login_window = LoginWindow(auth=self.auth)
+            self.login_window.setWindowModality(Qt.WindowModality.ApplicationModal)
+            self.login_window.show()
+            
+            self.login_window.login_successful.connect(self.on_login_success)
+            self.login_window.login_cancelled.connect(self.on_login_cancelled)
+            
+        except Exception as e:
+            debug_logger.error(f"[MAIN] Ошибка при запуске окна авторизации: {e}")
+
+    def on_login_success(self):
+        """Обработка успешного логина"""
+        if self.auth.user_data:
+            self.set_user_data(self.auth.user_data)
+        
+        if not is_fast_start:
+            self.start_splash_screen()
+        else:
+            self.check_up()
+
+    def on_login_cancelled(self):
+        """Обработка отмены логина"""
+        debug_logger.info("[MAIN] Логин отменен")
+        self.cleanup_before_exit()
+        
+    def check_auth(self, auth):
+        self.auth = auth
+        # Проверяем сохраненную авторизацию
+        if self.auth.is_authenticated():
+            if self.auth.is_guest():
+                debug_logger.info(f"[MAIN] Автоматический вход: Гость")
+            else:
+                debug_logger.info(f"[MAIN] Автоматический вход: {self.auth.user_data['username']}")
+            self.set_user_data(self.auth.user_data)
+            if not is_fast_start:
+                self.start_splash_screen()
+            else:
+                self.check_up()
+        else:
+            self.open_login()
 
     def get_version(self):
         vers_on_ini = get_config_value("app", "version")
@@ -512,9 +582,8 @@ class Assistant(QMainWindow):
             self.avatar_svg = CustomSvgWidget(self.default_avatar_path)
             self.avatar_svg.setFixedSize(30, 30)
             self.avatar_svg.setStyleSheet("background: transparent; border: none;")
-            self.avatar_color_svg = QGraphicsColorizeEffect()
-            self.avatar_svg.setGraphicsEffect(self.avatar_color_svg)
-            self.style_manager.apply_color_svg(self.avatar_svg, strength=0.90)
+            # self.avatar_color_svg = QGraphicsColorizeEffect()
+            # self.avatar_svg.setGraphicsEffect(self.avatar_color_svg)
 
             self.user_profile_layout.addWidget(self.avatar_svg)
             self.title_bar_layout.addWidget(self.user_profile_widget)
@@ -659,7 +728,6 @@ class Assistant(QMainWindow):
             self.right_layout.addWidget(self.update_label, alignment=Qt.AlignmentFlag.AlignRight)
 
             # === Добавляем в main_layout ===
-            # main_layout.addWidget(self.left_container)
             main_layout.addLayout(self.right_layout)
 
             root_layout.addWidget(self.content_widget)
@@ -898,7 +966,6 @@ class Assistant(QMainWindow):
             
     def update_style_list(self):
         change_color = ColorSettingsWindow(self)
-        # path = get_path("bin", "color_presets", "blue_neon.json")
         change_color.update_style_file()
         self.apply_styles()
         
@@ -1041,17 +1108,11 @@ class Assistant(QMainWindow):
         if self.snow_on_background is not None:
             return  # Уже создан
         
-        self.snow_on_background = SnowOverlay(
-                parent=self.central_widget,
-                snowflake_count=300,
-                fall_speed=0.9,
-                flake_size_min=1,
-                flake_size_max=5
-            )
+        self.snow_on_background = SnowOverlay(parent=self.central_widget)
         self.snow_on_background.resize(920, 700)
         self.snow_on_background.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.snow_on_background.raise_()
-        self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=50)
+        self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), white_balance=50)
 
         # Изначально показываем или скрываем в зависимости от состояния
         if self.is_snow:
@@ -1091,35 +1152,25 @@ class Assistant(QMainWindow):
         pass
     
     def logout_user(self):
-        """Выход с возвратом к InitScreen"""
+        """Выход с возвратом к LoginWindow"""
         debug_logger.info("[MAIN] Выход из системы...")
         
         # Очищаем данные
         self.user_data = None
         self.auth.logout()
-        
-        # Скрываем главное окно
-        self.hide()
-        
-        # Показываем InitScreen
-        self.splash = InitScreen()
-        self.splash.init_complete.connect(self.handle_init_result)
-        self.splash.show()
-        self.splash.check_auth(self, self.auth)
+
+        self.restart_application()
 
     def restart_application(self):
         """Перезапуск приложения"""
-        import sys
-        import os
-        os.execl(sys.executable, sys.executable, *sys.argv)
+        self.restart_dialog = UpdateApp(self)
+        self.restart_dialog.restart_app()
          
     def on_profile_click(self, event):
         """Обработчик клика по профилю"""
-        debug_logger.info("Клик по профилю пользователя")
         menu = QMenu(self)
 
         menu.addAction("Профиль", self.open_user_profile)
-        # menu.addAction("Обновить данные", self.refresh_user_data)
         menu.addAction("Выйти", self.logout_user)
         
         # Показываем меню под виджетом профиля
@@ -1136,7 +1187,6 @@ class Assistant(QMainWindow):
     def clear_user_data(self):
         """Очистить данные пользователя"""
         self.user_data = None
-        # self.username_label.setText("Гость")
         self.set_default_avatar_svg()
                 
     def update_user_profile(self, user_data=None):
@@ -1144,12 +1194,6 @@ class Assistant(QMainWindow):
         debug_logger.info(f"[MAIN] Обновление профиля...")
         # Используем переданные данные или локальные
         data = user_data or self.user_data
-
-        # if data and 'username' in data:
-        #     if hasattr(self, "username_label"):
-        #         self.username_label.setText(data['username'])
-        #     else:
-        #         self.username_label.setText("User")
             
         if data and data.get('avatar') is None:
             return self.set_default_avatar_svg()
@@ -1162,7 +1206,6 @@ class Assistant(QMainWindow):
     def set_default_avatar_svg(self):
         """Установить SVG аватарку по умолчанию"""
         if hasattr(self, 'avatar_svg'):
-            # Если уже есть SVG, просто применяем стили
             self.style_manager.apply_color_svg(self.avatar_svg, strength=0.90)
 
     def load_user_avatar(self, avatar_path):
@@ -1172,11 +1215,9 @@ class Assistant(QMainWindow):
             response = requests.get(avatar_url, timeout=10, verify=False)
             
             if response.status_code == 200:
-                # Создаем QLabel для растрового изображения
                 if hasattr(self, 'avatar_svg'):
-                    self.avatar_svg.hide()  # Скрываем SVG
-                
-                # Создаем QLabel для растровой аватарки если еще нет
+                    self.avatar_svg.hide()
+
                 if not hasattr(self, 'avatar_pixmap_label'):
                     self.avatar_pixmap_label = QLabel()
                     self.avatar_pixmap_label.setFixedSize(30, 30)
@@ -1187,8 +1228,7 @@ class Assistant(QMainWindow):
                     self.user_profile_layout.insertWidget(avatar_index, self.avatar_pixmap_label)
                 else:
                     self.avatar_pixmap_label.show()
-                
-                # Загружаем и устанавливаем растровую аватарку
+
                 pixmap = QPixmap()
                 pixmap.loadFromData(response.content)
                 rounded_pixmap = self.create_rounded_pixmap(pixmap, 30)
@@ -1206,7 +1246,6 @@ class Assistant(QMainWindow):
         if pixmap.isNull():
             return QPixmap()
 
-        # Создаём прозрачный pixmap-контейнер
         rounded = QPixmap(size, size)
         rounded.fill(Qt.transparent)
 
@@ -1216,21 +1255,17 @@ class Assistant(QMainWindow):
             QPainter.RenderHint.SmoothPixmapTransform
         )
 
-        # Убедимся, что pixmap имеет альфа-канал
         if not pixmap.hasAlphaChannel():
-            # QPixmap → QImage → convert → QPixmap
             image = pixmap.toImage()
             image = image.convertToFormat(QImage.Format_ARGB32_Premultiplied)
             pixmap = QPixmap.fromImage(image)
 
-        # Масштабируем с сохранением пропорций
         scaled_pixmap = pixmap.scaled(
             size, size,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation
         )
 
-        # Центрируем
         x = (size - scaled_pixmap.width()) // 2
         y = (size - scaled_pixmap.height()) // 2
 
@@ -1271,11 +1306,11 @@ class Assistant(QMainWindow):
         try:
             self.styles = self.style_manager.load_styles()
             self.check_start_win() # Для изменения цвета кнопки автозапуска
-            
+
             if hasattr(self, 'avatar_svg'):
                 self.style_manager.apply_color_svg(self.avatar_svg, strength=0.90)
             if hasattr(self, 'progress_load'):
-                self.style_manager.apply_progressbar(key="QPushButton", widget=self.progress_load)
+                self.style_manager.apply_progressbar(widget=self.progress_load)
             if hasattr(self, 'svg_image'):
                 self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
             if hasattr(self, 'settings_svg'):
@@ -1327,7 +1362,7 @@ class Assistant(QMainWindow):
             self.setStyleSheet(style_sheet)
             self.apply_menu_styles(self.menu_tray)
             if hasattr(self, "snow_on_background"):
-                self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), alpha=150, white_balance=50)
+                self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), white_balance=50)
                 
         except Exception as e:
             debug_logger.error(f"[MAIN] Ошибка в методе apply_styles: {e}")
@@ -1367,7 +1402,7 @@ class Assistant(QMainWindow):
         except Exception as e:
             debug_logger.error(f"[MAIN] Ошибка при показе всплывающего уведомления: {e}")
 
-    def show_message(self, text, title="Уведомление", message_type="info", buttons=QMessageBox.StandardButton.Ok):
+    def show_message(self, text="...", title="Уведомление", message_type="info", buttons=QMessageBox.StandardButton.Ok):
         try:
             message = SimpleNotice(
                 parent=self,
@@ -1379,8 +1414,7 @@ class Assistant(QMainWindow):
             return message.exec_()
         except Exception as e:
             debug_logger.error(f"[MAIN] Ошибка при показе уведомления(оконного): {e}")
-            # В случае ошибки тоже нужно что-то вернуть, например, QDialog.Rejected или None
-            return QDialog.DialogCode.Rejected  # или return None
+            return QDialog.DialogCode.Rejected
 
     def show_supply_notice(self, message, is_confirm=False):
         """Вызывается из фонового потока - emits signal"""
@@ -1743,7 +1777,7 @@ class Assistant(QMainWindow):
         QTimer.singleShot(500, lambda: self.update_app(type_version=self.type_version,
                                                        batch_update=self.is_batch_update))
 
-    def check_or_create_folder(self):
+    def check_or_create_folders(self):
         links_path = get_path('user_settings', "links for assist")
         screenshot_path = get_path('user_settings', "screenshots")
         path_list = [links_path, screenshot_path]
@@ -3670,8 +3704,7 @@ class Assistant(QMainWindow):
         self._clear_mutable_panel()
 
         self.tabs = QTabWidget()
-        self.tabs.setObjectName("SettingsTabs")
-        self.tabs.setDocumentMode(True)
+        self.tabs.setObjectName("TabWidget")
 
         self.tab_bar = self.tabs.tabBar()
         self.tab_bar.setObjectName("WSMainTabBar")
@@ -3756,8 +3789,7 @@ class Assistant(QMainWindow):
         self._clear_mutable_panel()
 
         self.tabs = QTabWidget()
-        self.tabs.setObjectName("CommandsTabs")
-        self.tabs.setDocumentMode(True)
+        self.tabs.setObjectName("TabWidget")
 
         self.tab_bar = self.tabs.tabBar()
         self.tab_bar.setObjectName("WSMainTabBar")
@@ -3830,7 +3862,7 @@ class Assistant(QMainWindow):
 
         # Создаём вкладки
         self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
+        self.tabs.setObjectName("TabWidget")
         self.svg_others_list = []
 
         self.tab_bar = self.tabs.tabBar()
@@ -3994,10 +4026,11 @@ class Assistant(QMainWindow):
 
     def check_start_win(self):
         """Меняет цвет иконки"""
-        if self.toggle_start:
-            self.style_manager.apply_color_svg(self.start_svg, strength=0.95)
-        else:
-            self.style_manager.apply_color_svg(self.start_svg, strength=0.95, specified_color="#ffffff")
+        if hasattr(self, 'start_svg'):
+            if self.toggle_start:
+                self.style_manager.apply_color_svg(self.start_svg, strength=0.95)
+            else:
+                self.style_manager.apply_color_svg(self.start_svg, strength=0.95, specified_color="#ffffff")
 
     def check_start_widget(self):
         if self.is_widget:
@@ -4160,28 +4193,35 @@ class UpdateApp(QDialog):
         if not self.batch:
             self.update_file_path = self.find_update_file()
             if not self.update_file_path:
-                debug_logger.error("Не найден файл обновления (*.zip)")
+                debug_logger.error("[UPD] Не найден файл обновления (*.zip)")
                 return
 
             if not self.extract_archive(self.update_file_path):
-                self.assistant.show_notification_message("Не удалось распаковать архив с новой версией")
+                self.assistant.show_notification_message("[UPD] Не удалось распаковать архив с новой версией")
                 return
-            debug_logger.info(f"Архив с новой версией распакован по пути {self.extract_dir}")
+            debug_logger.info(f"[UPD] Архив с новой версией распакован по пути {self.extract_dir}")
         self.assistant.show_notification_message("Начинаю установку...")
         QTimer.singleShot(800, lambda: self.start_update())
+
+    def restart_app(self):
+        try:
+            subprocess.Popen([get_path("Update.exe")], shell=True)
+            debug_logger.info("[RESTART] Update.exe запущен")
+        except Exception as e:
+            debug_logger.error(f"[RESTART] Ошибка при запуске Update.exe: {e}")
 
     def start_update(self):
         try:
             if not self.batch:
                 # флаг no-checked для пропуска проверки новой версии в апдейте
                 subprocess.Popen([get_path("Update.exe"), "--no-checked"], shell=True)
-                debug_logger.info("Update.exe успешно запущен с флагом --no-checked")
+                debug_logger.info("[UPD] Update.exe успешно запущен с флагом --no-checked")
             else:
                 # flag --batch-update for package update
                 subprocess.Popen([get_path("Update.exe"), "--batch-update"], shell=True)
-                debug_logger.info("Update.exe успешно запущен с флагом --batch-update")
+                debug_logger.info("[UPD] Update.exe успешно запущен с флагом --batch-update")
         except Exception as e:
-            debug_logger.error(f"Ошибка при запуске Update.exe: {e}")
+            debug_logger.error(f"[UPD] Ошибка при запуске Update.exe: {e}")
 
     def find_update_file(self):
         update_dir = get_path("update")
@@ -4230,7 +4270,7 @@ class UpdateApp(QDialog):
             return True
 
         except Exception as e:
-            debug_logger.error(f"Ошибка распаковки: {str(e)}", exc_info=True)
+            debug_logger.error(f"[UPD] Ошибка распаковки: {str(e)}", exc_info=True)
             self.assistant.show_message(f"Ошибка распаковки: {str(e)}", "Ошибка", "error")
             return False
 
@@ -4260,224 +4300,8 @@ class UpdateApp(QDialog):
                 continue
 
         # Если ничего не помогло, возвращаем как есть и логируем проблему
-        debug_logger.warning(f"Не удалось декодировать имя файла: {filename}")
+        debug_logger.warning(f"[UPD] Не удалось декодировать имя файла: {filename}")
         return filename
-
-
-class ChangelogWindow(QMainWindow):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.assistant = parent
-        self.drag_pos = None
-        self.init_ui()
-        self.load_changelog()
-        self.assistant.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#FF0000")
-
-    def init_ui(self):
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(450, 600)
-
-        screen_geometry = self.screen().availableGeometry()
-        self.move(
-            (screen_geometry.width() - self.width()) // 2,
-            (screen_geometry.height() - self.height()) // 2
-        )
-
-        self.central_widget = QWidget(self)
-        self.central_widget.setObjectName("WindowContainer")
-        self.setCentralWidget(self.central_widget)
-
-        root_layout = QVBoxLayout(self.central_widget)
-        root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
-
-        self.title_bar_widget = QWidget()
-        self.title_bar_widget.setObjectName("TitleBar")
-        self.title_bar_layout = QHBoxLayout(self.title_bar_widget)
-        self.title_bar_layout.setContentsMargins(10, 5, 10, 5)
-        self.title_bar_layout.setSpacing(5)
-
-        self.title_bar_widget.mousePressEvent = self.title_bar_mouse_press
-        self.title_bar_widget.mouseMoveEvent = self.title_bar_mouse_move
-        self.title_bar_widget.mouseReleaseEvent = self.title_bar_mouse_release
-
-        link_label = QLabel()
-        link_label.setText('''
-            <a href="https://owl-app.ru" 
-            style="color: #35E808;">
-            owl-app.ru
-            </a>
-        ''')
-        link_label.setStyleSheet("background: transparent;")
-        link_label.setOpenExternalLinks(True)
-        link_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        self.title_bar_layout.addWidget(link_label)
-
-        self.title_bar_layout.addStretch()
-
-        title_label = setup_custom_font_label("История изменений", font_style="Comfortaa", weight="Medium")
-        title_label.setStyleSheet("background: transparent;")
-        title_label.setObjectName("TitleLabel")
-        self.title_bar_layout.addWidget(title_label)
-
-        self.title_bar_layout.addStretch()
-
-        close_btn = QPushButton("")
-        close_btn.setObjectName("CloseButton")
-        close_btn.setFixedSize(30, 30)
-        close_btn.clicked.connect(self.close)
-        self.close_svg = CustomSvgWidget(self.assistant.icon_close_path, close_btn)
-        self.close_svg.setFixedSize(25, 25)
-        self.close_svg.move(3, 3)
-        self.close_svg.setStyleSheet("background: transparent;")
-        self.title_bar_layout.addWidget(close_btn)
-
-        root_layout.addWidget(self.title_bar_widget)
-
-        self.content_widget = QWidget()
-        self.content_widget.setObjectName("ContentWidget")
-        main_layout = QVBoxLayout(self.content_widget)
-        main_layout.setContentsMargins(15, 15, 15, 15)
-        main_layout.setSpacing(10)
-
-        # Текстовый браузер
-        self.text_browser = QTextBrowser()
-        self.text_browser.setStyleSheet("background: transparent;")
-        self.text_browser.setOpenExternalLinks(True)
-        self.text_browser.setReadOnly(True)
-        main_layout.addWidget(self.text_browser)
-
-        # Стили для Markdown
-        self.text_browser.document().setDefaultStyleSheet("""
-            body {
-                font-family: Arial, sans-serif;
-                line-height: 1.6;
-                padding: 15px;
-            }
-            h1 {
-                font-size: 24px;
-                border-bottom: 1px solid #eee;
-                padding-bottom: 10px;
-            }
-            h2 {
-                font-size: 20px;
-                margin-top: 25px;
-            }
-            h3 {
-                font-size: 16px;
-            }
-            code {
-                padding: 2px 5px;
-                border-radius: 3px;
-                font-family: "Courier New", monospace;
-            }
-            pre {
-                padding: 10px;
-                border-radius: 5px;
-                overflow-x: auto;
-            }
-            blockquote {
-                border-left: 4px solid #ddd;
-                padding-left: 15px;
-                color: #777;
-                margin-left: 0;
-            }
-            a {
-                color: #1e88e5;
-                text-decoration: none;
-            }
-            a:hover {
-                text-decoration: underline;
-            }
-            ul, ol {
-                padding-left: 25px;
-            }
-            table {
-                border-collapse: collapse;
-                width: 100%;
-                margin: 15px 0;
-            }
-            th, td {
-                border: 1px solid #ddd;
-                padding: 8px;
-                text-align: left;
-            }
-            th {
-                background-color: #f2f2f2;
-            }
-        """)
-
-        ps = QLabel("Powered by theoldman")
-        ps.setStyleSheet("background: transparent; font-size: 12px; padding: 5px;")
-        main_layout.addWidget(ps, alignment=Qt.AlignmentFlag.AlignRight)
-
-        # Кнопка закрытия
-        close_button = QPushButton("Закрыть")
-        close_button.clicked.connect(self.close)
-        main_layout.addWidget(close_button)
-
-        root_layout.addWidget(self.content_widget)      
-
-    def title_bar_mouse_press(self, event):
-        """Обработка нажатия мыши на заголовок"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            # Запоминаем позицию относительно главного окна
-            self.drag_pos = event.globalPosition().toPoint()
-            event.accept()
-
-    def title_bar_mouse_move(self, event):
-        """Обработка перемещения мыши при удерживании на заголовке"""
-        if self.drag_pos is not None and event.buttons() == Qt.MouseButton.LeftButton:
-            # Вычисляем смещение и перемещаем главное окно
-            delta = event.globalPosition().toPoint() - self.drag_pos
-            self.move(self.pos() + delta)
-            self.drag_pos = event.globalPosition().toPoint()
-            event.accept()
-
-    def title_bar_mouse_release(self, event):
-        """Обработка отпускания кнопки мыши"""
-        self.drag_pos = None
-        event.accept()
-
-    def load_changelog(self):
-        """Загружает и отображает Markdown файл"""
-        try:
-            if not hasattr(self.assistant, 'changelog_file_path'):
-                self._show_error("Не указан путь к файлу изменений")
-                return
-
-            changelog_path = self.assistant.changelog_file_path
-
-            if not os.path.exists(changelog_path):
-                self._show_error(f"Файл не найден: {changelog_path}")
-                return
-
-            with open(changelog_path, 'r', encoding='utf-8') as f:
-                md_content = f.read()
-
-            # Конвертируем Markdown в HTML
-            html = markdown2.markdown(
-                md_content,
-                extras=[
-                    'fenced-code-blocks',  # Блоки кода ```
-                    'tables',  # Таблицы
-                    'footnotes',  # Сноски
-                    'toc',  # Оглавление
-                    'cuddled-lists',  # Компактные списки
-                    'task_list',  # Списки задач
-                    'spoiler'  # Скрытый текст
-                ]
-            )
-
-            self.text_browser.setHtml(html)
-
-        except Exception as e:
-            self._show_error(f"Ошибка загрузки Markdown: {str(e)}")
-
-    def _show_error(self, message):
-        """Отображает сообщение об ошибке"""
-        self.text_browser.setPlainText(message)
 
 
 class InitScreen(QWidget):
@@ -4496,6 +4320,7 @@ class InitScreen(QWidget):
         self.svg_path = get_path("bin", "logo.svg")
         self.init_ui()
         self.apply_styles()
+        self.start_checks()
 
     def init_ui(self):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -4535,7 +4360,6 @@ class InitScreen(QWidget):
             circle_size=180,
             show_text=False,
             line_width=3)
-        # self.progress = CustomProgressBar()
         content_layout.addWidget(self.progress, alignment=Qt.AlignmentFlag.AlignCenter)
         
         self.label = QLabel("Инициализация...", self)
@@ -4545,12 +4369,6 @@ class InitScreen(QWidget):
         self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         content_layout.addWidget(self.label)
 
-        # Кнопка выхода при ошибке
-        self.error_button = QPushButton("Закрыть программу", self)
-        self.error_button.clicked.connect(self.quit_application)
-        self.error_button.hide()
-        content_layout.addWidget(self.error_button)
-
         self.setLayout(layout)
         layout.addWidget(self.main_widget, 1)
 
@@ -4558,23 +4376,14 @@ class InitScreen(QWidget):
         try:
             self.styles = self.style_manager.load_styles()
 
-            # Применение к SVG
             self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
-            self.style_manager.apply_progressbar(key="QPushButton", widget=self.progress)
+            self.style_manager.apply_progressbar(widget=self.progress)
 
-            # Применение общего стиля окна
-            if hasattr(self, 'central_widget'):
-                self.central_widget.setObjectName("CentralWidget")
-            if hasattr(self, 'title_bar_widget'):
-                self.title_bar_widget.setObjectName("TitleBar")
-            # if hasattr(self, 'container'):
-            #     self.title_bar_widget.setObjectName("ConfirmDialogContainer")
-            # Применяем стили к текущему окну
             style_sheet = ""
             for widget, styles in self.styles.items():
-                if widget.startswith("Q"):  # Для стандартных виджетов (например, QMainWindow, QPushButton)
+                if widget.startswith("Q"):
                     selector = widget
-                else:  # Для виджетов с objectName (например, TitleBar, CentralWidget)
+                else:
                     selector = f"#{widget}"
 
                 style_sheet += f"{selector} {{\n"
@@ -4586,7 +4395,7 @@ class InitScreen(QWidget):
             self.setStyleSheet(style_sheet)
             self.main_widget.setStyleSheet("""border-radius:20px""")
         except Exception as e:
-            debug_logger.error(f"Ошибка в методе apply_styles: {e}")
+            debug_logger.error(f"[INIT] Ошибка в методе apply_styles: {e}")
 
     def show_message(self, text, title="Уведомление", message_type="info", buttons=QMessageBox.StandardButton.Ok):
         try:
@@ -4599,53 +4408,8 @@ class InitScreen(QWidget):
             )
             return message.exec_()
         except Exception as e:
-            debug_logger.error(f"Ошибка при показе уведомления(оконного): {e}")
-            # В случае ошибки тоже нужно что-то вернуть, например, QDialog.Rejected или None
-            return QDialog.DialogCode.Rejected  # или return None
-
-    def quit_application(self):
-        """Перенаправляем запрос на закрытие в главное окно"""
-        self.main_window.cleanup_before_exit()
-        
-    def open_login(self):
-        try:
-            # Закрываем текущее окно инициализации
-            self.login_window = LoginWindow(auth=self.auth)
-            self.login_window.setWindowModality(Qt.WindowModality.ApplicationModal)
-            self.login_window.show()
-            
-            # Подключаем сигнал завершения логина
-            self.login_window.login_successful.connect(self.on_login_success)
-            self.login_window.login_cancelled.connect(self.on_login_cancelled)
-            
-        except Exception as e:
-            debug_logger.error(f"Ошибка при запуске окна авторизации: {e}")
-
-    def on_login_success(self):
-        """Обработка успешного логина"""
-        if hasattr(self, 'main_window') and self.auth.user_data:
-            self.main_window.set_user_data(self.auth.user_data)
-        
-        self.start_checks()
-
-    def on_login_cancelled(self):
-        """Обработка отмены логина"""
-        debug_logger.info("❌ Логин отменен")
-        self.quit_application()
-        
-    def check_auth(self, main_window, auth):
-        self.main_window = main_window
-        self.auth = auth
-        # Проверяем сохраненную авторизацию
-        if self.auth.is_authenticated():
-            if self.auth.is_guest():
-                debug_logger.info(f"✅ Автоматический вход: Гость")
-            else:
-                debug_logger.info(f"✅ Автоматический вход: {self.auth.user_data['username']}")
-            self.main_window.set_user_data(self.auth.user_data)
-            self.start_checks()
-        else:
-            self.open_login()
+            debug_logger.error(f"[INIT] Ошибка при показе уведомления(оконного): {e}")
+            return QDialog.DialogCode.Rejected
 
     def start_checks(self):
         self.check_thread = CheckThread()
@@ -4658,17 +4422,13 @@ class InitScreen(QWidget):
         self.progress.setValue(value)
         QApplication.processEvents()  # Обновляем интерфейс
 
-    def on_checks_complete(self, result, missing_file="", error=""):
+    def on_checks_complete(self, result, error=""):
         if result:
-            self.progress.setValue(100)
-            QTimer.singleShot(1000, lambda: self.finalize_initialization(True))
+            QTimer.singleShot(200, lambda: self.finalize_initialization(True))
         else:
-            if hasattr(self, 'main_window'):
-                self.main_window.clear_user_data()
-            self.label.setText(f"Произошла ошибка")
-            self.progress.setValue(0)
+            self.label.setText(f"Ошибка")
             self.show_message(text=f"{error}", title="Ошибка", message_type="error")
-            self.init_complete.emit(False)  # Отправляем сигнал об ошибке
+            self.init_complete.emit(False)
             QTimer.singleShot(1000, lambda: self.close())
 
     def finalize_initialization(self, success):
@@ -4677,21 +4437,20 @@ class InitScreen(QWidget):
 
 
 class CheckThread(QThread):
-    checks_complete = Signal(bool, str, str)
+    checks_complete = Signal(bool, str)
     progress_update = Signal(str, int)
 
     def run(self):
         try:
             total_steps = 100
-            admin_weight = 10
-            device_weight = 10
-            path_weight = 10
-            files_weight = 70
+            admin_weight = 30
+            device_weight = 30
+            path_weight = 40
 
             self.progress_update.emit("Проверка прав администратора...", 0)
             if not self.check_admin():
                 self.progress_update.emit("Ошибка: Нет прав администратора!", 0)
-                self.checks_complete.emit(False, "", "Ошибка: Нет прав администратора!")
+                self.checks_complete.emit(False, "Ошибка: Нет прав администратора!")
                 return
             for i in range(admin_weight):
                 QThread.msleep(5)  # имитация долгой проверки
@@ -4701,18 +4460,14 @@ class CheckThread(QThread):
                 return
 
             if self.check_main_path(get_path(), path_weight):
-                self.checks_complete.emit(False, "", "Ошибка: В пути обнаружена кириллица!")
-                return
-
-            files_ok = self.check_main_files(files_weight)
-            if not files_ok:
+                self.checks_complete.emit(False, "Ошибка: В пути обнаружена кириллица!")
                 return
 
             self.progress_update.emit("Запуск...", 100)
-            self.checks_complete.emit(True, "", "")
+            self.checks_complete.emit(True, "")
         except Exception as e:
             self.progress_update.emit(f"Критическая ошибка: {str(e)}", 0)
-            self.checks_complete.emit(False, "", "")
+            self.checks_complete.emit(False, "")
 
     # noinspection PyUnresolvedReferences
     def check_admin(self):
@@ -4722,95 +4477,45 @@ class CheckThread(QThread):
         except:
             return False
 
-    def check_main_files(self, files_weight):
-        files_to_check = (
-            "apply_color_methods.py",
-            "audio_control.py", 
-            "check_update.py",
-            "choose_color_window.py", 
-            "commands_manager.py",
-            "commands_widgets.py",
-            "config_manager.py",
-            "custom_svg_widget.py",
-            "custom_widgets.py",
-            "default_commands_data.py",
-            "default_keywords.json",
-            "download_thread.py",
-            "frosted_widget.py",
-            "function_list_main.py",
-            "game_mode_func.py",
-            "help_widget.py",
-            "lists.py",
-            "logo.svg",
-            "monitoring_log_widget.py",
-            "other_options_widgets.py",
-            "progress_bar_widget.py",
-            "register_module.py",
-            "request_module.py",
-            "run_scripts_thread.py",
-            "screenshot_tool.py",
-            "settings_widgets.py",
-            "shortcut_monitor.py",
-            "signals.py",
-            "speak_functions.py",
-            "toast_notification.py",
-            "toggle_mute_discord.py",
-            "widget_window.py"
-        )
-
-        total_files = len(files_to_check)
-        step_per_file = files_weight / total_files if total_files else 0
-
-        for i, file in enumerate(files_to_check):
-            path = get_path("bin", file)
-            if not os.path.exists(path):
-                self.progress_update.emit(f"Файл {file} не найден!", 0)
-                self.checks_complete.emit(False, "", f"Файл {file} не найден!")  # Добавляем имя файла в сигнал
-                return False
-
-            progress = int((i + 1) * step_per_file) + 20
-            self.progress_update.emit(f"Проверка {file}...", progress)
-            QThread.msleep(5)  # Имитация работы
-
-        return True
-
     def check_main_path(self, path, path_weight):
-        self.progress_update.emit("Проверяю путь до исполняемого файла...", 21)
+        self.progress_update.emit("Проверяю путь до исполняемого файла...", 61)
         for i in range(path_weight):
-            QThread.msleep(5)  # имитация долгой проверки
-            self.progress_update.emit("Проверяю путь до исполняемого файла...", 29)
+            QThread.msleep(10)  # имитация долгой проверки
+            self.progress_update.emit("Проверяю путь до исполняемого файла...", i + 61)
         cyrillic_pattern = re.compile(r'[а-яА-ЯёЁ]')
         return bool(cyrillic_pattern.search(path))
 
     def input_device(self, device_weight):
         p = pyaudio.PyAudio()
 
-        self.progress_update.emit("Ищу устройства ввода-вывода...", 10)
-        for i in range(device_weight):
-            QThread.msleep(5)  # имитация долгой проверки
-            self.progress_update.emit("Ищу устройства ввода-вывода...", 14)
+        self.progress_update.emit("Ищу устройства ввода...", 30)
+        weight = int(device_weight/2)
+        for i in range(weight):
+            QThread.msleep(10)  # имитация долгой проверки
+            self.progress_update.emit("Ищу устройства ввода...", i + 30)
 
             try:
                 default_input_device = p.get_default_input_device_info()
                 return True
             except IOError:
-                self.progress_update.emit("Ошибка: Нет устройств ввода звука.", 10)
-                self.checks_complete.emit(False, "", "Ошибка: Нет устройств ввода звука")
+                self.progress_update.emit("Ошибка: Нет устройств ввода звука.", 30)
+                self.checks_complete.emit(False, "Ошибка: Нет устройств ввода звука")
                 return False
 
     def output_device(self, device_weight):
         p = pyaudio.PyAudio()
 
-        self.progress_update.emit("Ищу устройства ввода-вывода...", 15)
-        for i in range(device_weight):
-            QThread.msleep(5)  # имитация долгой проверки
-            self.progress_update.emit("Ищу устройства ввода-вывода...", 19)
+        self.progress_update.emit("Ищу устройства вывода...", 45)
+        weight = int(device_weight/2)
+        for i in range(weight):
+            QThread.msleep(10)  # имитация долгой проверки
+            self.progress_update.emit("Ищу устройства вывода...", i + 45)
         try:
             default_output_device = p.get_default_output_device_info()
             return True
         except IOError:
-            self.progress_update.emit("Ошибка: Нет устройств вывода звука.", 10)
-            self.checks_complete.emit(False, "", "Ошибка: Нет устройств вывода звука")
+            self.progress_update.emit("Ошибка: Нет устройств вывода звука.", 45)
+            self.checks_complete.emit(False, "Ошибка: Нет устройств вывода звука")
             return False
         finally:
             p.terminate()
@@ -4819,826 +4524,8 @@ class CheckThread(QThread):
         if not self.input_device(device_weight) or not self.output_device(device_weight):
             return False
 
-        self.progress_update.emit("Аудиоустройства проверены.", 20)
+        self.progress_update.emit("Аудиоустройства проверены.", 60)
         return True
-    
-    
-class LoginWindow(QWidget):
-    """
-    Окно регистрации и авторизации в системе
-    """
-    # Добавляем сигналы
-    login_successful = Signal()
-    login_cancelled = Signal()
-
-    def __init__(self, parent=None, auth=None):
-        super().__init__(parent)
-        self.auth = auth
-        if not self.auth:
-            self.auth = AuthManager(domain)
-        self.style_manager = main_apply_colors
-        self.color_path = self.style_manager.color_path
-        self.styles = self.style_manager.load_styles()
-        self.style_path = get_path('user_settings', 'color_settings.json')
-        self.svg_path = get_path("bin", "logo.svg")
-        self.is_login_mode = False
-        self.is_2fa_mode = False
-        self.init_ui()
-        self.apply_styles()
-        self.switch_mode()
-
-    def init_ui(self):
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(350, 660)
-
-        screen_geometry = self.screen().availableGeometry()
-        self.move(
-            (screen_geometry.width() - self.width()) // 2,
-            (screen_geometry.height() - self.height()) // 2
-        )
-        
-        # Основной layout
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.main_widget = QWidget()
-        self.main_widget.setObjectName("WindowContainer")
-        content_layout = QVBoxLayout(self.main_widget)
-        content_layout.setContentsMargins(25, 25, 25, 25)
-        content_layout.setSpacing(10)
-        
-        # Добавляем логотип
-        self.svg_image = CustomSvgWidget(self.svg_path)
-        self.svg_image.setFixedSize(80, 80)
-        self.svg_image.setStyleSheet("background: transparent; border: none;")
-        self.color_svg = QGraphicsColorizeEffect()
-        self.svg_image.setGraphicsEffect(self.color_svg)
-        content_layout.addWidget(self.svg_image, alignment=Qt.AlignmentFlag.AlignCenter)
-        
-        content_layout.addSpacing(20)
-
-        # Заголовок окна (будет меняться)
-        self.title_label = QLabel("Создание аккаунта")
-        self.title_label.setStyleSheet("""
-            background: transparent; 
-            font-size: 18px; 
-            font-weight: bold;
-            margin-bottom: 10px;
-        """)
-        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        content_layout.addWidget(self.title_label)
-        
-        content_layout.addSpacing(10)
-        
-        self.notice_widget = QWidget()
-        self.notice_widget.setObjectName("NoticeWidget")
-        self.notice_widget.setFixedHeight(60)
-        self.notice_widget.show()
-        
-        notice_layout = QHBoxLayout(self.notice_widget)
-        notice_layout.setContentsMargins(15, 10, 15, 10)
-        
-        self.notice_label = QLabel()
-        self.notice_label.setWordWrap(True)
-        self.notice_label.setStyleSheet("color: white; font-size: 14px; background: transparent;")
-        notice_layout.addWidget(self.notice_label)
-        
-        self.notice_widget.setStyleSheet("""
-            #NoticeWidget {
-                background: transparent;
-                border: none;
-            }
-        """)
-        
-        content_layout.addWidget(self.notice_widget)
-
-        # Поля формы
-        self.label_username = QLabel("Логин")
-        self.label_username.setStyleSheet("background: transparent;")
-        self.field_username = QLineEdit()
-        self.field_username.setStyleSheet("background: transparent;")
-        self.field_username.setPlaceholderText("Введите логин")
-        content_layout.addWidget(self.label_username, alignment=Qt.AlignmentFlag.AlignLeft)
-        content_layout.addWidget(self.field_username)
-        
-        # Поле email (будет скрыто в режиме авторизации)
-        self.label_email = QLabel("Почта")
-        self.label_email.setStyleSheet("background: transparent;")
-        self.field_email = QLineEdit()
-        self.field_email.setStyleSheet("background: transparent;")
-        self.field_email.setPlaceholderText("Введите email")
-        content_layout.addWidget(self.label_email, alignment=Qt.AlignmentFlag.AlignLeft)
-        content_layout.addWidget(self.field_email)
-        
-        self.label_password = QLabel("Пароль")
-        self.label_password.setStyleSheet("background: transparent;")
-        self.password_container = self.create_password_field("Введите пароль")
-        self.password_container.setStyleSheet("background: transparent;")
-        content_layout.addWidget(self.label_password, alignment=Qt.AlignmentFlag.AlignLeft)
-        content_layout.addWidget(self.password_container)
-        
-        # Поле повторения пароля (будет скрыто в режиме авторизации)
-        self.label_2password = QLabel("Повторите пароль")
-        self.label_2password.setStyleSheet("background: transparent;")
-        self.password2_container  = self.create_password_field("Повторите пароль")
-        self.password2_container .setStyleSheet("background: transparent;")
-        content_layout.addWidget(self.label_2password, alignment=Qt.AlignmentFlag.AlignLeft)
-        content_layout.addWidget(self.password2_container )
-        
-        self.label_2fa = QLabel("Код двухфакторной аутентификации")
-        self.label_2fa.setStyleSheet("background: transparent; font-weight: bold;")
-        self.field_2fa = QLineEdit()
-        self.field_2fa.setStyleSheet("background: transparent;")
-        self.field_2fa.setPlaceholderText("Введите 6-значный код с почты")
-        self.field_2fa.setMaxLength(6)
-        
-        self.resend_2fa_btn = QPushButton("Отправить код повторно")
-        self.resend_2fa_btn.clicked.connect(self.resend_2fa_code)
-        self.resend_2fa_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.1);
-                border: 1px solid rgba(255, 255, 255, 0.3);
-                color: white;
-                padding: 8px 16px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.2);
-            }
-        """)
-        
-        # Скрываем 2FA поля изначально
-        self.hide_2fa_fields()
-        
-        content_layout.addWidget(self.label_2fa)
-        content_layout.addWidget(self.field_2fa)
-        content_layout.addWidget(self.resend_2fa_btn)
-        
-        content_layout.addSpacing(20)
-        
-        # Кнопки
-        self.submit_btn = QPushButton("Создать аккаунт")
-        self.submit_btn.clicked.connect(self.handle_submit)
-        
-        self.cancel_btn = QPushButton("Отмена")
-        self.cancel_btn.clicked.connect(self.cancel_login)
-        
-        self.back_btn = QPushButton("Назад")  # ← Новая кнопка "Назад" для 2FA
-        self.back_btn.clicked.connect(self.back_to_login)
-        self.back_btn.hide()
-        
-        self.local_launch_btn = QPushButton("Локальный запуск (Гость)")
-        self.local_launch_btn.clicked.connect(self.login_as_guest)
-        self.local_launch_btn.hide()
-        
-        # Layout для кнопок
-        buttons_layout = QHBoxLayout()
-        buttons_layout.addWidget(self.cancel_btn)
-        buttons_layout.addWidget(self.submit_btn)
-        
-        content_layout.addLayout(buttons_layout)
-        content_layout.addWidget(self.back_btn)
-        content_layout.addWidget(self.local_launch_btn)
-        
-        # Текст-ссылка для переключения между режимами
-        self.switch_mode_label = QLabel(
-            "<style>"
-            "a { color: #1E88E5; text-decoration: none; }"
-            "a:hover { color: #0D47A1; text-decoration: underline; }"
-            "</style>"
-            "Уже есть аккаунт? <a href='login'>Войти</a>"
-        )
-        self.switch_mode_label.setStyleSheet("background: transparent; margin-top: 10px;")
-        self.switch_mode_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.switch_mode_label.setOpenExternalLinks(False)
-        self.switch_mode_label.linkActivated.connect(self.switch_mode)
-        content_layout.addWidget(self.switch_mode_label)
-        
-        link_label = QLabel()
-        link_label.setText('''
-            <a href="https://owl-app.ru" 
-            style="color: #1E88E5; text-decoration: none; font-size: 13px;">
-            owl-app.ru
-            </a>
-        ''')
-        link_label.setStyleSheet("background: transparent;")
-        link_label.setOpenExternalLinks(True)
-        link_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        content_layout.addWidget(link_label, alignment=Qt.AlignmentFlag.AlignCenter)
-        
-        content_layout.addStretch()
-
-        # Добавляем основной виджет в главный layout
-        main_layout.addWidget(self.main_widget, 1)
-        
-    def login_as_guest(self):
-        """Вход в режиме гостя"""
-        debug_logger.info("👤 Вход как гость")
-
-        # Создаем гостевые данные
-        guest_data = {
-            'id': -1,
-            'username': 'Username',
-            'display_name': 'Username',
-            'email_verified': False,
-            'avatar': None
-        }
-        
-        # Устанавливаем гостевой режим в AuthManager
-        self.auth.user_data = guest_data
-        self.auth.token = None  # Нет токена для гостя
-        
-        # Сохраняем информацию о гостевом режиме
-        self.auth._save_auth_data()
-        
-        # Показываем сообщение
-        self.show_message("Локальный запуск", "info")
-        
-        # Закрываем окно и отправляем сигнал
-        QTimer.singleShot(1000, self.finish_guest_login)
-        
-    def hide_2fa_fields(self):
-        """Скрыть поля 2FA"""
-        self.label_2fa.hide()
-        self.field_2fa.hide()
-        self.resend_2fa_btn.hide()
-
-    def show_2fa_fields(self):
-        """Показать поля 2FA"""
-        self.label_2fa.show()
-        self.field_2fa.show()
-        self.resend_2fa_btn.show()
-
-    def switch_to_2fa_mode(self):
-        """Переключиться в режим 2FA"""
-        self.is_2fa_mode = True
-        
-        # Скрываем основные поля
-        self.label_username.hide()
-        self.field_username.hide()
-        self.label_email.hide()
-        self.field_email.hide()
-        self.label_password.hide()
-        self.password_container.hide()
-        self.label_2password.hide()
-        self.password2_container.hide()
-        self.local_launch_btn.hide()
-        self.switch_mode_label.hide()
-        
-        # Показываем 2FA поля
-        self.show_2fa_fields()
-        
-        # Обновляем кнопки
-        self.title_label.setText("Аутентификация")
-        self.submit_btn.setText("Подтвердить")
-        self.cancel_btn.hide()
-        self.back_btn.show()
-        
-        # Обновляем сообщение
-        self.show_message("Код отправлен на вашу почту", "info")
-
-    def back_to_login(self):
-        """Вернуться к обычному логину"""
-        self.is_2fa_mode = False
-        
-        # Скрываем 2FA поля
-        self.hide_2fa_fields()
-        
-        self.title_label.setText("Вход в аккаунт")
-        self.label_email.show()
-        self.field_email.show()
-        self.label_password.show()
-        self.password_container.show()
-            
-        # Обновляем кнопки
-        self.back_btn.hide()
-        self.cancel_btn.show()
-        self.local_launch_btn.show()
-        self.switch_mode_label.show()
-        self.setFixedSize(350, 560)
-
-    def handle_submit(self):
-        """Обработка отправки формы"""
-        try:
-            if self.is_2fa_mode:
-                self.handle_2fa_verification()
-            elif self.is_login_mode:
-                self.handle_login()
-            else:
-                self.handle_register()
-                
-        except Exception as e:
-            debug_logger.error(f"Ошибка при обработке формы: {e}")
-            self.show_message(f"Ошибка: {e}", "error")
-
-    def handle_2fa_verification(self):
-        """Обработка верификации 2FA кода"""
-        code = self.field_2fa.text().strip()
-        
-        if len(code) != 6 or not code.isdigit():
-            self.show_message("Введите 6-значный код", "error")
-            return
-            
-        self.submit_btn.setEnabled(False)
-        self.submit_btn.setText("Проверка...")
-        
-        success, message = self.auth.verify_2fa(code)
-        
-        if success:
-            self.show_message("Успешная верификация!", "info")
-            self.login_successful.emit()
-            self.close()
-        else:
-            self.show_message(f"Ошибка: {message}", "error")
-            
-        self.submit_btn.setEnabled(True)
-        self.submit_btn.setText("Подтвердить")
-
-    def resend_2fa_code(self):
-        """Повторная отправка кода 2FA"""
-        if not self.auth.temp_2fa_token:
-            self.show_message("Нет активной сессии 2FA", "error")
-            return
-        
-        debug_logger.info(f"Запрос повторной отправки с токеном: {self.auth.temp_2fa_token}")
-            
-        self.resend_2fa_btn.setEnabled(False)
-        self.resend_2fa_btn.setText("Отправка...")
-        
-        success, message = self.auth.resend_2fa_code()
-        
-        if success:
-            self.show_message("✅ Код отправлен повторно!", "info")
-        else:
-            self.show_message(f"❌ {message}", "error")
-            # Если токен невалидный, возвращаем к логину
-            if "неверный" in message.lower() or "истек" in message.lower():
-                self.back_to_login()
-                
-        self.resend_2fa_btn.setEnabled(True)
-        self.resend_2fa_btn.setText("Отправить код повторно")
-        
-    def finish_guest_login(self):
-        """Завершить вход как гость"""
-        self.login_successful.emit()
-        self.close()
-
-    def switch_mode(self):
-        """Переключение между режимами регистрации и авторизации"""
-        self.is_login_mode = not self.is_login_mode
-        
-        if self.is_login_mode:
-            # Переключаемся в режим авторизации
-            self.title_label.setText("Вход в аккаунт")
-            self.submit_btn.setText("Войти")
-            self.switch_mode_label.setText(
-            "<style>"
-            "a { color: #1E88E5; text-decoration: none; }"
-            "a:hover { color: #0D47A1; text-decoration: underline; }"
-            "</style>"
-            "Нет аккаунта? <a href='register'>Зарегистрироваться</a>")
-            
-            # Скрываем ненужные поля
-            self.label_username.hide()
-            self.field_username.hide()
-            self.label_2password.hide()
-            self.password2_container.hide()
-            self.setFixedSize(350, 560)
-            
-            self.local_launch_btn.show()
-            
-        else:
-            # Переключаемся в режим регистрации
-            self.title_label.setText("Создание аккаунта")
-            self.submit_btn.setText("Создать аккаунт")
-            self.switch_mode_label.setText(
-            "<style>"
-            "a { color: #1E88E5; text-decoration: none; }"
-            "a:hover { color: #0D47A1; text-decoration: underline; }"
-            "</style>"
-            "Уже есть аккаунт? <a href='login'>Войти</a>")
-            
-            # Показываем все поля
-            self.label_username.show()
-            self.field_username.show()
-            self.label_2password.show()
-            self.password2_container.show()
-            self.setFixedSize(350, 660)
-            
-            self.local_launch_btn.hide()
-        
-        # Очищаем поля при переключении
-        self.clear_fields()
-
-    def clear_fields(self):
-        """Очистка полей ввода"""
-        self.field_username.clear()
-        self.field_email.clear()
-        self.password_container.password_field.clear()
-        self.password2_container.password_field.clear()
-
-    # def handle_submit(self):
-    #     """Обработка отправки формы (регистрация или авторизация)"""
-    #     try:
-    #         if self.is_login_mode:
-    #             self.handle_login()
-    #         else:
-    #             self.handle_register()
-                
-    #     except Exception as e:
-    #         debug_logger.error(f"Ошибка при обработке формы: {e}")
-    #         self.show_message(f"Ошибка: {e}", "error")
-
-    def handle_register(self):
-        """Обработка регистрации"""
-        username = self.field_username.text().strip()
-        email = self.field_email.text().strip()
-        password = self.password_container.password_field.text()
-        password_confirm = self.password2_container.password_field.text()
-
-        # Валидация
-        if not username:
-            self.show_message("Введите логин", "error")
-            return
-
-        if not email or "@" not in email:
-            self.show_message("Введите корректный email", "error")
-            return
-
-        if not password:
-            self.show_message("Введите пароль", "error")
-            return
-
-        if len(password) < 6:
-            self.show_message("Пароль должен содержать минимум 6 символов", "error")
-            return
-
-        if password != password_confirm:
-            self.show_message("Пароли не совпадают", "error")
-            return
-
-        # Блокируем кнопку
-        self.submit_btn.setEnabled(False)
-        self.submit_btn.setText("Регистрация...")
-
-        # Регистрация через AuthManager
-        success, result = self.auth.register(username, email, password)
-        
-        if success:
-            # ⚠️ РЕГИСТРАЦИЯ УСПЕШНА - ПЕРЕКЛЮЧАЕМ НА АВТОРИЗАЦИЮ
-            message = result['message'] if isinstance(result, dict) else result
-            self.show_message(message, "success")
-            
-            # Сохраняем email для возможности повторной отправки
-            self.pending_verification_email = email
-            
-            # Переключаемся на режим авторизации
-            QTimer.singleShot(1500, self.switch_to_login_mode)
-        else:
-            self.show_message(f"Ошибка регистрации: {result}", "error")
-            self.submit_btn.setEnabled(True)
-            self.submit_btn.setText("Создать аккаунт")
-
-    def switch_to_login_mode(self):
-        """Переключиться на режим авторизации после регистрации"""
-        self.switch_mode()
-        self.submit_btn.setEnabled(True)
-        self.submit_btn.setText("Войти")
-        
-        # ⚠️ Добавляем кнопку повторной отправки письма
-        self.add_resend_verification_button()
-        self.setFixedSize(350, 600)
-
-    def add_resend_verification_button(self):
-        """Добавить кнопку повторной отправки письма подтверждения"""
-        if hasattr(self, 'resend_btn'):
-            self.resend_btn.show()
-            return
-            
-        self.resend_btn = QPushButton("Отправить письмо подтверждения повторно")
-        self.resend_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                color: #0078D7;
-                border: 1px solid #0078D7;
-                border-radius: 5px;
-                padding: 8px;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background: #0078D7;
-                color: white;
-            }
-            QPushButton:disabled {
-                background: #cccccc;
-                color: #666666;
-                border: 1px solid #cccccc;
-            }
-        """)
-        self.resend_btn.clicked.connect(self.resend_verification)
-        
-        # Добавляем кнопку в layout (перед switch_mode_label)
-        content_layout = self.main_widget.layout()
-        index = content_layout.indexOf(self.switch_mode_label)
-        content_layout.insertWidget(index, self.resend_btn)
-
-    def resend_verification(self):
-        """Повторно отправить письмо подтверждения"""
-        if not hasattr(self, 'pending_verification_email'):
-            self.show_message("Email не найден", "error")
-            return
-            
-        # Блокируем кнопку на 40 секунд
-        self.resend_btn.setEnabled(False)
-        self.resend_btn.setText("Отправка...")
-        
-        success, message = self.auth.resend_verification_email(self.pending_verification_email)
-        
-        if success:
-            self.show_message("Письмо отправлено!", "success")
-            # ⚠️ Таймер разблокировки кнопки через 40 секунд
-            QTimer.singleShot(40000, self.enable_resend_button)
-            
-            # Обновляем счетчик на кнопке
-            self.start_resend_countdown()
-        else:
-            self.show_message(f"Ошибка: {message}", "error")
-            self.resend_btn.setEnabled(True)
-            self.resend_btn.setText("Отправить письмо подтверждения повторно")
-
-    def start_resend_countdown(self):
-        """Запустить отсчет времени до возможности повторной отправки"""
-        self.countdown_seconds = 40
-        self.countdown_timer = QTimer()
-        self.countdown_timer.timeout.connect(self.update_resend_button)
-        self.countdown_timer.start(1000)
-        self.update_resend_button()
-
-    def update_resend_button(self):
-        """Обновить текст кнопки с отсчетом"""
-        if self.countdown_seconds > 0:
-            self.resend_btn.setText(f"Повторная отправка через {self.countdown_seconds}с")
-            self.countdown_seconds -= 1
-        else:
-            self.countdown_timer.stop()
-            self.enable_resend_button()
-
-    def enable_resend_button(self):
-        """Разблокировать кнопку повторной отправки"""
-        self.resend_btn.setEnabled(True)
-        self.resend_btn.setText("Отправить письмо подтверждения повторно")
-
-    def handle_login(self):
-        """Обработка авторизации"""
-        try:
-            email = self.field_email.text().strip()
-            password = self.password_container.password_field.text()
-
-            # Валидация
-            if not self.auth.is_valid_email(email):
-                self.show_message("Некорректная почта", "error")
-                return
-            
-            if not email:
-                self.show_message("Введите почту", "error")
-                return
-
-            if len(email) > 100:
-                self.show_message("Email должен содержать не более 100 символов", "error")
-                return
-
-            if not password:
-                self.show_message("Введите пароль", "error")
-                return
-            
-            if len(password) < 6:
-                self.show_message("Пароль должен содержать не менее 6 символов", "error")
-                return
-
-            if len(password) > 50:
-                self.show_message("Пароль должен содержать не более 50 символов", "error")
-                return
-
-            debug_logger.info(f"🔄 Начинаем авторизацию для: {email}")
-            
-            # Блокируем кнопку на время авторизации
-            self.submit_btn.setEnabled(False)
-            self.submit_btn.setText("Вход...")
-
-            # Авторизация через AuthManager
-            result, message = self.auth.login(email, password)
-            
-            debug_logger.info(f"📊 Результат авторизации: {result}, {message}")
-            
-            if result == True:
-                # Обычный вход без 2FA
-                self.show_message("Успешный вход!", "info")
-                self.login_successful.emit()
-                self.close()
-            elif result == '2fa_required':
-                # Требуется 2FA - показываем окно верификации
-                self.show_message("Требуется двухфакторная аутентификация", "info")
-                debug_logger.info(f"🔐 Переход в режим 2FA с токеном: {self.auth.temp_2fa_token}")
-                self.switch_to_2fa_mode()
-            else:
-                # Ошибка входа
-                self.show_message(f"Ошибка входа: {message}", "error")
-
-        except Exception as e:
-            debug_logger.error(f"Ошибка при авторизации: {e}")
-            self.show_message(f"Неожиданная ошибка: {e}", "error")
-        finally:
-            # Разблокируем кнопку
-            self.submit_btn.setEnabled(True)
-            self.submit_btn.setText("Войти")
-
-    def cancel_login(self):
-        """Обработка отмены"""
-        self.login_cancelled.emit()
-        self.close()
-
-    def on_2fa_success(self):
-        """Обработка успешной верификации 2FA"""
-        self.show_message("Успешный вход!", "info")
-        self.login_successful.emit()
-        self.close()
-
-    def apply_styles(self):
-        try:
-            self.styles = self.style_manager.load_styles()
-
-            # Применение к SVG
-            if hasattr(self, 'svg_image'):
-                self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
-
-            # Применение общего стиля окна
-            style_sheet = ""
-            for widget, styles in self.styles.items():
-                if widget.startswith("Q"):  # Для стандартных виджетов
-                    selector = widget
-                else:  # Для виджетов с objectName
-                    selector = f"#{widget}"
-
-                style_sheet += f"{selector} {{\n"
-                for prop, value in styles.items():
-                    style_sheet += f"    {prop}: {value};\n"
-                style_sheet += "}\n"
-
-            # Устанавливаем стиль для текущего окна
-            self.setStyleSheet(style_sheet)
-            self.main_widget.setStyleSheet("border-radius: 20px;")
-        except Exception as e:
-            debug_logger.error(f"Ошибка в методе apply_styles: {e}")
-
-    def cancel_login(self):
-        """Обработка отмены"""
-        self.login_cancelled.emit()
-        self.close()
-
-    def setup_notice_widget(self):
-        """Создать виджет уведомления"""
-        self.notice_widget = QWidget(self)
-        self.notice_widget.setObjectName("NoticeWidget")
-        self.notice_widget.setFixedSize(300, 50)
-        self.notice_widget.hide()
-        
-        layout = QHBoxLayout(self.notice_widget)
-        layout.setContentsMargins(15, 10, 15, 10)
-        
-        self.notice_label = QLabel()
-        self.notice_label.setWordWrap(True)
-        self.notice_label.setStyleSheet("color: white; font-size: 12px;")
-        layout.addWidget(self.notice_label)
-        
-        # Позиционируем вверху
-        self.notice_widget.move(25, 25)
-        
-        self.notice_widget.setStyleSheet("""
-            #NoticeWidget {
-                background: #F44336;
-                border-radius: 8px;
-                border: 1px solid #D32F2F;
-            }
-        """)
-
-    def show_message(self, text, message_type="error"):
-        """Показать уведомление"""
-        try:
-            self.notice_label.setText(text)
-            
-            # Меняем цвет в зависимости от типа
-            colors = {
-                "info": "#2196F3",
-                "success": "#4CAF50", 
-                "warning": "#FF9800",
-                "error": "#F44336"
-            }
-            color = colors.get(message_type, "#F44336")
-            
-            # Показываем с цветом
-            self.notice_widget.setStyleSheet(f"""
-                #NoticeWidget {{
-                    background: {color};
-                    border-radius: 8px;
-                    border: 1px solid {color};
-                }}
-            """)
-            
-            # Через 3 секунды возвращаем прозрачный стиль
-            QTimer.singleShot(3000, self.hide_notice)
-            
-        except Exception as e:
-            debug_logger.error(f"Ошибка при показе уведомления: {e}")
-
-    def hide_notice(self):
-        """Скрыть уведомление (оставить место)"""
-        self.notice_widget.setStyleSheet("""
-            #NoticeWidget {
-                background: transparent;
-                border: none;
-            }
-        """)
-        self.notice_label.clear() 
-        
-    def create_password_field(self, placeholder):
-        """Создать поле пароля с кнопкой глазком рядом"""
-        # Создаем контейнер для поля и кнопки
-        container = QWidget()
-        container_layout = QHBoxLayout(container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-        container_layout.setSpacing(0)
-        
-        # Поле ввода
-        field = QLineEdit()
-        field.setEchoMode(QLineEdit.EchoMode.Password)
-        field.setPlaceholderText(placeholder)
-        field.setStyleSheet("background: transparent;")
-        
-        # Кнопка глазок
-        toggle_btn = QPushButton()
-        toggle_btn.setFixedSize(33, 33)
-        toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        toggle_btn.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-
-            }
-            QPushButton:hover {
-                background: rgba(100,100,100,0.4);
-            }
-        """)
-        
-        # SVG иконка
-        eye_svg_path = get_path("bin", "icons", "visible.svg")
-        svg_widget = CustomSvgWidget(eye_svg_path)
-        svg_widget.setFixedSize(25, 25)
-        svg_widget.setStyleSheet("background: transparent; border: none;")
-        
-        # Эффект цвета
-        color_effect = QGraphicsColorizeEffect()
-        svg_widget.setGraphicsEffect(color_effect)
-        self.style_manager.apply_color_svg(svg_widget, strength=0.8)
-        
-        # Layout для кнопки с центрированием
-        btn_layout = QHBoxLayout(toggle_btn)
-        btn_layout.setContentsMargins(0, 0, 0, 0)
-        btn_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        btn_layout.addWidget(svg_widget)
-        
-        # Добавляем в контейнер
-        container_layout.addWidget(field)
-        container_layout.addWidget(toggle_btn)
-        
-        # Подключаем обработчик
-        toggle_btn.clicked.connect(lambda: self.toggle_password_visibility(field, toggle_btn))
-        
-        # Сохраняем ссылки
-        container.password_field = field
-        container.toggle_btn = toggle_btn
-        container.svg_widget = svg_widget
-        
-        return container
-
-    def toggle_password_visibility(self, field, toggle_btn):
-        """Переключить видимость пароля"""
-        if field.echoMode() == QLineEdit.EchoMode.Password:
-            field.setEchoMode(QLineEdit.EchoMode.Normal)
-            toggle_btn.setStyleSheet("""
-                QPushButton {
-                    background: rgba(100,100,100,0.7);
-                }
-            """)
-        else:
-            field.setEchoMode(QLineEdit.EchoMode.Password)
-            toggle_btn.setStyleSheet("""
-                QPushButton {
-                    background: transparent;
-                }
-                QPushButton:hover {
-                    background: rgba(100,100,100,0.4);
-                }
-            """)
 
 
 def should_launch_updater():

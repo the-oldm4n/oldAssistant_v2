@@ -1,5 +1,6 @@
 import json
 import re
+import traceback
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QLinearGradient
 from PySide6.QtWidgets import QGraphicsColorizeEffect
@@ -12,6 +13,17 @@ class ApplyColor():
     def __init__(self, parent=None):
         self.color_path = get_path('user_settings', 'color_settings.json')
         self.styles = self.load_styles()
+        self.update_style_selector()
+
+    def update_style_selector(self):
+        if "BasedColors" not in self.styles:
+            new_style = self.styles.get("TitleBar", {}).get("border-bottom", "1px solid #0973ff")
+            short_style = new_style[len("1px solid "):]
+            self.styles["BasedColors"] = {
+                "svg": f"{short_style}",
+                "border": f"{new_style}"
+            }
+        self.save_styles(self.styles)
 
     def load_styles(self):
         """Только загрузка стилей без применения"""
@@ -22,29 +34,41 @@ class ApplyColor():
             self.styles = {}
         return self.styles
 
+    def save_styles(self, styles):
+        try:
+            with open(self.color_path, 'w', encoding='utf-8') as json_file:
+                json.dump(styles, json_file, indent=4, ensure_ascii=False)
+            debug_logger.info(f"[APPLYCOLOR] Стили сохранены")
+            return True
+            
+        except Exception as e:
+            debug_logger.error(f"[APPLYCOLOR] Ошибка при сохранении стилей: {e}")
+            return False
+
     def apply_to_widget(self, widget, widget_name):
         """Применяет стиль к конкретному виджету"""
         if widget_name in self.styles:
             widget.setStyleSheet(self.format_style(self.styles[widget_name]))
 
-    def apply_color_svg(self, svg_widget, strength: float, specified_color: str = "") -> None:
+    def apply_color_svg(self, svg_widget, strength: float = 0.95, specified_color: str = "", spec_gradient: str = "") -> None:
         """
         Применяет цвет к SVG виджету
         """
+        self.styles = self.load_styles()
         try:
             if specified_color:
                 color = QColor(specified_color)
                 return svg_widget.applyColorEffect(color, strength)
-            
-            self.gradient_data = self.parse_gradient_from_styles()
+
+            if spec_gradient:
+                self.gradient_data = self._parse_linear_gradient(spec_gradient)
+            else:
+                self.gradient_data = self.parse_gradient_from_styles()
             if self.gradient_data == None:
-                
-            
-                if "TitleBar" in self.styles and "border-bottom" in self.styles["TitleBar"]:
-                    border_value = self.styles["TitleBar"]["border-bottom"]
+                if "BasedColors" in self.styles and "svg" in self.styles["BasedColors"]:
+                    border_value = self.styles["BasedColors"]["svg"]
                     color = QColor("#000000")
 
-                    # Ваш существующий код извлечения цвета
                     gradient_match = re.search(r"qlineargradient\([^)]+\)", border_value)
                     if gradient_match:
                         gradient_str = gradient_match.group(0)
@@ -57,25 +81,22 @@ class ApplyColor():
                             color = QColor(hex_match.group(0))
                             
                     if isinstance(svg_widget, CustomSvgWidget):
-                        # Используем наш кастомный метод
                         svg_widget.applyColorEffect(color, strength)
                     else:
-                        # Fallback для обычных QSvgWidget
                         self._apply_effect_fallback(svg_widget, color, strength)
                         
             else:
                 if isinstance(svg_widget, CustomSvgWidget):
                     return svg_widget.applyGradientEffect(self.gradient_data, strength)
                 else:
-                    # Fallback для обычных QSvgWidget - используем первый цвет
-                    debug_logger.warning("Градиенты поддерживаются только для CustomSvgWidget, используем первый цвет")
+                    debug_logger.warning("[APPLYCOLOR] Градиенты поддерживаются только для CustomSvgWidget, используем первый цвет")
                     if self.gradient_data and self.gradient_data.get('colors'):
                         first_color = self.gradient_data['colors'][0][1]
                         return self.apply_color_svg(svg_widget, strength, first_color)
                     return False
 
         except Exception as e:
-            debug_logger.error(f"Ошибка в apply_color_svg: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка в apply_color_svg: {e}")
 
     def _apply_effect_fallback(self, svg_widget, color, strength):
         """Fallback для обычных QSvgWidget"""
@@ -93,7 +114,7 @@ class ApplyColor():
             svg_widget.update()
 
         except Exception as e:
-            debug_logger.error(f"❌ Fallback ошибка: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка: {e}")
 
     def format_style(self, style_dict):
         """Форматирует стиль в строку"""
@@ -140,14 +161,14 @@ class ApplyColor():
                 return color_match.group(0) if color_match else "#05B8CC"
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка извлечения цвета: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка извлечения цвета: {e}")
         return "#BB05CC"
     
     def get_gradient_darker(self):
         color_or_gradient = self.get_color_from_border("border")
         return self.adjust_gradient_border(color_or_gradient, only_first_color=False)
     
-    def apply_progressbar(self, key=None, widget=None, style="solid"):
+    def apply_progressbar(self, key="BasedColors", widget=None, style="solid"):
         """
         Применяет стиль к прогресс-бару
         :param style: "solid" (default), "looper", "circle"
@@ -155,7 +176,7 @@ class ApplyColor():
         :param widget: Ссылка на виджет QProgressBar или CustomProgressBar
         """
         if not widget or not hasattr(widget, 'setStyleSheet'):
-            debug_logger.warning("Не передан виджет или он не поддерживает стилизацию")
+            debug_logger.warning("[APPLYCOLOR] Не передан виджет или он не поддерживает стилизацию")
             return
 
         try:
@@ -201,7 +222,7 @@ class ApplyColor():
             widget.setStyleSheet(progress_style)
 
         except Exception as e:
-            debug_logger.error(f"Ошибка применения стиля прогресс-бара: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка применения стиля прогресс-бара: {e}")
             # Применяем минимальный рабочий стиль при ошибках
             fallback_style = """
                 QProgressBar {
@@ -238,7 +259,7 @@ class ApplyColor():
                 
             return gradient
         except Exception as e:
-            debug_logger.error(f"Ошибка парсинга градиента: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка парсинга градиента: {e}")
             # Возвращаем градиент по умолчанию
             gradient = QLinearGradient(0, 0, width, height)
             gradient.setColorAt(0, QColor("#0059FF"))
@@ -284,9 +305,6 @@ class ApplyColor():
         
         # Фон под полосой прогресса (темнее основного цвета)
         widget.setTrackColor(base_color.darker(300))
-        
-        # Внутренняя область (еще темнее)
-        # widget.setBackgroundColor(base_color.darker(300))
 
     def create_gradient_css(self, gradient, style_type):
         """Создает CSS для градиентного прогрессбара"""
@@ -366,26 +384,29 @@ class ApplyColor():
             colors = ["#0059FF"]
         
         if only_first_color:
-            # Один цвет
             return self.adjust_color(colors[0], brightness=-30)
         else:
-            # Все цвета с использованием list comprehension
             return [self.adjust_color(color, brightness=-30) for color in colors]
 
 
     def adjust_gradient_background(self, gradient):
         """Создает очень темную версию градиента для background"""
-        # first_color = self.get_first_gradient_color(gradient)
         colors = self.get_gradient_colors(gradient)
-        first_color = colors[0] if colors else "#05B8CC"
+        first_color = colors[0] if colors else "#055BFA"
         return self.adjust_color(first_color, brightness=-80)
-    
+
     def get_snow_color(self):
-        if "TitleBar" in self.styles and "border-bottom" in self.styles["TitleBar"]:
-            border_value = self.styles["TitleBar"]["border-bottom"]
+        """Получает цвет/градиент для снежинок из стилей"""
+        if "BasedColors" in self.styles and "svg" in self.styles["BasedColors"]:
+            # Просто возвращаем строку как есть
+            return self.styles["BasedColors"]["svg"]
+        return "#FFFFFF"
+    
+    def get_svg_color(self):
+        if "BasedColors" in self.styles and "svg" in self.styles["BasedColors"]:
+            border_value = self.styles["BasedColors"]["svg"]
             color = QColor("#FFFFFF")
 
-            # Ваш существующий код извлечения цвета
             gradient_match = re.search(r"qlineargradient\([^)]+\)", border_value)
             if gradient_match:
                 gradient_str = gradient_match.group(0)
@@ -399,8 +420,8 @@ class ApplyColor():
         return color
     
     def get_gradient_color(self):
-        if "TitleBar" in self.styles and "border-bottom" in self.styles["TitleBar"]:
-            border_value = self.styles["TitleBar"]["border-bottom"]
+        if "BasedColors" in self.styles and "svg" in self.styles["BasedColors"]:
+            border_value = self.styles["BasedColors"]["svg"]
             color = QColor("#FFFFFF")
 
             gradient_match = re.search(r"qlineargradient\([^)]+\)", border_value)
@@ -424,8 +445,8 @@ class ApplyColor():
         :param darken_factor: коэффициент затемнения (100 - без изменений, >100 - темнее)
         """
         try:
-            if "TitleBar" in self.styles and "border-bottom" in self.styles["TitleBar"]:
-                border_value = self.styles["TitleBar"]["border-bottom"]
+            if "BasedColors" in self.styles and "svg" in self.styles["BasedColors"]:
+                border_value = self.styles["BasedColors"]["svg"]
                 
                 gradient_match = re.search(r"qlineargradient\([^)]+\)", border_value)
                 if gradient_match:
@@ -439,7 +460,7 @@ class ApplyColor():
                         return f"rgba({darker_color.red()}, {darker_color.green()}, {darker_color.blue()}, {opacity})"
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка получения цвета для фона: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка получения цвета для фона: {e}")
         
         return f"rgba(30, 30, 30, {opacity})"
 
@@ -475,7 +496,7 @@ class ApplyColor():
             return new_gradient
             
         except Exception as e:
-            debug_logger.error(f"Ошибка создания прозрачного градиента: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка создания прозрачного градиента: {e}")
             first_color_match = re.search(r"stop:[\d.]+\s+([^,)]+)", gradient_str)
             if first_color_match:
                 base_color = QColor(first_color_match.group(1).strip())
@@ -523,21 +544,21 @@ class ApplyColor():
             return QColor("#000000")  # Fallback цвет
             
         except Exception as e:
-            debug_logger.error(f"Ошибка парсинга цвета {color_str}: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка парсинга цвета {color_str}: {e}")
             return QColor("#000000")
 
-    def parse_gradient_from_styles(self, widget_key="TitleBar", css_property="border-bottom"):
+    def parse_gradient_from_styles(self, widget_key="BasedColors", css_property="svg"):
         """
         Парсит градиент из CSS стилей и возвращает структуру для применения к SVG
         """
         try:
             if widget_key not in self.styles:
-                debug_logger.warning(f"Ключ {widget_key} не найден в стилях")
+                debug_logger.warning(f"[APPLYCOLOR] Ключ {widget_key} не найден в стилях")
                 return None
                 
             style_value = self.styles[widget_key].get(css_property, "")
             if not style_value:
-                debug_logger.warning(f"Свойство {css_property} не найдено для {widget_key}")
+                debug_logger.warning(f"[APPLYCOLOR] Свойство {css_property} не найдено для {widget_key}")
                 return None
             
             # Линейный градиент
@@ -561,7 +582,7 @@ class ApplyColor():
             return None
             
         except Exception as e:
-            debug_logger.error(f"Ошибка парсинга градиента из стилей: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка парсинга градиента из стилей: {e}")
             return None
 
     def _parse_linear_gradient(self, gradient_params):
@@ -584,7 +605,7 @@ class ApplyColor():
                     colors.append((position, color))
             
             if not colors:
-                debug_logger.error("Не найдено цветов в градиенте")
+                debug_logger.error("[APPLYCOLOR] Не найдено цветов в градиенте")
                 return None
                 
             # Создаем структуру градиента
@@ -606,7 +627,7 @@ class ApplyColor():
             return gradient_data
             
         except Exception as e:
-            debug_logger.error(f"Ошибка парсинга линейного градиента: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка парсинга линейного градиента: {e}")
             return None
 
     # Добавим также методы для других типов градиентов
@@ -649,7 +670,7 @@ class ApplyColor():
             }
             
         except Exception as e:
-            debug_logger.error(f"Ошибка парсинга радиального градиента: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка парсинга радиального градиента: {e}")
             return None
 
     def _parse_conical_gradient(self, gradient_params):
@@ -691,7 +712,7 @@ class ApplyColor():
             }
             
         except Exception as e:
-            debug_logger.error(f"Ошибка парсинга конического градиента: {e}")
+            debug_logger.error(f"[APPLYCOLOR] Ошибка парсинга конического градиента: {e}")
             return None
 
 

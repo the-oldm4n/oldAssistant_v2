@@ -435,7 +435,7 @@ class AnimatedSidebar(QWidget):
                 
             frame = widgets["frame"]
             if isinstance(frame, GlowFrame):
-                frame.update_color(self.style_manager.get_snow_color())
+                frame.update_color(self.style_manager.get_svg_color())
     
     def setup_ui(self):
         """Настройка интерфейса"""
@@ -466,7 +466,7 @@ class AnimatedSidebar(QWidget):
         element_frame = GlowFrame()
         element_frame.setObjectName("SidebarElement")
         element_frame.setFixedHeight(50)
-        element_frame.update_color(self.style_manager.get_snow_color())
+        element_frame.update_color(self.style_manager.get_svg_color())
         
         # Layout для элемента
         element_layout = QHBoxLayout(element_frame)
