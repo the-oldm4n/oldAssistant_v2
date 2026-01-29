@@ -1,4 +1,5 @@
 ﻿import os
+import re
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget,\
     QFrame, QWidget, QGraphicsOpacityEffect
 from PySide6.QtCore import Signal, QPropertyAnimation, Qt, QRectF, QPointF, QEasingCurve,\
@@ -92,15 +93,66 @@ class GlowFrame(QFrame):
         self.setMouseTracking(True)
         self.glow_radius = 100
         self._glow_opacity = 0
-        self.glow_color = QColor(glow_color)
+        self.start_color = QColor("#4686FD")
+        self.end_color = QColor("#4686FD")
 
         # Анимация
         self.animation = QPropertyAnimation(self, b"glow_opacity")
         self.animation.setDuration(200)
         self.animation.setEasingCurve(QEasingCurve.OutCubic)
 
-    def update_color(self, color):
-        self.glow_color = QColor(color)
+        self.update_color(glow_color)
+
+    def update_color(self, style):
+        """
+        Обновляет стиль свечения.
+        
+        Принимает:
+        1. Цвет в виде строки: "#RRGGBB" - создается один цвет
+        2. Градиент Qt строка: извлекаются первый и последний цвета
+        
+        Всегда создается радиальный градиент из двух цветов.
+        """
+        if isinstance(style, str):
+            hex_colors = re.findall(r'#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\b', style)
+            
+            if len(hex_colors) >= 2:
+                self.start_color = QColor(hex_colors[0])
+                self.end_color = QColor(hex_colors[-1])
+            elif len(hex_colors) == 1:
+                color = QColor(hex_colors[0])
+                self.start_color = color
+                self.end_color = color
+            elif style.startswith("#"):
+                color = QColor(style)
+                self.start_color = color
+                self.end_color = color
+            else:
+                try:
+                    color = QColor(style)
+                    self.start_color = color
+                    self.end_color = color
+                except:
+                    self.start_color = QColor("#4686FD")
+                    self.end_color = QColor("#4686FD")
+    def _create_radial_gradient(self, center_pos):
+        """Создает радиальный градиент для эллипса"""
+        gradient = QRadialGradient(center_pos, self.glow_radius)
+
+        start = QColor(self.start_color)
+        start.setAlpha(int(self.glow_opacity * 2.55))
+        
+        end = QColor(self.end_color)
+        end.setAlpha(int(self.glow_opacity * 0.8))
+        
+        transparent_end = QColor(self.end_color)
+        transparent_end.setAlpha(0)
+        
+        gradient.setColorAt(0, start)
+        gradient.setColorAt(0.7, end)
+        gradient.setColorAt(1, transparent_end)
+        
+        return gradient
 
     @Property(float)
     def glow_opacity(self):
@@ -130,30 +182,19 @@ class GlowFrame(QFrame):
         super().mouseMoveEvent(event)
 
     def paintEvent(self, event):
-        # Сначала отрисовываем содержимое фрейма (фон, дочерние виджеты)
         super().paintEvent(event)
 
-        # Затем — свечение поверх всего
         if self.glow_opacity > 0:
             painter = QPainter(self)
             painter.setRenderHint(QPainter.Antialiasing)
 
-            # Ограничиваем свечение формой фрейма (чтобы не вылезало за границы)
             path = QPainterPath()
             path.addRoundedRect(self.rect(), 0, 0)
             painter.setClipPath(path)
 
             cursor_pos = self.mapFromGlobal(QCursor.pos())
 
-            start_color = QColor(self.glow_color)
-            start_color.setAlpha(int(self.glow_opacity * 2.55))  # 80 → 204 alpha (макс 255)
-
-            end_color = QColor(self.glow_color)
-            end_color.setAlpha(0)
-
-            gradient = QRadialGradient(cursor_pos, self.glow_radius)
-            gradient.setColorAt(0, start_color)
-            gradient.setColorAt(1, end_color)
+            gradient = self._create_radial_gradient(cursor_pos)
 
             painter.setBrush(QBrush(gradient))
             painter.setPen(Qt.NoPen)
@@ -430,12 +471,12 @@ class AnimatedSidebar(QWidget):
         
         for key, widgets in self.element_widgets.items():
             svg = widgets["svg_widget"]
-            if isinstance(svg, CustomSvgWidget):  # или QSvgWidget
-                self.style_manager.apply_color_svg(svg, strength=0.95)
+            if isinstance(svg, CustomSvgWidget):
+                self.style_manager.apply_color_svg(svg)
                 
             frame = widgets["frame"]
             if isinstance(frame, GlowFrame):
-                frame.update_color(self.style_manager.get_svg_color())
+                frame.update_color(self.style_manager.get_snow_color())
     
     def setup_ui(self):
         """Настройка интерфейса"""
@@ -466,7 +507,7 @@ class AnimatedSidebar(QWidget):
         element_frame = GlowFrame()
         element_frame.setObjectName("SidebarElement")
         element_frame.setFixedHeight(50)
-        element_frame.update_color(self.style_manager.get_svg_color())
+        element_frame.update_color(self.style_manager.get_snow_color())
         
         # Layout для элемента
         element_layout = QHBoxLayout(element_frame)

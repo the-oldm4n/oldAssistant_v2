@@ -64,7 +64,7 @@ from logging_config import logger, debug_logger
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.7"
+version_file = "2.2.8"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -217,7 +217,6 @@ class Assistant(QMainWindow):
         self.user_data = self.auth.user_data
         self.is_admin = True if self.auth.load_auth_data_id() == 1 else False
         self.get_btns_data()
-        # self.update_style_selector()
         self.init_ui()
         
         self.preload_utils()
@@ -225,19 +224,6 @@ class Assistant(QMainWindow):
             self.check_auth(self.auth)
         else:
             self.check_up()
-
-    # def update_style_selector(self):
-    #     if "BasedColors" not in self.styles:
-    #         new_style = self.styles.get("TitleBar", {}).get("border-bottom", "1px solid #0973ff")
-    #         print(new_style)
-    #         short_style = new_style[len("1px solid "):]
-    #         self.styles["BasedColors"] = {
-    #             "svg": f"{short_style}",
-    #             "border": f"{new_style}"
-    #         }
-    #         with open(self.color_path, 'w', encoding='utf-8') as f:
-    #             json.dump(self.styles, f, indent=4, ensure_ascii=False)
-    #     debug_logger.info(f"цвета заменены")
 
     def preload_utils(self):
         self.check_or_create_folders()

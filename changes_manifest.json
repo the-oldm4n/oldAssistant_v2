@@ -1,4 +1,17 @@
 {
+  "2.2.8": {
+    "full_update": false,
+    "changed_files": [
+      "bin/custom_widgets.py",
+      "bin/__pycache__/custom_widgets.cpython-311.pyc",
+      "bin/settings_widgets.py",
+      "bin/__pycache__/settings_widgets.cpython-311.pyc",
+      "config.ini",
+      "Assistant.exe",
+      "version.txt"
+    ],
+    "deleted_files": []
+  },
   "2.2.7": {
     "full_update": false,
     "changed_files": [

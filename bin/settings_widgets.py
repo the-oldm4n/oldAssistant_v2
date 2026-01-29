@@ -52,7 +52,7 @@ class InterfaceWidget(QWidget):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(20)
 
-        title = setup_custom_font_label("Выбор стиля интерфейса", font_style="Comfortaa", weight="Medium")
+        title = setup_custom_font_label("Выбор стиля интерфейса")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("background: transparent; font-size: 18px;")
         layout.addWidget(title)
@@ -69,11 +69,12 @@ class InterfaceWidget(QWidget):
         base_presets = get_path('bin', 'color_presets')
         self.load_styles_from_folder(base_presets, self.styles_layout, is_custom=False)
 
-        self.custom_label = setup_custom_font_label("Кастомные стили", font_style="Comfortaa", weight="Medium")
+        self.custom_label = setup_custom_font_label("Кастомные стили")
         self.custom_label.setStyleSheet("background: transparent; font-size: 14px;")
         self.styles_layout.addWidget(self.custom_label)
 
         self.custom_styles_container = QWidget()
+        self.custom_styles_container.setStyleSheet("background: transparent;")
         self.custom_styles_layout = QVBoxLayout(self.custom_styles_container)
         self.custom_styles_layout.setContentsMargins(0, 0, 0, 0)
         self.styles_layout.addWidget(self.custom_styles_container)
@@ -92,22 +93,22 @@ class InterfaceWidget(QWidget):
 
     def load_custom_styles(self):
         """Загружает пользовательские стили в отдельный контейнер"""
-        # Полностью очищаем контейнер - удаляем все дочерние layout и виджеты
+        custom_presets = get_path('user_settings', 'presets')
         while self.custom_styles_layout.count():
             child = self.custom_styles_layout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
-            elif child.layout():  # Важно: также удаляем вложенные layout
+            elif child.layout():
                 self.clear_nested_layout(child.layout())
-        
-        custom_presets = get_path('user_settings', 'presets')
-        
-        # Создаем новую сетку для кнопок кастомных стилей
+
         custom_grid = QGridLayout()
         custom_grid.setSpacing(10)
         custom_grid.setContentsMargins(0, 5, 0, 5)
+
+        grid_container = QWidget()
+        grid_container.setLayout(custom_grid)
+        self.custom_styles_layout.addWidget(grid_container)
         
-        # Загружаем файлы кастомных стилей
         if os.path.exists(custom_presets):
             try:
                 style_files = [f for f in os.listdir(custom_presets) 
@@ -115,13 +116,11 @@ class InterfaceWidget(QWidget):
                 style_files.sort()
                 
                 if not style_files:
-                    # Если нет кастомных стилей - показываем сообщение
                     no_styles_label = QLabel("Пусто")
                     no_styles_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    no_styles_label.setStyleSheet("color: #777; font-style: italic; padding: 10px;")
+                    no_styles_label.setStyleSheet("background-color: transparent; font-style: italic;")
                     custom_grid.addWidget(no_styles_label, 0, 0, 1, 3)
                 else:
-                    # Добавляем кнопки в сетку (3 колонки)
                     for i, filename in enumerate(style_files):
                         row = i // 3
                         col = i % 3
@@ -129,21 +128,18 @@ class InterfaceWidget(QWidget):
                         btn = self.create_style_button(filename, custom_presets, is_custom=True)
                         if btn:
                             custom_grid.addWidget(btn, row, col)
+            
             except Exception as e:
                 debug_logger.error(f"[SETTINGS-WIDGET] Ошибка чтения кастомных стилей: {e}")
                 error_label = QLabel("Ошибка загрузки стилей")
                 error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                error_label.setStyleSheet("color: red; padding: 10px;")
+                error_label.setStyleSheet("background-color: transparent; color: red;")
                 custom_grid.addWidget(error_label, 0, 0, 1, 3)
         else:
-            # Если папки нет - показываем сообщение
-            no_styles_label = QLabel("Пусто")
+            no_styles_label = QLabel("Папка со стилями не найдена")
             no_styles_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            no_styles_label.setStyleSheet("color: #777; font-style: italic; padding: 10px;")
+            no_styles_label.setStyleSheet("background-color: transparent; font-style: italic;")
             custom_grid.addWidget(no_styles_label, 0, 0, 1, 3)
-        
-        # Добавляем новую сетку в контейнер
-        self.custom_styles_layout.addLayout(custom_grid)
 
     def clear_nested_layout(self, layout):
         """Рекурсивно очищает вложенные layout"""
@@ -158,14 +154,12 @@ class InterfaceWidget(QWidget):
         """Загружает стили из папки и создает кнопки"""
         if not os.path.exists(folder_path):
             if is_custom:
-                # Если нет папки с пользовательскими стилями - показываем сообщение
-                no_styles_label = QLabel("Пусто")
+                no_styles_label = QLabel("Папка со стилями не найдена")
                 no_styles_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                no_styles_label.setStyleSheet("color: #777; font-style: italic; padding: 10px;")
-                container_layout.addWidget(no_styles_label)
+                no_styles_label.setStyleSheet("background-color: transparent; font-style: italic;")
+                container_layout.addWidget(no_styles_label, 0, 0, 1, 3)
             return
 
-        # Получаем все JSON файлы
         try:
             style_files = [f for f in os.listdir(folder_path) 
                         if f.endswith('.json') and os.path.isfile(os.path.join(folder_path, f))]
@@ -175,21 +169,18 @@ class InterfaceWidget(QWidget):
 
         if not style_files:
             if is_custom:
-                no_styles_label = QLabel("Пусто")
+                no_styles_label = QLabel("Папка со стилями не найдена")
                 no_styles_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                no_styles_label.setStyleSheet("color: #777; font-style: italic; padding: 10px;")
-                container_layout.addWidget(no_styles_label)
+                no_styles_label.setStyleSheet("background-color: transparent; font-style: italic;")
+                container_layout.addWidget(no_styles_label, 0, 0, 1, 3)
             return
 
-        # Сортируем файлы
         style_files.sort()
 
-        # Создаем сетку для кнопок
         grid_layout = QGridLayout()
         grid_layout.setSpacing(10)
         grid_layout.setContentsMargins(0, 5, 0, 5)
 
-        # Добавляем кнопки в сетку (3 колонки)
         for i, filename in enumerate(style_files):
             row = i // 3
             col = i % 3
@@ -197,7 +188,6 @@ class InterfaceWidget(QWidget):
             btn = self.create_style_button(filename, folder_path, is_custom)
             if btn:
                 grid_layout.addWidget(btn, row, col)
-
         container_layout.addLayout(grid_layout)
 
     def apply_style_from_button(self, file_path, filename, is_custom=False):
@@ -260,9 +250,9 @@ class InterfaceWidget(QWidget):
     def extract_preview_color(self, style_data):
         """Извлекает цвет/градиент ТОЛЬКО из BasedColors["svg"]"""
         if "BasedColors" in style_data and "svg" in style_data["BasedColors"]:
-            return style_data["BasedColors"]["svg"]  # Возвращаем как есть
+            return style_data["BasedColors"]["svg"]
         
-        return "#4A90E2"  # Простой цвет по умолчанию
+        return "#4A90E2"
 
     def create_button_style(self, color_str):
         """Создает стиль кнопки на основе цвета/градиента"""
@@ -270,7 +260,7 @@ class InterfaceWidget(QWidget):
             QPushButton {{
                 background: {color_str};
                 color: white;
-                border: 1px solid {color_str};
+                border: 1px solid rgba(255, 255, 255, 0.2);
             }}
             QPushButton:hover {{
                 border: 1px solid rgba(255, 255, 255, 0.4);
@@ -282,7 +272,6 @@ class InterfaceWidget(QWidget):
         base_presets = get_path('bin', 'color_presets')
         custom_presets = get_path('user_settings', 'presets')
 
-        # Проверяем, в какой папке есть файл (приоритет у custom_presets)
         preset_path = None
         custom_path = os.path.join(custom_presets, filename)
         base_path = os.path.join(base_presets, filename)
@@ -300,16 +289,14 @@ class InterfaceWidget(QWidget):
             with open(preset_path, 'r', encoding='utf-8') as json_file:
                 styles = json.load(json_file)
 
-                # Сохраняем стили в основной файл настроек
                 with open(self.assistant.color_path, 'w') as f:
                     json.dump(styles, f, indent=4)
 
-                # Применяем стили
                 self.assistant.styles = styles
                 self.assistant.apply_styles()
                 self.assistant.check_start_win()
                 color_signal.color_changed.emit()
-                self.assistant.show_notification_message(message=f"Стиль успешно применен!")
+                self.assistant.show_notification_message("Стиль успешно применен!")
                 debug_logger.info(f"[SETTINGS-WIDGET] Применён стиль из файла: {filename}")
 
         except json.JSONDecodeError:
@@ -318,24 +305,21 @@ class InterfaceWidget(QWidget):
         except Exception as e:
             logger.error(f"Ошибка загрузки пресета: {e}")
             debug_logger.error(f"[SETTINGS-WIDGET] Ошибка загрузки пресета: {e}")
-            self.assistant.show_message(f"Ошибка загрузки пресета: {e}", "Ошибка", "error")
+            self.assistant.show_notification_message(f"Ошибка загрузки пресета: {e}")
 
     def show_style_context_menu(self, pos, filename, folder_path, button):
         """Показывает контекстное меню для кастомного стиля"""
         menu = QMenu(self)
-        
-        # Действие редактирования названия
+
         edit_action = QAction("Редактировать название", self)
         edit_action.triggered.connect(lambda: self.edit_style_name(filename, folder_path, button))
-        
-        # Действие удаления
+
         delete_action = QAction("Удалить стиль", self)
         delete_action.triggered.connect(lambda: self.delete_custom_style(filename, folder_path))
         
         menu.addAction(edit_action)
         menu.addAction(delete_action)
-        
-        # Показываем меню в позиции клика
+
         menu.exec_(button.mapToGlobal(pos))
 
     def edit_style_name(self, filename, folder_path, button):
@@ -387,8 +371,7 @@ class InterfaceWidget(QWidget):
     def delete_custom_style(self, filename, folder_path):
         """Удаляет кастомный стиль"""
         file_path = os.path.join(folder_path, filename)
-        
-        # Подтверждение удаления
+
         reply = self.assistant.show_message(
             text=f"Вы уверены, что хотите удалить стиль '{filename.replace('.json', '')}'?",
             title="Подтверждение удаления",
@@ -478,12 +461,12 @@ class SettingsWidget(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        self.title = setup_custom_font_label("Основные настройки", font_style="Comfortaa", weight="Medium")
+        self.title = setup_custom_font_label("Основные настройки")
         self.title.setStyleSheet("background: transparent; font-size: 18px")
         layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # Поле для ввода имени ассистента
-        name_label = setup_custom_font_label("Основное имя ассистента:", font_style="Comfortaa", weight="Medium")
+        name_label = setup_custom_font_label("Основное имя ассистента:")
         name_label.setStyleSheet("background: transparent; font-size: 14px;")
         name_label.setProperty("helpId", "name_label")
         layout.addWidget(name_label, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -494,7 +477,7 @@ class SettingsWidget(QWidget):
         layout.addWidget(self.name_input)
 
         # Поле для ввода имени №2
-        name2_label = setup_custom_font_label("Дополнительно:", font_style="Comfortaa", weight="Medium")
+        name2_label = setup_custom_font_label("Дополнительно:")
         name2_label.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         name2_label.setStyleSheet("background: transparent; font-size: 14px;")
         name2_label.setProperty("helpId", "name2_label")
@@ -512,7 +495,7 @@ class SettingsWidget(QWidget):
         layout.addWidget(self.name3_input)
 
         # Выбор голоса
-        voice_label = setup_custom_font_label("Выберите голос:", font_style="Comfortaa", weight="Medium")
+        voice_label = setup_custom_font_label("Выберите голос:")
         voice_label.setStyleSheet("background: transparent; font-size: 14px;")
         voice_label.setProperty("helpId", "voice_label")
         layout.addWidget(voice_label, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -526,7 +509,7 @@ class SettingsWidget(QWidget):
         layout.addWidget(self.voice_combo)
 
         # Громкость
-        volume_label = setup_custom_font_label("Громкость ассистента", font_style="Comfortaa", weight="Medium")
+        volume_label = setup_custom_font_label("Громкость ассистента")
         volume_label.setStyleSheet("background: transparent; font-size: 14px;")
         volume_label.setProperty("helpId", "volume_label")
         layout.addWidget(volume_label, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -544,7 +527,7 @@ class SettingsWidget(QWidget):
         layout.addWidget(self.check_voice)
 
         # Путь к Steam
-        steam_label = setup_custom_font_label("Путь к файлу steam.exe", font_style="Comfortaa", weight="Medium")
+        steam_label = setup_custom_font_label("Путь к файлу steam.exe")
         steam_label.setStyleSheet("background: transparent; font-size: 14px;")
         steam_label.setProperty("helpId", "steam_label")
         layout.addWidget(steam_label, alignment=Qt.AlignmentFlag.AlignLeft)
@@ -712,7 +695,7 @@ class OtherSettingsWidget(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        self.title = setup_custom_font_label("Дополнительные настройки", font_style="Comfortaa", weight="Medium")
+        self.title = setup_custom_font_label("Дополнительные настройки")
         self.title.setStyleSheet("background: transparent; font-size: 18px")
         layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
@@ -791,7 +774,7 @@ class OtherSettingsWidget(QWidget):
         self.add_link_btn.setProperty("helpId", "add_link_btn")
         layout.addWidget(self.add_link_btn)
 
-        self.label_input = setup_custom_font_label("Устройство ввода", font_style="Comfortaa", weight="Medium")
+        self.label_input = setup_custom_font_label("Устройство ввода")
         self.label_input.setStyleSheet("background: transparent; font-size: 14px;")
         self.label_input.setProperty("helpId", "label_input")
         self.device_list = QComboBox()
@@ -1041,7 +1024,7 @@ class SpeechHookManagerWidget(QWidget):
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(5)
 
-        self.title = setup_custom_font_label("Менеджер управления хук-словами", font_style="Comfortaa", weight="Medium")
+        self.title = setup_custom_font_label("Менеджер управления хук-словами")
         self.title.setStyleSheet("background: transparent; font-size: 18px; margin-top: 10px; margin-bottom: 10px;")
         layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
@@ -1797,7 +1780,7 @@ class SettingsWidgetPanel(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        self.title = setup_custom_font_label("Кастомизация виджета", font_style="Comfortaa", weight="Medium")
+        self.title = setup_custom_font_label("Кастомизация виджета",)
         self.title.setStyleSheet("background: transparent; font-size: 18px")
         layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
@@ -1841,7 +1824,7 @@ class SettingsWidgetPanel(QWidget):
         layout.addLayout(font_layout)
         self.setup_font_selector()
         
-        self.toggles_label = setup_custom_font_label("Прочие параметры", font_style="Comfortaa", weight="Medium")
+        self.toggles_label = setup_custom_font_label("Прочие параметры")
         self.toggles_label.setStyleSheet("background: transparent; font-size: 16px")
         layout.addWidget(self.toggles_label)
 
@@ -2507,9 +2490,9 @@ class CustomBtnForPanel(QDialog):
         self.title_bar.mouseReleaseEvent = self.title_bar_mouse_release
 
         if self.is_edit:
-            self.title_label = setup_custom_font_label("Редактирование кнопки", font_style="Comfortaa", weight="Medium")
+            self.title_label = setup_custom_font_label("Редактирование кнопки")
         else:
-            self.title_label = setup_custom_font_label("Создание кастомной кнопки", font_style="Comfortaa", weight="Medium")
+            self.title_label = setup_custom_font_label("Создание кастомной кнопки")
         self.title_label.setStyleSheet("background: transparent; font-size:16px;")
         self.title_layout.addWidget(self.title_label)
 
@@ -2545,7 +2528,7 @@ class CustomBtnForPanel(QDialog):
 
         self.main_content_layout.addLayout(icon_layout)
 
-        self.name_label = setup_custom_font_label("Назначение кнопки", font_style="Comfortaa", weight="Medium")
+        self.name_label = setup_custom_font_label("Назначение кнопки")
         self.name_label.setStyleSheet("background: transparent; font-style: 14px;")
         self.main_content_layout.addWidget(self.name_label)
 
@@ -2554,7 +2537,7 @@ class CustomBtnForPanel(QDialog):
         self.main_content_layout.addWidget(self.name_input)
         
         # Выбор команды
-        self.command_label = setup_custom_font_label("Команда:", font_style="Comfortaa", weight="Medium")
+        self.command_label = setup_custom_font_label("Команда:")
         self.command_label.setStyleSheet("background: transparent; font-style: 14px;")
         self.main_content_layout.addWidget(self.command_label)
 
