@@ -10,6 +10,8 @@ additional_files = [
     ('F:/PyCharmProjects/oldAssistant_v2/update_app/logo.svg', '.'),
     ('F:/PyCharmProjects/oldAssistant_v2/update_app/icon.ico', '.'),
     ('F:/PyCharmProjects/oldAssistant_v2/update_app/check_and_download.py', '.'),
+    ('F:/PyCharmProjects/oldAssistant_v2/update_app/apply_colors.py', '.'),
+    ('F:/PyCharmProjects/oldAssistant_v2/update_app/custom_widgets.py', '.'),
     ('F:/PyCharmProjects/oldAssistant_v2/update_app/utils.py', '.'),
     ('F:/PyCharmProjects/oldAssistant_v2/update_app/version.txt', '.'),
 ]

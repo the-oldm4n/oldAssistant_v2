@@ -1,4 +1,20 @@
 {
+  "2.2.9": {
+    "full_update": false,
+    "changed_files": [
+      "Update.exe",
+      "bin/apply_color_methods.py",
+      "bin/__pycache__/apply_color_methods.cpython-311.pyc",
+      "bin/choose_color_window.py",
+      "bin/__pycache__/choose_color_window.cpython-311.pyc",
+      "bin/lists.py",
+      "bin/__pycache__/lists.cpython-311.pyc",
+      "config.ini",
+      "Assistant.exe",
+      "version.txt"
+    ],
+    "deleted_files": []
+  },
   "2.2.8": {
     "full_update": false,
     "changed_files": [

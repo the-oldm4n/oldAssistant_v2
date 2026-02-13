@@ -1,6 +1,5 @@
 import json
 import re
-import traceback
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QLinearGradient
 from PySide6.QtWidgets import QGraphicsColorizeEffect

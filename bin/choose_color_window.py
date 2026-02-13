@@ -885,39 +885,42 @@ class ColorSettingsWindow(QDialog):
         
         return gradient_str
 
-    def load_color_settings(self):
+    def load_color_settings(self, styles=None):
         """Загружает текущие цвета из файла настроек."""
         # Основные цвета
-        self.text_color = self.styles.get("QPushButton", {}).get("color", "#ffffff")
-        self.text_edit_color = self.styles.get("QTextEdit", {}).get("color", "#ffffff")
+        if styles is None:
+            styles = self.styles
+        
+        self.text_color = styles.get("QPushButton", {}).get("color", "#ffffff")
+        self.text_edit_color = styles.get("QTextEdit", {}).get("color", "#ffffff")
 
         self.style_manager.apply_color_svg(self.close_svg, specified_color="#FF0000")
 
         # Загружаем настройки для каждого элемента
         self.load_element_settings(
             'background',
-            self.styles.get("QWidget", {}).get("background-color", "#1d2028")
+            styles.get("QWidget", {}).get("background-color", "#1d2028")
         )
         self.load_element_settings(
             'buttons',
-            self.styles.get("QPushButton", {}).get("background-color", "#293f85")
+            styles.get("QPushButton", {}).get("background-color", "#293f85")
         )
         self.load_element_settings(
             'svg',
-            self.styles.get("BasedColors", {}).get("svg", "#0973ff")
+            styles.get("BasedColors", {}).get("svg", "#0973ff")
         )
 
-        border_value = self.styles.get("BasedColors", {}).get("border", "1px solid #0973ff")
+        border_value = styles.get("BasedColors", {}).get("border", "1px solid #0973ff")
         self.load_element_settings('borders', border_value)
 
-        svg_value = self.styles.get("BasedColors", {}).get("svg", "#0973ff")
+        svg_value = styles.get("BasedColors", {}).get("svg", "#0973ff")
         self.load_element_settings('svg', svg_value)
 
         # Синхронизируем устаревшие переменные с текущими значениями
         self.bg_color = self.gradient_settings['background']['solid_color']
         self.btn_color = self.gradient_settings['buttons']['solid_color']
 
-        border_full_value = self.styles.get("BasedColors", {}).get("border", "1px solid #0973ff")
+        border_full_value = styles.get("BasedColors", {}).get("border", "1px solid #0973ff")
         if border_full_value.startswith("1px solid "):
             self.border_color = border_full_value[len("1px solid "):]
         else:
@@ -927,11 +930,11 @@ class ColorSettingsWindow(QDialog):
         self.svg_color = svg_value
             
          # Радиус кнопок
-        btn_radius_str = self.styles.get("QPushButton", {}).get("border-radius", "0px")
+        btn_radius_str = styles.get("QPushButton", {}).get("border-radius", "0px")
         self.border_btn_radius = int(btn_radius_str.rstrip("px"))
         
         # Радиус главного окна
-        main_radius_str = self.styles.get("MainWindowWidget", {}).get("border-radius", "0px")
+        main_radius_str = styles.get("MainWindowWidget", {}).get("border-radius", "0px")
         self.border_main_radius = int(main_radius_str.rstrip("px"))
         
         # Устанавливаем значения в слайдеры
@@ -944,11 +947,11 @@ class ColorSettingsWindow(QDialog):
             self.main_radius_value_label.setText(str(self.border_main_radius))
 
         # Бордер главного окна
-        main_border = self.styles.get("MainWindowWidget", {}).get("border", "none")
+        main_border = styles.get("MainWindowWidget", {}).get("border", "none")
         self.border_in_main_window = main_border != "none"
         self.main_border_checkbox.setChecked(self.border_in_main_window)
 
-        buttons_border = self.styles.get("QPushButton", {}).get("border", "none")
+        buttons_border = styles.get("QPushButton", {}).get("border", "none")
         self.border_in_buttons = buttons_border != "none"
         self.buttons_border_checkbox.setChecked(self.border_in_buttons)
 
@@ -1185,16 +1188,6 @@ class ColorSettingsWindow(QDialog):
         y2 = 0.5 + 0.5 * math.sin(rad)
         return f"qlineargradient(x1:{x1:.2f}, y1:{y1:.2f}, x2:{x2:.2f}, y2:{y2:.2f}, stop:0 {color1}, stop:1 {color2})"
 
-    # def _darken_single_color(self, color_str, amount):
-    #     """Вспомогательный метод для затемнения одного цвета."""
-    #     if not color_str or not color_str.startswith('#'):
-    #         return "#000000"
-    #     color = QColor(color_str)
-    #     color.setRed(max(0, color.red() - amount))
-    #     color.setGreen(max(0, color.green() - amount))
-    #     color.setBlue(max(0, color.blue() - amount))
-    #     return color.name()
-
     def _darken_single_color(self, color_str, amount):
         """Использование встроенного метода Qt."""
         if not color_str or not color_str.startswith('#'):
@@ -1208,6 +1201,120 @@ class ColorSettingsWindow(QDialog):
         
         darkened = color.darker(factor)
         return darkened.name()
+    
+    def get_pressed_gradient_css_rgba(self, element_type, darken_amount=30, alpha=None):
+        """
+        Генерирует CSS для градиента в состоянии :pressed в формате RGBA.
+        Затемняет оба цвета на заданное количество.
+        Если градиент отключен, затемняет сплошной цвет.
+        
+        Args:
+            element_type: тип элемента
+            darken_amount: степень затемнения (по умолч. 30)
+            alpha: прозрачность (0-255 или None для сохранения исходной)
+        """
+        settings = self.gradient_settings[element_type]
+        if not settings['enabled']:
+            # Если градиент выключен, используем сплошной цвет и затемняем его
+            solid_color = settings.get('solid_color', "#000000")
+            return self._darken_single_color_rgba(solid_color, darken_amount, alpha)
+        
+        color1 = settings.get('color1', "#000000")
+        color2 = settings.get('color2', "#ffffff")
+        angle = settings.get('angle', 0)
+        
+        # Затемняем оба цвета и получаем в формате rgba
+        dark_color1 = self._darken_single_color_rgba(color1, darken_amount, alpha)
+        dark_color2 = self._darken_single_color_rgba(color2, darken_amount, alpha)
+        
+        return self._generate_qlineargradient_rgba(dark_color1, dark_color2, angle)
+
+    def _darken_single_color_rgba(self, color_str, amount, alpha=None):
+        """
+        Затемняет цвет и возвращает его в формате rgba.
+        
+        Args:
+            color_str: HEX цвет (#RRGGBB или #RRGGBBAA)
+            amount: степень затемнения (0-100)
+            alpha: прозрачность (0-255) или None для сохранения исходной
+        """
+        if not color_str or not color_str.startswith('#'):
+            return "rgba(0, 0, 0, 1)"
+        
+        color = QColor(color_str)
+        
+        # Затемняем цвет
+        factor = 100 + amount
+        darkened = color.darker(factor)
+        
+        # Получаем компоненты
+        r = darkened.red()
+        g = darkened.green()
+        b = darkened.blue()
+        
+        # Определяем альфа-канал
+        if alpha is not None:
+            # Если передана конкретная прозрачность
+            a = alpha
+        else:
+            # Сохраняем исходную прозрачность
+            a = darkened.alpha()
+        
+        # Нормализуем альфу для CSS (0-1)
+        a_normalized = a / 255.0
+        a_normalized = round(a_normalized, 2)
+        
+        return f"rgba({r}, {g}, {b}, {a_normalized})"
+
+    def get_gradient_css_rgba(self, element_type, state="normal", alpha=None):
+        """
+        Универсальный метод для получения градиента в формате RGBA.
+        
+        Args:
+            element_type: тип элемента
+            state: состояние (normal, pressed, hover, disabled)
+            alpha: прозрачность (0-255 или None для сохранения исходной)
+        """
+        settings = self.gradient_settings[element_type]
+        
+        if not settings['enabled']:
+            solid_color = settings.get('solid_color', "#000000")
+            return self._darken_single_color_rgba(solid_color, 0, alpha)
+        
+        color1 = settings.get('color1', "#000000")
+        color2 = settings.get('color2', "#ffffff")
+        angle = settings.get('angle', 0)
+        
+        # Применяем затемнение в зависимости от состояния
+        darken_amount = 0
+        if state == "pressed":
+            darken_amount = 30
+        elif state == "hover":
+            darken_amount = 15
+        elif state == "disabled":
+            darken_amount = 0
+            alpha = alpha or 150  # полупрозрачный для disabled
+        
+        # Затемняем цвета
+        dark_color1 = self._darken_single_color_rgba(color1, darken_amount, alpha)
+        dark_color2 = self._darken_single_color_rgba(color2, darken_amount, alpha)
+        
+        return self._generate_qlineargradient_rgba(dark_color1, dark_color2, angle)
+
+    def get_solid_color_rgba(self, element_type, state="normal", alpha=None):
+        """
+        Получает сплошной цвет в формате RGBA.
+        """
+        settings = self.gradient_settings[element_type]
+        solid_color = settings.get('solid_color', "#000000")
+        
+        darken_amount = 0
+        if state == "pressed":
+            darken_amount = 30
+        elif state == "hover":
+            darken_amount = 15
+        
+        return self._darken_single_color_rgba(solid_color, darken_amount, alpha)
 
     def save_preset(self):
         """Сохраняет текущие стили как новый пресет."""
@@ -1273,33 +1380,11 @@ class ColorSettingsWindow(QDialog):
         try:
             with open(preset_path, 'r', encoding='utf-8') as json_file:
                 styles = json.load(json_file)
+    
+            self.load_color_settings(styles)
 
-            # Загружаем основные цвета текста (они не зависят от градиентов)
-            self.text_color = styles.get("QWidget", {}).get("color",
-                                                            "#8eaee5")  # Используется для текста кнопок и виджетов
-            self.text_edit_color = styles.get("QTextEdit", {}).get("color", "#ffffff")
-
-            # Загружаем настройки для каждого элемента, полагаясь на load_element_settings
-            # для правильного парсинга и обновления внутренних структур и устаревших переменных
-            self.load_element_settings(
-                'background',
-                styles.get("QWidget", {}).get("background-color", "#1d2028")
-            )
-            self.load_element_settings(
-                'buttons',
-                styles.get("QPushButton", {}).get("background-color", "#293f85")
-            )
-
-            # Для бордера нужно извлечь часть цвета/градиента из полной CSS строки
-            border_full_css = styles.get("QPushButton", {}).get("border", "1px solid #293f85")
-            self.load_element_settings('borders', border_full_css)  # <-- Исправлено
-
-            # --- ДОБАВИТЬ ---
-            # Принудительная перерисовка после загрузки пресета, аналогично load_color_settings
-            # Это может помочь отобразить сложные стили, такие как градиентные бордера
-            QApplication.processEvents()  # Обработать все события в очереди
-            self.container.repaint()  # Принудительно перерисовать контейнер
-            # --- КОНЕЦ ДОБАВЛЕНИЯ ---
+            QApplication.processEvents()
+            self.container.repaint()
 
         except Exception as e:
             self.assistant.show_notification_message(f"Ошибка загрузки пресета: {e}")

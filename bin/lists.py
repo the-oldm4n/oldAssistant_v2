@@ -1,7 +1,7 @@
 import os
 import sys
-from PySide6.QtGui import *
-from PySide6.QtWidgets import *
+from PySide6.QtGui import QFontDatabase, QFont
+from PySide6.QtWidgets import QLabel
 from logging_config import debug_logger
 from path_builder import get_path
 

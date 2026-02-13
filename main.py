@@ -64,7 +64,7 @@ from logging_config import logger, debug_logger
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.8"
+version_file = "2.2.9"
 update_version(version_file)
 domain = "https://owl-app.ru"
 # domain = "https://127.0.0.1:5000"
@@ -2025,7 +2025,7 @@ class Assistant(QMainWindow):
         if hasattr(self, 'assistant_thread') and self.assistant_thread is not None:
             try:
                 if self.assistant_thread.is_alive() and self.assistant_thread != threading.current_thread():
-                    self.assistant_thread.join(timeout=1.0)  # Уменьшаем таймаут
+                    self.assistant_thread.join(timeout=1.0)
                     if self.assistant_thread.is_alive():
                         debug_logger.warning("[MAIN] Поток ассистента не завершился в течение таймаута")
             except Exception as e:
@@ -2358,15 +2358,13 @@ class Assistant(QMainWindow):
                                         any_executed = True
                                 else:
                                     # Пробуем кастомные команды
-                                    restored_command = f"{action_type} {suggested_cmd}"
-
-                                    type_processed = self.commands_manager.get_type_command(restored_command)
+                                    type_processed = self.commands_manager.get_type_command(suggested_cmd)
                                     if type_processed == "shortcut" or type_processed == "url":
-                                        self.handle_app_command(restored_command, action_type)
+                                        self.handle_app_command(suggested_cmd, action_type)
                                     elif type_processed == "folder":
-                                        self.handle_folder_command(restored_command, action_type)
+                                        self.handle_folder_command(suggested_cmd, action_type)
                                     elif type_processed == "script":
-                                        self.handle_script_command(restored_command, action_type)
+                                        self.handle_script_command(suggested_cmd, action_type)
 
                                     if type_processed != "":
                                         any_executed = True
