@@ -1,15 +1,20 @@
-from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget, \
-    QGraphicsColorizeEffect, QLineEdit
+import os
+from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QLineEdit
 from PySide6.QtCore import Signal, QTimer, Qt
-
-from bin.custom_svg_widget import CustomSvgWidget
+from PySide6.QtGui import QCursor
+from mygui import CustomSvgWidget
 from bin.register_module import AuthManager
-from path_builder import get_path
-from logging_config import debug_logger
-from bin.apply_color_methods import main_apply_colors
+from path_builder import get_path, get_app_data_dir
+from log_config import logger
+from mygui import main_apply_colors
+from config import dev_mode, domain
 
-domain = "https://owl-app.ru"
-# domain = "https://127.0.0.1:5000"
+
+if dev_mode:
+    file_styles = get_path("user_data", "color.json")
+else:
+    file_styles = os.path.join(get_app_data_dir(), "user_data", "color.json")
+
 
 class LoginWindow(QWidget):
     """
@@ -19,26 +24,47 @@ class LoginWindow(QWidget):
     login_successful = Signal()
     login_cancelled = Signal()
 
-    def __init__(self, parent=None, auth=None):
+    def __init__(self, parent=None, auth=None, message=None):
         super().__init__(parent)
         self.auth = auth
         if not self.auth:
-            self.auth = AuthManager(domain) # Базовый урл внутри класса
+            self.auth = AuthManager(domain)
         self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
-        self.style_path = get_path('user_settings', 'color_settings.json')
-        self.svg_path = get_path("bin", "logo.svg")
+        self.style_path = file_styles
+        self.svg_path = get_path("bin", "icons", "logo-app.svg")
+        self.svg_icon_path = get_path("bin", "icons", "logo-owlapp.svg")
+        self.icon_close_path = get_path("bin", "icons", "close.svg")
         self.is_login_mode = False
         self.is_2fa_mode = False
         self.init_ui()
         self.apply_styles()
         self.switch_mode()
+        if message:
+            self.show_message(text=message, message_type="warning")
+
+    def title_bar_mouse_press(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def title_bar_mouse_move(self, event):
+        if event.buttons() == Qt.MouseButton.LeftButton and self.drag_pos:
+            new_pos = event.globalPosition().toPoint() - self.drag_pos
+            self.move(new_pos)
+            event.accept()
+
+    def title_bar_mouse_release(self, event):
+        self.drag_pos = None
+        event.accept()
 
     def init_ui(self):
+        self.drag_pos = None
+
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(350, 660)
+        self.setFixedSize(350, 730)
 
         screen_geometry = self.screen().availableGeometry()
         self.move(
@@ -50,9 +76,35 @@ class LoginWindow(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
 
+        self.title_bar_widget = QWidget()
+        self.title_bar_widget.setMaximumHeight(50)
+        self.title_bar_widget.setObjectName("TitleBarLogin")
+        self.title_bar_layout = QHBoxLayout(self.title_bar_widget)
+        self.title_bar_layout.setContentsMargins(10, 10, 10, 10)
+        self.title_bar_layout.setSpacing(0)
+
+        self.title_bar_widget.mousePressEvent = self.title_bar_mouse_press
+        self.title_bar_widget.mouseMoveEvent = self.title_bar_mouse_move
+        self.title_bar_widget.mouseReleaseEvent = self.title_bar_mouse_release
+
+        self.close_button = QPushButton()
+        self.close_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.close_button.clicked.connect(self.close)
+        self.close_button.setFixedSize(30, 30)
+        self.close_button.setObjectName("TitleBarCloseBtnV2")
+        self.close_svg = CustomSvgWidget(self.icon_close_path, self.close_button)
+        self.close_svg.setFixedSize(25, 25)
+        self.close_svg.move(2, 2)
+        self.close_svg.setStyleSheet("background: transparent;")
+        self.title_bar_layout.addWidget(self.close_button, alignment=Qt.AlignmentFlag.AlignRight)
+
         self.main_widget = QWidget()
-        self.main_widget.setObjectName("WindowContainer")
-        content_layout = QVBoxLayout(self.main_widget)
+        self.main_widget.setObjectName("LoginContainer")
+        window_stack_layout = QVBoxLayout(self.main_widget)
+        window_stack_layout.setContentsMargins(0, 0, 0, 0)
+        window_stack_layout.setSpacing(0)
+
+        content_layout = QVBoxLayout()
         content_layout.setContentsMargins(25, 25, 25, 25)
         content_layout.setSpacing(10)
         
@@ -60,25 +112,21 @@ class LoginWindow(QWidget):
         self.svg_image = CustomSvgWidget(self.svg_path)
         self.svg_image.setFixedSize(80, 80)
         self.svg_image.setStyleSheet("background: transparent; border: none;")
-        self.color_svg = QGraphicsColorizeEffect()
-        self.svg_image.setGraphicsEffect(self.color_svg)
         content_layout.addWidget(self.svg_image, alignment=Qt.AlignmentFlag.AlignCenter)
         
-        content_layout.addSpacing(20)
+        content_layout.addSpacing(10)
 
         # Заголовок окна (будет меняться)
         self.title_label = QLabel("Создание аккаунта")
         self.title_label.setStyleSheet("""
             background: transparent; 
-            font-size: 18px; 
+            font-size: 20px; 
             font-weight: bold;
             margin-bottom: 10px;
         """)
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         content_layout.addWidget(self.title_label)
-        
-        content_layout.addSpacing(10)
-        
+ 
         self.notice_widget = QWidget()
         self.notice_widget.setObjectName("NoticeWidget")
         self.notice_widget.setFixedHeight(60)
@@ -188,6 +236,8 @@ class LoginWindow(QWidget):
         content_layout.addLayout(buttons_layout)
         content_layout.addWidget(self.back_btn)
         content_layout.addWidget(self.local_launch_btn)
+
+        content_layout.addStretch()
         
         # Текст-ссылка для переключения между режимами
         self.switch_mode_label = QLabel(
@@ -202,6 +252,14 @@ class LoginWindow(QWidget):
         self.switch_mode_label.setOpenExternalLinks(False)
         self.switch_mode_label.linkActivated.connect(self.switch_mode)
         content_layout.addWidget(self.switch_mode_label)
+
+        logo_layout = QHBoxLayout()
+
+        logo_layout.addStretch()
+        self.svg_icon = CustomSvgWidget(self.svg_icon_path)
+        self.svg_icon.setFixedSize(20, 20)
+        self.svg_icon.setStyleSheet("background: transparent; border: none;")
+        logo_layout.addWidget(self.svg_icon, alignment=Qt.AlignmentFlag.AlignVCenter)
         
         link_label = QLabel()
         link_label.setText('''
@@ -213,24 +271,30 @@ class LoginWindow(QWidget):
         link_label.setStyleSheet("background: transparent;")
         link_label.setOpenExternalLinks(True)
         link_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        content_layout.addWidget(link_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        logo_layout.addWidget(link_label, alignment=Qt.AlignmentFlag.AlignVCenter)
+
+        logo_layout.addStretch()
+        content_layout.addLayout(logo_layout)
         
-        content_layout.addStretch()
+        
+        window_stack_layout.addWidget(self.title_bar_widget)
+        window_stack_layout.addLayout(content_layout)
 
         # Добавляем основной виджет в главный layout
         main_layout.addWidget(self.main_widget, 1)
         
     def login_as_guest(self):
         """Вход в режиме гостя"""
-        debug_logger.info("👤 Вход как гость")
+        logger.info("👤 Вход как гость")
 
         # Создаем гостевые данные
         guest_data = {
             'id': -1,
-            'username': 'Username',
+            'username': 'local_storage',
             'display_name': 'Username',
             'email_verified': False,
-            'avatar': None
+            'avatar': None,
+            'is_guest': True
         }
         
         # Устанавливаем гостевой режим в AuthManager
@@ -238,7 +302,7 @@ class LoginWindow(QWidget):
         self.auth.token = None  # Нет токена для гостя
         
         # Сохраняем информацию о гостевом режиме
-        self.auth._save_auth_data()
+        self.auth._save_auth_data(guest=True)
         
         # Показываем сообщение
         self.show_message("Локальный запуск", "info")
@@ -304,7 +368,7 @@ class LoginWindow(QWidget):
         self.cancel_btn.show()
         self.local_launch_btn.show()
         self.switch_mode_label.show()
-        self.setFixedSize(350, 560)
+        self.setFixedSize(350, 620)
 
     def handle_submit(self):
         """Обработка отправки формы"""
@@ -317,7 +381,7 @@ class LoginWindow(QWidget):
                 self.handle_register()
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка при обработке формы: {e}")
+            logger.error(f"Ошибка при обработке формы: {e}")
             self.show_message(f"Ошибка: {e}", "error")
 
     def handle_2fa_verification(self):
@@ -349,7 +413,7 @@ class LoginWindow(QWidget):
             self.show_message("Нет активной сессии 2FA", "error")
             return
         
-        debug_logger.info(f"Запрос повторной отправки с токеном: {self.auth.temp_2fa_token}")
+        logger.info(f"Запрос повторной отправки с токеном: {self.auth.temp_2fa_token}")
             
         self.resend_2fa_btn.setEnabled(False)
         self.resend_2fa_btn.setText("Отправка...")
@@ -392,7 +456,7 @@ class LoginWindow(QWidget):
             self.field_username.hide()
             self.label_2password.hide()
             self.password2_container.hide()
-            self.setFixedSize(350, 560)
+            self.setFixedSize(350, 620)
             
             self.local_launch_btn.show()
             
@@ -412,7 +476,7 @@ class LoginWindow(QWidget):
             self.field_username.show()
             self.label_2password.show()
             self.password2_container.show()
-            self.setFixedSize(350, 660)
+            self.setFixedSize(350, 730)
             
             self.local_launch_btn.hide()
         
@@ -484,7 +548,7 @@ class LoginWindow(QWidget):
         
         # ⚠️ Добавляем кнопку повторной отправки письма
         self.add_resend_verification_button()
-        self.setFixedSize(350, 600)
+        self.setFixedSize(350, 660)
 
     def add_resend_verification_button(self):
         """Добавить кнопку повторной отправки письма подтверждения"""
@@ -596,7 +660,7 @@ class LoginWindow(QWidget):
                 self.show_message("Пароль должен содержать не более 50 символов", "error")
                 return
 
-            debug_logger.info(f"🔄 Начинаем авторизацию для: {email}")
+            logger.info(f"Начинаем авторизацию для: {email}")
             
             # Блокируем кнопку на время авторизации
             self.submit_btn.setEnabled(False)
@@ -605,7 +669,7 @@ class LoginWindow(QWidget):
             # Авторизация через AuthManager
             result, message = self.auth.login(email, password)
             
-            debug_logger.info(f"📊 Результат авторизации: {result}, {message}")
+            logger.info(f"Результат авторизации: {result}, {message}")
             
             if result == True:
                 # Обычный вход без 2FA
@@ -615,14 +679,14 @@ class LoginWindow(QWidget):
             elif result == '2fa_required':
                 # Требуется 2FA - показываем окно верификации
                 self.show_message("Требуется двухфакторная аутентификация", "info")
-                debug_logger.info(f"🔐 Переход в режим 2FA с токеном: {self.auth.temp_2fa_token}")
+                logger.info(f"Переход в режим 2FA с токеном: {self.auth.temp_2fa_token}")
                 self.switch_to_2fa_mode()
             else:
                 # Ошибка входа
                 self.show_message(f"Ошибка входа: {message}", "error")
 
         except Exception as e:
-            debug_logger.error(f"Ошибка при авторизации: {e}")
+            logger.error(f"Ошибка при авторизации: {e}")
             self.show_message(f"Неожиданная ошибка: {e}", "error")
         finally:
             # Разблокируем кнопку
@@ -644,16 +708,20 @@ class LoginWindow(QWidget):
         try:
             self.styles = self.style_manager.load_styles()
 
-            # Применение к SVG
             if hasattr(self, 'svg_image'):
-                self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
+                self.style_manager.apply_color_svg(self.svg_image)
 
-            # Применение общего стиля окна
+            if hasattr(self, 'svg_icon'):
+                self.style_manager.apply_color_svg(self.svg_icon)
+
+            if hasattr(self, 'close_svg'):
+                self.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#ff0000")
+
             style_sheet = ""
             for widget, styles in self.styles.items():
-                if widget.startswith("Q"):  # Для стандартных виджетов
+                if widget.startswith("Q"):
                     selector = widget
-                else:  # Для виджетов с objectName
+                else:
                     selector = f"#{widget}"
 
                 style_sheet += f"{selector} {{\n"
@@ -661,11 +729,10 @@ class LoginWindow(QWidget):
                     style_sheet += f"    {prop}: {value};\n"
                 style_sheet += "}\n"
 
-            # Устанавливаем стиль для текущего окна
             self.setStyleSheet(style_sheet)
             self.main_widget.setStyleSheet("border-radius: 20px;")
         except Exception as e:
-            debug_logger.error(f"Ошибка в методе apply_styles: {e}")
+            logger.error(f"Ошибка в методе apply_styles: {e}")
 
     def cancel_login(self):
         """Обработка отмены"""
@@ -725,7 +792,7 @@ class LoginWindow(QWidget):
             QTimer.singleShot(3000, self.hide_notice)
             
         except Exception as e:
-            debug_logger.error(f"Ошибка при показе уведомления: {e}")
+            logger.error(f"Ошибка при показе уведомления: {e}")
 
     def hide_notice(self):
         """Скрыть уведомление (оставить место)"""
@@ -753,6 +820,7 @@ class LoginWindow(QWidget):
         
         # Кнопка глазок
         toggle_btn = QPushButton()
+        toggle_btn.setObjectName("ToggleVisiblePSWD")
         toggle_btn.setFixedSize(33, 33)
         toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         toggle_btn.setStyleSheet("""
@@ -765,53 +833,34 @@ class LoginWindow(QWidget):
             }
         """)
         
-        # SVG иконка
         eye_svg_path = get_path("bin", "icons", "visible.svg")
         svg_widget = CustomSvgWidget(eye_svg_path)
         svg_widget.setFixedSize(25, 25)
         svg_widget.setStyleSheet("background: transparent; border: none;")
+
+        self.style_manager.apply_color_svg(svg_widget, specified_color="#CFCFCF")
         
-        # Эффект цвета
-        color_effect = QGraphicsColorizeEffect()
-        svg_widget.setGraphicsEffect(color_effect)
-        self.style_manager.apply_color_svg(svg_widget, strength=0.8)
-        
-        # Layout для кнопки с центрированием
         btn_layout = QHBoxLayout(toggle_btn)
         btn_layout.setContentsMargins(0, 0, 0, 0)
         btn_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         btn_layout.addWidget(svg_widget)
         
-        # Добавляем в контейнер
         container_layout.addWidget(field)
         container_layout.addWidget(toggle_btn)
         
-        # Подключаем обработчик
-        toggle_btn.clicked.connect(lambda: self.toggle_password_visibility(field, toggle_btn))
+        toggle_btn.clicked.connect(lambda: self.toggle_password_visibility(field, svg_widget))
         
-        # Сохраняем ссылки
         container.password_field = field
         container.toggle_btn = toggle_btn
         container.svg_widget = svg_widget
         
         return container
 
-    def toggle_password_visibility(self, field, toggle_btn):
+    def toggle_password_visibility(self, field, svg_widget):
         """Переключить видимость пароля"""
         if field.echoMode() == QLineEdit.EchoMode.Password:
             field.setEchoMode(QLineEdit.EchoMode.Normal)
-            toggle_btn.setStyleSheet("""
-                QPushButton {
-                    background: rgba(100,100,100,0.7);
-                }
-            """)
+            self.style_manager.apply_color_svg(svg_widget)
         else:
             field.setEchoMode(QLineEdit.EchoMode.Password)
-            toggle_btn.setStyleSheet("""
-                QPushButton {
-                    background: transparent;
-                }
-                QPushButton:hover {
-                    background: rgba(100,100,100,0.4);
-                }
-            """)
+            self.style_manager.apply_color_svg(svg_widget, specified_color="#CFCFCF")

@@ -1,6 +1,6 @@
 import keyboard
 
-from logging_config import debug_logger
+from log_config import debuglog
 
 
 class AudioControl:
@@ -9,17 +9,17 @@ class AudioControl:
     def play_pause(self):
         """Эмулировать нажатие клавиши воспроизведения/паузы"""
         keyboard.send('play/pause media')
-        debug_logger.info("AudioControl - play/pause media")
+        debuglog.info("AudioControl - play/pause media")
 
     def next_track(self):
         """Эмулировать нажатие клавиши следующего трека"""
         keyboard.send('next track')
-        debug_logger.info("AudioControl - next track media")
+        debuglog.info("AudioControl - next track media")
 
     def previous_track(self):
         """Эмулировать нажатие клавиши предыдущего трека"""
         keyboard.send('previous track')
-        debug_logger.info("AudioControl - previous track media")
+        debuglog.info("AudioControl - previous track media")
 
 controller = AudioControl()
 

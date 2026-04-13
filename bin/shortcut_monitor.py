@@ -1,6 +1,6 @@
 ﻿from PySide6.QtCore import QObject, Signal, QFileSystemWatcher, QTimer
 import os
-from logging_config import debug_logger
+from log_config import debuglog
 
 class ShortcutMonitor(QObject):
     folder_changed = Signal()  # Общий сигнал об изменении в папке
@@ -27,7 +27,7 @@ class ShortcutMonitor(QObject):
             self.watcher.addPath(self.watch_folder)
             self.is_monitoring = True
             self.monitoring_changed.emit(True)
-            debug_logger.info(f"Мониторинг включен: {self.watch_folder}")
+            debuglog.info(f"Мониторинг включен: {self.watch_folder}")
     
     def stop_monitoring(self):
         if self.is_monitoring:
@@ -35,7 +35,7 @@ class ShortcutMonitor(QObject):
             self.debounce_timer.stop()
             self.is_monitoring = False
             self.monitoring_changed.emit(False)
-            debug_logger.info(f"Мониторинг выключен: {self.watch_folder}")
+            debuglog.info(f"Мониторинг выключен: {self.watch_folder}")
     
     def _get_current_files(self):
         try:
@@ -44,7 +44,7 @@ class ShortcutMonitor(QObject):
                          if os.path.isfile(os.path.join(self.watch_folder, f))]
             return set(files_only)
         except Exception as e:
-            debug_logger.error(f"Ошибка чтения папки: {e}")
+            debuglog.error(f"Ошибка чтения папки: {e}")
             return set()
     
     def _on_folder_changed(self, path):
@@ -63,20 +63,20 @@ class ShortcutMonitor(QObject):
                 filepath = os.path.join(self.watch_folder, filename)
                 self.file_added.emit(filepath)
                 self.folder_changed.emit()
-                debug_logger.info(f"Добавлен файл: {filepath}")
+                debuglog.info(f"Добавлен файл: {filepath}")
             
             removed_files = self.current_files - new_files
             for filename in removed_files:
                 filepath = os.path.join(self.watch_folder, filename)
                 self.file_removed.emit(filepath)
                 self.folder_changed.emit()
-                debug_logger.info(f"Удален файл: {filepath}")
+                debuglog.info(f"Удален файл: {filepath}")
             
             if added_files or removed_files:
                 self.current_files = new_files
                 
         except Exception as e:
-            debug_logger.error(f"Ошибка проверки файлов: {e}")
+            debuglog.error(f"Ошибка проверки файлов: {e}")
     
     def get_current_files(self):
         return [os.path.join(self.watch_folder, f) for f in self.current_files]

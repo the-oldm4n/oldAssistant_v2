@@ -2,7 +2,7 @@ import os
 import sys
 from PySide6.QtGui import QFontDatabase, QFont
 from PySide6.QtWidgets import QLabel
-from logging_config import debug_logger
+from log_config import debuglog
 from path_builder import get_path
 
 default_keywords_data = {
@@ -244,7 +244,7 @@ def setup_global_font(app, font_family="Open Sans", size=12, weight="Normal"):
                 families = QFontDatabase.applicationFontFamilies(font_id)
                 if families:
                     loaded_families[name] = families[0]  # Сохраняем реальное имя
-                    debug_logger.info(f"Загружен: {name} -> {families[0]}")
+                    debuglog.info(f"Загружен: {name} -> {families[0]}")
         app._loaded_font_families = loaded_families
         app._fonts_loaded = True
     
@@ -258,10 +258,10 @@ def setup_global_font(app, font_family="Open Sans", size=12, weight="Normal"):
     if font_family in app._loaded_font_families:
         real_family = app._loaded_font_families[font_family]
         font = QFont(real_family, size, weight_map.get(weight, 400))
-        debug_logger.info(f"Установлен: {real_family}, размер: {size}, вес: {weight}")
+        debuglog.info(f"Установлен: {real_family}, размер: {size}, вес: {weight}")
     else:
         font = QFont("Arial", size)
-        debug_logger.error(f"Шрифт {font_family} не найден, используется Arial")
+        debuglog.error(f"Шрифт {font_family} не найден, используется Arial")
     
     app.setFont(font)
 

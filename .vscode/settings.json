@@ -1,0 +1,19 @@
+{
+    "python.analysis.extraPaths": [
+        "F:/PyCharmProjects/x-stash/venv/Lib/site-packages",
+        "F:/PyCharmProjects/mygui",
+
+    ],
+    "python.analysis.diagnosticSeverity": {
+        "reportMissingModuleSource": "none",
+        "reportMissingImports": "none"
+    },
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.useLibraryCodeForTypes": true,
+    "python.autoComplete.extraPaths": [
+        "F:/PyCharmProjects/x-stash/venv/Lib/site-packages",
+        "F:/PyCharmProjects/mygui"
+    ],
+    "python.linting.enabled": false,
+    "python.analysis.typeCheckingMode": "off"
+}

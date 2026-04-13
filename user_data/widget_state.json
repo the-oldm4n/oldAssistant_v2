@@ -1,0 +1,86 @@
+{
+    "window_position": {
+        "x": 235,
+        "y": 189
+    },
+    "window_size": {
+        "width": 87,
+        "height": 122
+    },
+    "delay": 1.0,
+    "is_autohide": true,
+    "is_compact": true,
+    "is_pinned": true,
+    "is_locked": 0,
+    "is_snow": false,
+    "buttons": {
+        "turnoff_check": true,
+        "settings_check": true,
+        "screenshot_check": true,
+        "open_youtube": true,
+        "microphone_check": true,
+        "links_check": true,
+        "resize_check": true,
+        "custom_xuingc99": false,
+        "custom_v7znfge9": false
+    },
+    "font_family": "cinzel_decorative",
+    "default_buttons": {
+        "turnoff_check": {
+            "tooltip": "\u0412\u044b\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435 \u043a\u043e\u043c\u043f\u044c\u044e\u0442\u0435\u0440\u0430",
+            "icon_rel_path": "power.svg"
+        },
+        "settings_check": {
+            "tooltip": "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438",
+            "icon_rel_path": "settings.svg"
+        },
+        "screenshot_check": {
+            "tooltip": "\u0421\u0434\u0435\u043b\u0430\u0442\u044c \u0441\u043a\u0440\u0438\u043d\u0448\u043e\u0442",
+            "icon_rel_path": "camera.svg"
+        },
+        "open_youtube": {
+            "tooltip": "\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c YouTube",
+            "icon_rel_path": "logo-youtube.svg"
+        },
+        "microphone_check": {
+            "tooltip": "\u0423\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u043c\u0438\u043a\u0440\u043e\u0444\u043e\u043d\u043e\u043c \u0432 Discord",
+            "icon_rel_path": "mic_on.svg"
+        },
+        "links_check": {
+            "tooltip": "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043f\u0430\u043f\u043a\u0443 \u0441 \u044f\u0440\u043b\u044b\u043a\u0430\u043c\u0438",
+            "icon_rel_path": "shortcut.svg"
+        },
+        "resize_check": {
+            "tooltip": "\u0420\u0430\u0437\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u043e\u043a\u043d\u043e \u0430\u0441\u0441\u0438\u0441\u0442\u0435\u043d\u0442\u0430",
+            "icon_rel_path": "open_main.svg"
+        }
+    },
+    "custom_buttons": [
+        {
+            "command_data": {
+                "desc": "\u041a\u043e\u0440\u0437\u0438\u043d\u0430",
+                "name": "recycler",
+                "type": "system"
+            },
+            "icon_path": "F:\\PyCharmProjects\\voxodium\\bin\\icons\\script-icons\\recycle.svg",
+            "id": "xuingc99",
+            "move_command": "open",
+            "name": "\u041a\u043e\u0440\u0437\u0438\u043d\u0430",
+            "name_command": "\u043a\u043e\u0440\u0437\u0438\u043d\u0430",
+            "type_command": "system"
+        },
+        {
+            "command_data": {
+                "desc": "Bluetooth",
+                "name": "bluetooth",
+                "type": "system"
+            },
+            "icon_path": "F:\\PyCharmProjects\\voxodium\\bin\\icons\\script-icons\\bluetooth.svg",
+            "id": "v7znfge9",
+            "move_command": "open",
+            "name": "Bluetooth",
+            "name_command": "\u0431\u043b\u044e\u0442\u0443\u0437",
+            "type_command": "system"
+        }
+    ]
+}

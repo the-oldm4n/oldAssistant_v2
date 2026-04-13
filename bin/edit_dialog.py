@@ -1,10 +1,10 @@
 import os
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QPushButton, QDialog, QWidget, \
-    QHBoxLayout, QApplication, QLineEdit
+    QHBoxLayout, QLineEdit
 from path_builder import get_path
-from bin.custom_svg_widget import CustomSvgWidget
-from bin.apply_color_methods import main_apply_colors
+from mygui import main_apply_colors, CustomSvgWidget
+from mygui.config import mygui_config
 
 
 class EditDialog(QDialog):
@@ -44,7 +44,7 @@ class EditDialog(QDialog):
 
         self.close_btn = QPushButton()
         self.close_btn.setFixedSize(30, 30)
-        self.close_btn.setObjectName("CloseButton")
+        self.close_btn.setObjectName("TitleBarCloseBtnV2")
         self.close_btn.clicked.connect(self.reject)
         self.close_svg = CustomSvgWidget(self.icon_close_path, self.close_btn)
         self.close_svg.setFixedSize(24, 24)
@@ -97,7 +97,8 @@ class EditDialog(QDialog):
             return
 
         conflict_paths = [
-            os.path.join(get_path("user_settings", "presets"), f"{preset_name}.json")
+            os.path.join(mygui_config.presets_path, f"{preset_name}.json"),
+            os.path.join(mygui_config.custom_presets, f"{preset_name}.json")
         ]
 
         if any(os.path.exists(path) for path in conflict_paths):

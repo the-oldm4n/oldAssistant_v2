@@ -1,67 +1,63 @@
 # -*- mode: python ; coding: utf-8 -*-
-version_file = 'F:/PyCharmProjects/oldAssistant_v2/version.txt'
+version_file = 'F:/PyCharmProjects/voxodium/version.txt'
+
+
+block_cipher = None
+
+main_script = 'main.py'
+additional_files = [
+    ('F:/PyCharmProjects/voxodium/app.manifest', '.'),
+    ('F:/PyCharmProjects/voxodium/version.txt', '.'),
+    ('F:/PyCharmProjects/voxodium/icon.ico', '.'),
+    ('F:/PyCharmProjects/voxodium/log_config.py', '.'),
+    ('F:/PyCharmProjects/voxodium/config.py', '.'),
+    ('F:/PyCharmProjects/voxodium/widgets', 'widgets'),
+    ('F:/PyCharmProjects/voxodium/bin', 'bin'),
+    ('F:/PyCharmProjects/voxodium/config.ini', 'config.ini'),
+    ('F:/PyCharmProjects/voxodium/path_builder.py', '.'),
+    ('F:/PyCharmProjects/voxodium/updater.exe', '.'),
+    ('F:/PyCharmProjects/voxodium/README.md', '.'),
+    ('F:/PyCharmProjects/voxodium/LICENSE.md', '.'),
+    ('F:/PyCharmProjects/voxodium/THIRD-PARTY-LICENSES.md', '.'),
+    ('F:/PyCharmProjects/voxodium/user_data', 'user_data'),
+    ('F:/PyCharmProjects/voxodium/data/OHM', 'data/OHM'),
+    ('F:/PyCharmProjects/voxodium/data/model_ru', 'data/model_ru'),
+]
 
 a = Analysis(
-    ['main.py'],
-    pathex=['F:/PyCharmProjects/oldAssistant_v2'],
+    [main_script],
+    pathex=[],
     binaries=[
-        (r'F:\PyCharmProjects\oldAssistant_v2\venv\Lib\site-packages\vosk\libvosk.dll', 'vosk'),
-        (r'F:\PyCharmProjects\oldAssistant_v2\venv\Lib\site-packages\vgamepad\win\vigem\client\x64\ViGEmClient.dll',
-        'vgamepad/win/vigem/client/x64')
-    ],
-    datas=[
-        ('F:/PyCharmProjects/oldAssistant_v2/app.manifest', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/version.txt', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/icon_assist.ico', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/logging_config.py', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/owl.svg', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/user_settings', 'user_settings'),
-        ('F:/PyCharmProjects/oldAssistant_v2/bin', 'bin'),
-        ('F:/PyCharmProjects/oldAssistant_v2/config.ini', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/path_builder.py', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/Update.exe', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/swap-updater.exe', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/README.md', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/LICENSE.md', '.'),
-        ('F:/PyCharmProjects/oldAssistant_v2/THIRD-PARTY-LICENSES.md', '.'),
-    ],
-    hiddenimports=['vosk', 'pyaudio'],
+        (r'F:/PyCharmProjects/voxodium/venv/Lib/site-packages/vosk/libvosk.dll', 'vosk'),
+        (r'F:/PyCharmProjects/voxodium/venv\Lib/site-packages/vgamepad\win/vigem/client/x64/ViGEmClient.dll', 'vgamepad/win/vigem/client/x64')],
+    datas=additional_files,
+    hiddenimports=['mygui'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', '_tkinter', 'Tkinter', 'Tkconstants', 'tcl', 'jinja2'],
-    noarchive=False,
-    optimize=0,
+    excludes=[],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False
 )
-pyz = PYZ(a.pure)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz,
     a.scripts,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
     [],
-    exclude_binaries=True,
-    name='Assistant',
+    name='Voxodium',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=['icon_assist.ico'],
-    manifest="F:/PyCharmProjects/oldAssistant_v2/app.manifest",
     uac_admin=True,
+    icon='F:/PyCharmProjects/voxodium/icon.ico',
     version=version_file,
-)
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='Assistant',
 )

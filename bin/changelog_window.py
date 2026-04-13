@@ -3,17 +3,17 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextBrowser
 import markdown2
 
-from bin.custom_svg_widget import CustomSvgWidget
+from mygui import CustomSvgWidget
 from bin.lists import setup_custom_font_label
 
 class ChangelogWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.assistant = parent
+        self.main = parent
         self.drag_pos = None
         self.init_ui()
         self.load_changelog()
-        self.assistant.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#FF0000")
+        self.main.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#FF0000")
 
     def init_ui(self):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
@@ -66,12 +66,12 @@ class ChangelogWindow(QMainWindow):
         self.title_bar_layout.addStretch()
 
         close_btn = QPushButton("")
-        close_btn.setObjectName("CloseButton")
+        close_btn.setObjectName("TitleBarCloseBtnV2")
         close_btn.setFixedSize(30, 30)
         close_btn.clicked.connect(self.close)
-        self.close_svg = CustomSvgWidget(self.assistant.icon_close_path, close_btn)
+        self.close_svg = CustomSvgWidget(self.main.icon_close_path, close_btn)
         self.close_svg.setFixedSize(25, 25)
-        self.close_svg.move(3, 3)
+        self.close_svg.move(2, 2)
         self.close_svg.setStyleSheet("background: transparent;")
         self.title_bar_layout.addWidget(close_btn)
 
@@ -185,11 +185,11 @@ class ChangelogWindow(QMainWindow):
     def load_changelog(self):
         """Загружает и отображает Markdown файл"""
         try:
-            if not hasattr(self.assistant, 'changelog_file_path'):
+            if not hasattr(self.main, 'changelog_file_path'):
                 self._show_error("Не указан путь к файлу изменений")
                 return
 
-            changelog_path = self.assistant.changelog_file_path
+            changelog_path = self.main.changelog_file_path
 
             if not os.path.exists(changelog_path):
                 self._show_error(f"Файл не найден: {changelog_path}")

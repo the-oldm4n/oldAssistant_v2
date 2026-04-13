@@ -1,11 +1,18 @@
 import configparser
+import os
 from pathlib import Path
-from path_builder import get_path
+from path_builder import get_path, get_app_data_dir
+from config import dev_mode
+
+if dev_mode:
+    config_file = get_path("config.ini")
+else:
+    config_file = os.path.join(get_app_data_dir(), "config.ini")
 
 
 def get_config_value(section, key, default=None):
     """Получение конкретного значения из конфига"""
-    config_path = Path(get_path("config.ini"))
+    config_path = Path(config_file)
 
     if not config_path.exists():
         config = load_default_config(config_path)
@@ -18,7 +25,7 @@ def get_config_value(section, key, default=None):
 
 def set_config_value(section, key, value):
     """Обновление значения в конфиге"""
-    config_path = Path(get_path("config.ini"))
+    config_path = Path(config_file)
 
     if config_path.exists():
         config = configparser.ConfigParser()
@@ -29,7 +36,7 @@ def set_config_value(section, key, value):
     if not config.has_section(section):
         config.add_section(section)
 
-    config.set(section, key, value)
+    config.set(section, key, str(value) if value is not None else "")
 
     with open(config_path, 'w', encoding='utf-8') as f:
         config.write(f)
@@ -45,8 +52,9 @@ def load_default_config(config_path):
     # Настройки по умолчанию
     config['app'] = {
         'version': '0.0.0',
-        'name': 'Assistant',
-        'build': 'prod'
+        'name': 'Voxodium',
+        'build': 'prod',
+        'basepath': os.path.dirname(config_path)
     }
 
     # Создаем директорию если её нет

@@ -1,0 +1,119 @@
+Metadata-Version: 2.4
+Name: mygui
+Version: 1.0.5
+Summary: Библиотека кастомных виджетов на PySide6
+Author: Andrey
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+Requires-Dist: PySide6>=6.5.0
+Dynamic: author
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# MyGUI
+
+Библиотека с кастомной настройкой стилей на базе PySide6.
+
+## Установка
+
+```pip install mygui```
+
+## Первичная настройка
+
+```
+from mygui.config import mygui_config
+
+# Передача путей для конфига
+mygui_config.configure(
+    colors_path="", # путь к файлу стилей
+    presets_path="", # папка с пресетами
+    custom_presets_path="", # папка с пользовательскими пресетами
+    custom_selectors="" # путь к файлу кастомных селекторов
+)
+
+from mygui import main_apply_colors
+
+# Инициализация экземпляра после применения конфигурации
+main_apply_colors.init()
+```
+
+Возможно понадобится файл settings.json для настройки в VS Code:
+
+.vscode/settings.json
+```
+{
+    "python.analysis.extraPaths": [
+        "F:/PyCharmProjects/path-to/venv/Lib/site-packages",
+        "F:/PyCharmProjects/mygui"
+    ],
+    "python.analysis.diagnosticSeverity": {
+        "reportMissingModuleSource": "none",
+        "reportMissingImports": "none"
+    },
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.useLibraryCodeForTypes": true,
+    "python.autoComplete.extraPaths": [
+        "F:/PyCharmProjects/QuietSpace/venv/Lib/site-packages",
+        "F:/PyCharmProjects/mygui"
+    ],
+    "python.linting.enabled": false,
+    "python.analysis.typeCheckingMode": "off"
+}
+```
+
+## Создание собственных селекторов
+
+Необходимо создать файл custom_selectors.json и в конфиге mygui_config указать путь к нему перед инициализацией.
+
+Примерная структура файла
+```
+{
+    "ConsoleLog": {
+        "background": "get_pressed_css('border', darken=150, alpha=100)",
+        "border": "get_unique_border('border', px_value=1, method=get_css('button'))",
+        "border-radius": "20px",
+        "padding": "10px",
+        "color": "get_text_css('text_edit')"
+    },
+    "TitleBarCloseBtn": {
+        "background-color": "transparent",
+        "border": "none",
+        "border-radius": "0px"
+    },
+    "TitleBarCloseBtn:hover": {
+        "background-color": "#E76565",
+        "border": "none"
+    } 
+}
+```
+
+### Основные методы, которые поддерживаются:
+- ```get_css(for_type="background", px_value=1, is_btn_border=False, is_main_border=False)```, где for_type это один из 4 возможных вариантов - background, button, border и svg.
+Возвращает особую структуру для парсинга файла стилей в зависимости от переданного значения.
+
+- ```get_hover_css(for_type="button")```, поддерживает те же 4 вида значений. Возвращает затемненную версию текущего значениия если цвет один, иначе меняет цвета местами.
+
+- ```get_pressed_css(for_type="border", darken=50, alpha=255)```, поддержка 4 значений. Затемняет цвета на указанное значение darken, а также добавляет прозрачность через alpha.
+
+- ```get_border_radius_css(border_type="button")```, имеет два значения button или main. Возвращает строку с переменной и значением 'px'. (Пример f"{self.border_btn_radius}px")
+
+- ```get_text_css(text_type="text")```, имеет два значения text или text_edit. Возвращает переменную в зависимости от переданного значения.
+
+- ```get_unique_border(for_type="border", px_value=1, method=None)```, px_value - число пикселей, for_type - только border, method - как вариант любой из перечисленных выше методов, так и отдельно переданная переменная. Возвращает строку вида f"{px_value}px solid {method}".
+
+### Поддерживаемые переменные
+
+- ``bg_color`` - цвет
+- ``btn_color``  - цвет
+- ``border_color`` - цвет
+- ``text_color`` - цвет
+- ``text_edit_color`` - цвет
+- ``svg_color`` - цвет
+- ``border_btn_radius`` - число
+- ``border_main_radius`` - число
+- ``border_in_buttons`` - флаг
+- ``border_in_main_window`` - флаг
+

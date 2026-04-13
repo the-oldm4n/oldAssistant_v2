@@ -1,0 +1,39 @@
+{
+    "LogArea": {
+        "background": "transparent"
+    },
+    "CustomPage": {
+        "background-color": "transparent"
+    },
+    "CustomPageWidget": {
+        "background-color": "get_pressed_css(for_type='border', darken=250, alpha=150)",
+        "border-radius": "get_border_radius_css('main')"
+    },
+    "CustomPageContent": {
+        "background-color": "transparent"
+    },
+    "TabPanel": {
+        "background": "transparent"
+    },
+    "TabBtn": {
+        "background": "get_pressed_css(for_type='border', darken=200)",
+        "border": "none",
+        "border-radius": "0px"
+    },
+    "TabBtn:hover": {
+        "background": "get_pressed_css(for_type='border', darken=160)"
+    },
+    "TabBtn[active='true']": {
+        "background": "get_pressed_css(for_type='svg', darken=100)",
+        "border": "get_css('border')"
+    },
+    "SlidingStackedWidget": {
+        "background-color": "transparent"
+    },
+    "QStackedWidget": {
+        "background-color": "transparent"
+    },
+    "StatsWidget": {
+        "background-color": "transparent"
+    }
+}

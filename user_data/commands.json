@@ -1,0 +1,12 @@
+{
+    "программ": {
+        "name": "cpuz.lnk",
+        "desc": "Ярлык cpuz.lnk",
+        "type": "shortcut"
+    },
+    "загрузки": {
+        "name": "D:/Downloads",
+        "desc": "Папка ",
+        "type": "folder"
+    }
+}

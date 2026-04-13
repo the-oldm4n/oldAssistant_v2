@@ -6,17 +6,12 @@
 пользовательского ввода и управление интерфейсом.
 """
 import csv
-import ctypes
-import re
-import shutil
 import jellyfish
 import numpy as np
-import pyaudio
 import requests
 import sys
 import time
 import traceback
-import zipfile
 from packaging import version
 import psutil
 import threading
@@ -27,55 +22,94 @@ from PySide6.QtGui import QCursor, QIcon, QFont, QDesktopServices, QAction, QPix
     QFontDatabase, QPainterPath, QImage
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QMainWindow, QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QApplication, QWidget,\
-    QDialog, QGraphicsColorizeEffect, QSizePolicy, QSystemTrayIcon, QMenu, QMessageBox, QTabBar, QTabWidget,\
-    QSpacerItem, QLineEdit
+    QDialog, QSizePolicy, QSystemTrayIcon, QMenu, QMessageBox, QSpacerItem
 from PySide6.QtCore import Signal, QTimer, Qt, QEasingCurve, QPropertyAnimation, QRect, QEvent, QUrl, QPoint, Slot,\
-    QThread, QThreadPool
-from bin.apply_color_methods import main_apply_colors
+    QThreadPool
+
+from bin.config_manager import get_config_value, set_config_value, update_version
+from path_builder import get_app_data_dir, get_path, get_full_filepath
+from log_config import logger, debuglog, get_log_path, get_debuglog_path
+from config import dev_mode, domain, is_fast_start, is_login_widget
+
+from bin.exract_resourses import ensure_resources
+if not dev_mode:
+    ensure_resources()
+
+if dev_mode:
+    style_path = get_path("user_data", "color.json")
+    winsize_file = get_path("win_size.json")
+    download_dir = get_path("update")
+    changelog_path = get_path("user_data", "changelog.md")
+    process_names = get_path('user_data', 'process_names.json')
+    settings_file = get_path('user_data', 'settings.json')
+    folder_links = get_path('user_data', 'links')
+    folder_screenshots = get_path('user_data', 'screenshots')
+    censor_file = get_path('user_data', 'censor_counter.csv')
+    user_keywords = get_path("user_data", "keywords.json")
+    changelog = get_path("user_data", "changelog.md")
+else:
+    style_path = os.path.join(get_app_data_dir(), "user_data", "color.json")
+    winsize_file = os.path.join(get_app_data_dir(), "win_size.json")
+    download_dir = os.path.join(get_app_data_dir(), "update")
+    changelog_path = os.path.join(get_app_data_dir(), "user_data", "changelog.md")
+    process_names =  os.path.join(get_app_data_dir(), 'user_data', 'process_names.json')
+    settings_file =  os.path.join(get_app_data_dir(), 'user_data', 'settings.json')
+    folder_links = os.path.join(get_app_data_dir(), 'user_data', 'links')
+    folder_screenshots = os.path.join(get_app_data_dir(), 'user_data', 'screenshots')
+    censor_file = os.path.join(get_app_data_dir(), 'user_data', 'censor_counter.csv')
+    user_keywords = os.path.join(get_app_data_dir(), "user_data", "keywords.json")
+    changelog = os.path.join(get_app_data_dir(), "user_data", "changelog.md")
+
+ohm_path = get_path("data", "OHM", "OpenHardwareMonitor.exe")
+vosk_model_ru = get_path("data", "model_ru")
+
+from mygui.config import mygui_config
+mygui_config.configure(colors_path=style_path, 
+                 presets_path=get_path("bin", "color_presets"), 
+                 custom_presets_path=get_path("user_data", "presets"),
+                 custom_selectors=get_path("bin", "custom_selectors.json"))
+from mygui import main_apply_colors, color_signal, VersionLabel, CustomSvgWidget, \
+    AnimatedSidebar, ColorSettingsWindow, SVGProgressBar
+main_apply_colors.init()
+
+from widgets.logs_page import LogsPage
+from widgets.others_page import OthersPage
+from widgets.settings_page import SettingsPage
+from widgets.commands_page import CommandsPage
 from bin.bluetooth_controller import bluetooth_controller
 from bin.changelog_window import ChangelogWindow
-from bin.check_update import GetManifestThread, get_update_strategy, load_changelog, VersionCheckThread
-from bin.custom_widgets import AnimatedSidebar, VersionLabel
-from bin.choose_color_window import ColorSettingsWindow
-from bin.custom_svg_widget import CustomSvgWidget
-from bin.download_thread import DeltaDownloadThread, DownloadThread
+from bin.check_update import load_changelog, VersionCheckThread
+from bin.download_thread import DownloadThread
 from bin.frosted_widget import GarlandDecorator, SnowOverlay
 from bin.help_widget import HelpWidget
 from bin.login_widget import LoginWindow
-from bin.monitoring_log_widget import MonitorLogWidget
-from bin.progress_bar_widget import SVGProgressBar
 from bin.register_module import AuthManager
 from bin.screenshot_tool import SystemScreenshot
-from bin.signals import gui_signals, color_signal, commands_signal
+from bin.signals import gui_signals, commands_signal
 from bin.toast_notification import ToastNotification, SimpleNotice, SupplyNotice
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from bin.widget_window import SmartWidget
-from bin.commands_widgets import CreateCommandsWidget, CommandsWidget, CreateScriptsWidget, ProcessLinksWidget
-from bin.other_options_widgets import CensorCounterWidget, CheckUpdateWidget, DebugLoggerWidget
-from bin.config_manager import get_config_value, set_config_value, update_version
 from bin.commands_manager import main_commands_manager
 from bin.function_list_main import *
 from bin.audio_control import controller
-from bin.settings_widgets import SettingsWidget, InterfaceWidget, OtherSettingsWidget, SettingsWidgetPanel, SpeechHookManagerWidget
 from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react
 from bin.lists import get_audio_paths, commands_list, default_keywords_data, setup_global_font
-from path_builder import get_path
-from logging_config import logger, debug_logger
+from bin.init_screen import InitScreen
+from bin.session_manager import UserSessionManager
+from bin.stacked_widget import SlidingStackedWidget
+from bin.update_dialog import UpdateApp
 
 
 build_ini = get_config_value("app", "build")
-version_file = "2.2.9"
+version_file = "3.0.0"
 update_version(version_file)
-domain = "https://owl-app.ru"
-# domain = "https://127.0.0.1:5000"
-is_fast_start = False
-is_login_widget = True
+
 
 def activate_existing_window():
     """Пытается отправить команду существующему приложению"""
     try:
         socket = QLocalSocket()
-        socket.connectToServer("assistant_app")
+        socket.connectToServer("voxodium_app")
 
         if socket.waitForConnected(2000):
             from PySide6.QtCore import QThread
@@ -84,17 +118,17 @@ def activate_existing_window():
             socket.write(b'show_window')
 
             if socket.waitForBytesWritten(1000):
-                debug_logger.info("[MAIN] Команда отправлена существующему приложению")
+                debuglog.info("[MAIN] Команда отправлена существующему приложению")
             else:
-                debug_logger.error("[MAIN] Данные не были отправлены")
+                debuglog.error("[MAIN] Данные не были отправлены")
                 
             socket.disconnectFromServer()
             return True
         else:
-            debug_logger.error("[MAIN] Не удалось подключиться к IPC серверу")
+            debuglog.error("[MAIN] Не удалось подключиться к IPC серверу")
             return False
     except Exception as e:
-        debug_logger.error(f"[MAIN] IPC client error: {e}")
+        debuglog.error(f"[MAIN] IPC client error: {e}")
         return False
 
 
@@ -102,104 +136,52 @@ class Assistant(QMainWindow):
     """
 Основной класс содержащий GUI и скрипт обработки команд
     """
-    close_child_windows = Signal()
     save_settings_signal = Signal()
     update_checked = Signal(bool, str)
     supply_notice_signal = Signal(str, bool)
-
-    def check_memory_usage(self, limit_mb):
-        """
-        Проверка потребления оперативной памяти
-        :param limit_mb:
-        :return:
-        """
-        process = psutil.Process(os.getpid())
-        memory_usage = process.memory_info().rss / 1024 / 1024  # В МБ
-        if memory_usage > limit_mb:
-            debug_logger.error(f"[MAIN] Превышен лимит памяти: {memory_usage} МБ > {limit_mb} МБ")
-            return False
-        return True
-
-    def setup_memory_monitor(self):
-        """Настройка мониторинга памяти через QTimer"""
-        self.memory_timer = QTimer()
-        self.memory_timer.timeout.connect(self.check_memory_with_cleanup)
-        self.memory_timer.start(10000)  # 10 секунд
-
-    def check_memory_with_cleanup(self, limit_mb=800):
-        """Проверка памяти с автоматической очисткой"""
-        if not self.check_memory_usage(limit_mb):
-            debug_logger.warning("[MAIN] Превышен лимит памяти")
-            self.show_notification_message(f"Прозошла утечка памяти. Превышен лимит ({limit_mb}Мб).")
-
     def __init__(self):
         super().__init__()
         self.start_ipc_server()
         self.version = self.get_version()
-        self.label_version = VersionLabel(version=self.version)
-        self.latest_version_url = None
         self.latest_version = None
         self.current_ver = None
-        self.relax_button = None
-        self.drag_pos = None
         self.beta_version = False
         self.is_batch_update = False
-        self.tray_icon = None
-        self.toggle_start = None
-        self.start_button = None
-        self._update_dialog = None
+        self.toggle_start = False
         self.is_assistant_running = False
         self.microphone_available = True
         self.first_run = True
         self.assistant_thread = None
-        self.censored_thread = None
-        self._current_panel = None
         self.widget_window = None
         self.snow_on_background = None
         self.garland_decorator = None
         self.is_manual_check = False
         self.stop_checking = False
         self.is_force_close = False
-        self._is_checking_log = False
         self.count = 0
+        color_signal.color_changed.connect(self.apply_styles)
         gui_signals.open_widget_signal.connect(self.open_widget)
         gui_signals.close_widget_signal.connect(self.close_widget)
-        color_signal.color_changed.connect(self.update_colors)
         self.supply_notice_signal.connect(self._handle_supply_notice)
         commands_signal.commands_reloaded.connect(self.reload_commands)
         self.update_checked.connect(self.handle_update_status)
-        self.close_child_windows.connect(self.hide_widget)
-        self.MEMORY_LIMIT_MB = 1024
-        self.log_file_path = get_path('assistant.log')
-        self.svg_file_path = get_path("owl.svg")
+        self.main_folder_path = get_app_data_dir()
+        self.log_file_path = get_log_path()
+        self.debuglog_file_path = get_debuglog_path()
         self.install_icons()
-        self.changelog_file_path = get_path('update', 'changelog.md')
-        self.process_names = get_path('user_settings', 'process_names.json')
-        self.ohm_path = get_path("bin", "OHM", "OpenHardwareMonitor.exe")
+        self.changelog_file_path = changelog
+        self.process_names = process_names
+        self.ohm_path = ohm_path
         self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
-        self.settings_file_path = get_path('user_settings', 'settings.json')
-        self.screenshot_tool = SystemScreenshot()
-        # self.game_mode = None
-        # self.game_mode_bool = False
+        self.settings_file_path = settings_file
+        self.screenshot_tool = SystemScreenshot(save_dir=folder_screenshots)
+        self.default_size = 920, 700
+        self._is_maximized = False
+        self._default_geometry = QRect(200, 200, 920, 700)
+        self._normal_geometry = None
         self.update_settings(self.settings_file_path)
-        self.assistant_name = None
-        self.assist_name2 = None
-        self.assist_name3 = None
-        self.speaker = None
-        self.volume_assist = None
-        self.steam_path = None
-        self.is_censored = None
-        self.run_updater = None
-        self.is_corrected_command = None
-        self.is_min_tray = None
-        self.is_widget = None
-        self.is_keep_watch = None
-        self.input_device_id = None
-        self.input_device_name = None
-        self.is_snow = None
-        self.is_garland = None
         self.install_settings()
         self.commands_manager = main_commands_manager
         self.audio_stream = None
@@ -213,12 +195,17 @@ class Assistant(QMainWindow):
         self.commands = self.commands_manager.commands
         self.audio_paths = get_audio_paths(self.speaker)
         self.default_commands = commands_list
+        
+        self.session_manager = UserSessionManager()
         self.auth = AuthManager(domain)
         self.user_data = self.auth.user_data
-        self.is_admin = True if self.auth.load_auth_data_id() == 1 else False
-        self.get_btns_data()
+
+        self.resize_animation = QPropertyAnimation(self, b"geometry")
+        self.resize_animation.setDuration(100)
+        self.resize_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.check_or_create_folders()
         self.init_ui()
-        
+
         self.preload_utils()
         if is_login_widget:
             self.check_auth(self.auth)
@@ -226,17 +213,16 @@ class Assistant(QMainWindow):
             self.check_up()
 
     def preload_utils(self):
-        self.check_or_create_folders()
-        # Обновление селекторов стилей в файле
         self.update_style_list() # Внутри вызывается apply_styles
         self.check_autostart()
-        self.check_start_win()
         self.check_keywords_file()
         self.toggle_update_button()
-        self.setup_memory_monitor()
 
     def check_up(self):
+        self.content_container.current_changed.connect(self.on_page_changed)
+        self.on_page_changed(0)
         self.check_start_widget()
+        self.load_window_settings()
         # Прятать ли программу в трей
         if self.is_min_tray:
             # Показ окна при первом запуске(для отладки)
@@ -248,15 +234,11 @@ class Assistant(QMainWindow):
             self.update_user_profile()
         if self.apply_keywords_for_values():
             self.run_assist()
-        if self.isVisible():
-            self.log_area.start_active_mode()
-        else:
-            self.log_area.start_background_mode()
         
-        self.update_checker = QTimer()
-        self.update_checker.timeout.connect(self.check_update_app)
-        self.update_checker.start(3600000)  # Чек обновлений раз в 60 минут (3600000)
-        QTimer.singleShot(5000, lambda: self.check_update_app()) # Первый чек через 5 сек. после запуска
+        # self.update_checker = QTimer()
+        # self.update_checker.timeout.connect(self.check_update_app)
+        # self.update_checker.start(3600000)  # Чек обновлений раз в 60 минут (3600000)
+        QTimer.singleShot(5000, lambda: self.check_update_app())
 
     def handle_init_result(self, success):
         """Обработчик результата инициализации"""
@@ -269,11 +251,17 @@ class Assistant(QMainWindow):
             self.splash.init_complete.connect(self.handle_init_result)
             self.splash.show()
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при инициализации программы: {e}")
+            debuglog.error(f"[MAIN] Ошибка при инициализации программы: {e}")
 
-    def open_login(self):
+    def update_style_list(self):
+        change_color = ColorSettingsWindow(self)
+        change_color.update_style_file()
+        # change_color.update_all_styles()
+        self.apply_styles()
+
+    def open_login(self, message=""):
         try:
-            self.login_window = LoginWindow(auth=self.auth)
+            self.login_window = LoginWindow(auth=self.auth, message=message)
             self.login_window.setWindowModality(Qt.WindowModality.ApplicationModal)
             self.login_window.show()
             
@@ -281,38 +269,54 @@ class Assistant(QMainWindow):
             self.login_window.login_cancelled.connect(self.on_login_cancelled)
             
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при запуске окна авторизации: {e}")
+            logger.error(f"[MAIN] Ошибка при запуске окна авторизации: {e}")
 
     def on_login_success(self):
         """Обработка успешного логина"""
-        if self.auth.user_data:
+        try:
+            if self.auth.is_guest():
+                self.session_manager.set_local_session()
+            elif self.auth.user_data:
+                username = self.auth.user_data['username']
+                self.session_manager.set_user_session(username)
+            else:
+                raise RuntimeError("Неизвестное состояние авторизации")
+
             self.set_user_data(self.auth.user_data)
-        
-        if not is_fast_start:
-            self.start_splash_screen()
-        else:
-            self.check_up()
+            
+            if not is_fast_start:
+                self.start_splash_screen()
+            else:
+                self.check_up()
+        except ValueError as e:
+            self.show_message(str(e), "Ошибка", "error")
+            self.open_login()
 
     def on_login_cancelled(self):
         """Обработка отмены логина"""
-        debug_logger.info("[MAIN] Логин отменен")
+        debuglog.info("[MAIN] Логин отменен")
         self.cleanup_before_exit()
         
     def check_auth(self, auth):
         self.auth = auth
-        # Проверяем сохраненную авторизацию
-        if self.auth.is_authenticated():
+
+        status, message = self.auth.is_authenticated()
+        if status:
             if self.auth.is_guest():
-                debug_logger.info(f"[MAIN] Автоматический вход: Гость")
+                debuglog.info("[MAIN] Автоматический вход: Гость")
+                self.session_manager.set_local_session()
             else:
-                debug_logger.info(f"[MAIN] Автоматический вход: {self.auth.user_data['username']}")
+                debuglog.info(f"[MAIN] Автоматический вход: {self.auth.user_data['username']}")
+                self.session_manager.set_user_session(self.auth.user_data['username'])
+            
             self.set_user_data(self.auth.user_data)
+
             if not is_fast_start:
                 self.start_splash_screen()
             else:
                 self.check_up()
         else:
-            self.open_login()
+           self.open_login(message)
 
     def get_version(self):
         vers_on_ini = get_config_value("app", "version")
@@ -322,29 +326,84 @@ class Assistant(QMainWindow):
             return version_file
         return version_file
 
+    def get_cursor_region(self, pos):
+        """Определяем область курсора для изменения размера"""
+        width = self.width()
+        height = self.height()
+        x, y = pos.x(), pos.y()
+
+        if self._is_maximized:
+            return "center"
+        
+        if x <= self.margin and y <= self.margin:
+            return "top-left"
+        elif x >= width - self.margin and y <= self.margin:
+            return "top-right"
+        elif x <= self.margin and y >= height - self.margin:
+            return "bottom-left"
+        elif x >= width - self.margin and y >= height - self.margin:
+            return "bottom-right"
+        elif x <= self.margin:
+            return "left"
+        elif x >= width - self.margin:
+            return "right"
+        elif y <= self.margin:
+            return "top"
+        elif y >= height - self.margin:
+            return "bottom"
+        else:
+            return "center"
+
     def title_bar_mouse_press(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             global_pos = event.globalPosition().toPoint()
             window_pos = self.mapFromGlobal(global_pos)
             region = self.get_cursor_region(window_pos)
-            
-            # ТОЛЬКО верхние края для масштабирования в title bar
+
+            if self._is_maximized and region == "center":
+                self.dragging_maximized = True
+                self.drag_start_pos = global_pos
+                self.drag_start_geometry = self.geometry()
+                self._drag_click_offset = None
+                event.accept()
+                return
+
             if region in ["top", "top-left", "top-right", "left", "right"]:
                 self.drag_direction = region
                 self.dragging = True
                 self.drag_position = global_pos
                 self.initial_geometry = self.geometry()
-            elif region == "center":  # Только центр для перемещения
+            elif region == "center":
                 self.drag_pos = global_pos - self.frameGeometry().topLeft()
             event.accept()
 
     def title_bar_mouse_move(self, event):
-        """Обработка перемещения мыши при удерживании на заголовке"""
         global_pos = event.globalPosition().toPoint()
         window_pos = self.mapFromGlobal(global_pos)
         region = self.get_cursor_region(window_pos)
-        
-        # Обновляем курсор для ВСЕХ регионов
+
+        if hasattr(self, 'dragging_maximized') and self.dragging_maximized:
+            if event.buttons() == Qt.MouseButton.LeftButton:
+                if self._drag_click_offset is None:
+                    rel_x = (self.drag_start_pos.x() - self.drag_start_geometry.x()) / self.drag_start_geometry.width()
+                    rel_y = (self.drag_start_pos.y() - self.drag_start_geometry.y()) / self.drag_start_geometry.height()
+                    self._drag_click_offset = (rel_x, rel_y)
+
+                self.toggle_maximize(animate=False)
+                
+                if not self._is_maximized:
+                    current_geo = self.geometry()
+
+                    new_x = global_pos.x() - int(current_geo.width() * self._drag_click_offset[0])
+                    new_y = global_pos.y() - int(current_geo.height() * self._drag_click_offset[1])
+                    
+                    self.move(new_x, new_y)
+   
+                    self.drag_pos = global_pos - self.frameGeometry().topLeft()
+                    self.dragging_maximized = False
+                    self._drag_click_offset = None
+            return
+
         cursor_map = {
             "top": Qt.CursorShape.SizeVerCursor,
             "bottom": Qt.CursorShape.SizeVerCursor,
@@ -357,8 +416,7 @@ class Assistant(QMainWindow):
             "center": Qt.CursorShape.ArrowCursor
         }
         self.setCursor(cursor_map.get(region, Qt.CursorShape.ArrowCursor))
-        
-        # Но обрабатываем перетаскивание ТОЛЬКО для верхних краев
+
         if self.dragging and self.drag_direction in ["top", "top-left", "top-right", "left", "right"]:
             self.handle_resize(global_pos)
             event.accept()
@@ -374,8 +432,17 @@ class Assistant(QMainWindow):
         self.drag_direction = None
         self.initial_geometry = None
         self.reached_min_size = False
+        self.dragging_maximized = False
+        self.drag_start_pos = None
+        self.drag_start_geometry = None
+        self._drag_click_offset = None
         self.setCursor(Qt.CursorShape.ArrowCursor)
         event.accept()
+
+    def title_bar_double_click(self, event):
+        """Двойной клик по заголовку — развернуть/восстановить"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.toggle_maximize()
 
     def install_settings(self):
         self.settings = self.load_settings()
@@ -397,6 +464,7 @@ class Assistant(QMainWindow):
         self.is_garland = self.settings.get("is_garland", False)
 
     def install_icons(self):
+        self.icon_main_path = get_path("bin", "icons", "nine_dots.svg")
         self.icon_start_win = get_path("bin", "icons", "start-win.svg")
         self.icon_update = get_path("bin", "icons", "updates.svg")
         self.icon_settings_path = get_path("bin", "icons", "settings.svg")
@@ -425,97 +493,36 @@ class Assistant(QMainWindow):
         self.icon_main_settings_path = get_path("bin", "icons", "main_settings.svg")
         self.icon_clear_logs_path = get_path("bin", "icons", "clear_log.svg")
         self.icon_scripts_path = get_path("bin", "icons", "scripts.svg")
-        
-    def icons_data(self):
-        icon_paths = {
-            "settings": get_path("bin", "icons", "settings.svg"),
-            "shortcut": get_path("bin", "icons", "shortcut.svg"),
-            "power": get_path("bin", "icons", "power.svg"),
-            "guide": get_path("bin", "icons", "guide.svg"),
-            "open_widget": get_path("bin", "icons", "open_widget.svg"),
-            "commands": get_path("bin", "icons", "commands.svg"),
-            "other": get_path("bin", "icons", "other.svg"),
-        }
-        return icon_paths
+        self.resize_path = get_path("bin", "icons", "resize_window.svg")
+        self.logo_path = get_path("bin", "icons", "logo-app.svg")
     
-    def get_btns_data(self):
-        self.buttons_data = [
-            {
-                "key": "settings",
-                "text": "Настройки",
-                "icon_path": get_path("bin", "icons", "settings.svg"),
-                "svg_attr": "settings_svg",
-                "slot": self.open_main_settings
-            },
-            {
-                "key": "shortcuts",
-                "text": "Ярлыки",
-                "icon_path": get_path("bin", "icons", "shortcut.svg"),
-                "svg_attr": "shortcut_svg",
-                "slot": self.open_folder_shortcuts
-            },
-            {
-                "key": "commands",
-                "text": "Команды",
-                "icon_path": get_path("bin", "icons", "commands.svg"),
-                "svg_attr": "commands_svg",
-                "slot": self.open_commands_settings
-            },
-            {
-                "key": "other",
-                "text": "Прочее",
-                "icon_path": get_path("bin", "icons", "other.svg"),
-                "svg_attr": "other_svg",
-                "slot": self.other_options
-            },
-            {
-                "key": "guide",
-                "text": "Обучение",
-                "icon_path": get_path("bin", "icons", "guide.svg"),
-                "svg_attr": "guide_svg",
-                "slot": self.guide_options
-            },
-            {
-                "key": "start",
-                "text": "Старт ассистента",
-                "icon_path": get_path("bin", "icons", "power.svg"),
-                "svg_attr": "power_svg",
-                "slot": self.start_assist_toggle
-            },
-            {
-                "key": "widget",
-                "text": "Открыть виджет",
-                "icon_path": get_path("bin", "icons", "open_widget.svg"),
-                "svg_attr": "widget_svg",
-                "slot": self.open_widget
-            }
-        ]
-        return self.buttons_data
-
     def init_ui(self):
         """Инициализация пользовательского интерфейса."""
         try:
             self.margin = 7
+            self.drag_pos = None
             self.dragging = False
             self.drag_position = None
             self.drag_direction = None
             self.initial_geometry = None
             self.reached_min_size = False
+            self.dragging_maximized = False
+            self.drag_start_pos = None
+            self.drag_start_geometry = None
+            self._drag_click_offset = None
 
             self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-            self.setWindowIcon(QIcon(get_path('icon_assist.ico')))
-            self.setWindowTitle("Ассистент")
+            self.setWindowIcon(QIcon(get_path('icon.ico')))
+            self.setWindowTitle("VOXODIUM")
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-            self.resize(920, 700)
+            self.setMouseTracking(True)
+            self.resize(*self.default_size)
 
-            # Центрирование окна
             screen_geometry = self.screen().availableGeometry()
             self.move(
                 (screen_geometry.width() - self.width()) // 2,
                 (screen_geometry.height() - self.height()) // 2
             )
-            self.setMouseTracking(True)
-            self.drag_pos = None
 
             # Главный контейнер
             self.central_widget = QWidget()
@@ -532,20 +539,22 @@ class Assistant(QMainWindow):
 
             # --- Title Bar ---
             self.title_bar_widget = QWidget()
+            self.title_bar_widget.setMaximumHeight(40)
             self.title_bar_widget.setObjectName("TitleBar")
             self.title_bar_layout = QHBoxLayout(self.title_bar_widget)
-            self.title_bar_layout.setContentsMargins(10, 8, 10, 8)
+            self.title_bar_layout.setContentsMargins(10, 0, 0, 0)
 
             self.title_bar_widget.mousePressEvent = self.title_bar_mouse_press
             self.title_bar_widget.mouseMoveEvent = self.title_bar_mouse_move
             self.title_bar_widget.mouseReleaseEvent = self.title_bar_mouse_release
+            self.title_bar_widget.mouseDoubleClickEvent = self.title_bar_double_click
 
-            self.icon_svg = CustomSvgWidget(self.svg_file_path)
-            self.icon_svg.setFixedSize(25, 25)
-            self.icon_svg.setStyleSheet("background: transparent;")
-            self.title_bar_layout.addWidget(self.icon_svg)
+            self.logo_svg = CustomSvgWidget(self.logo_path)
+            self.logo_svg.setFixedSize(30, 30)
+            self.logo_svg.setStyleSheet("background: transparent;")
+            self.title_bar_layout.addWidget(self.logo_svg)
 
-            self.title_label = self.setup_custom_font_label(text="OWLAPP")
+            self.title_label = self.setup_custom_font_label(text="VOXODIUM")
             self.title_label.setStyleSheet("background: transparent; font-size: 24px;")
             self.title_bar_layout.addWidget(self.title_label)
             
@@ -568,11 +577,12 @@ class Assistant(QMainWindow):
             self.avatar_svg = CustomSvgWidget(self.default_avatar_path)
             self.avatar_svg.setFixedSize(30, 30)
             self.avatar_svg.setStyleSheet("background: transparent; border: none;")
-            # self.avatar_color_svg = QGraphicsColorizeEffect()
-            # self.avatar_svg.setGraphicsEffect(self.avatar_color_svg)
 
             self.user_profile_layout.addWidget(self.avatar_svg)
             self.title_bar_layout.addWidget(self.user_profile_widget)
+
+            spacer_0 = QSpacerItem(5, 1, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+            self.title_bar_layout.addItem(spacer_0)
             
             self.update_btn = QPushButton()
             self.update_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -584,6 +594,9 @@ class Assistant(QMainWindow):
             self.update_svg.move(3, 3)
             self.update_svg.setStyleSheet("background: transparent;")
             self.title_bar_layout.addWidget(self.update_btn)
+
+            spacer_1 = QSpacerItem(5, 1, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+            self.title_bar_layout.addItem(spacer_1)
             
             self.update_light_btn = QPushButton()
             self.update_light_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -600,38 +613,104 @@ class Assistant(QMainWindow):
             else:
                 self.update_light_btn.hide()
 
-            self.start_win_btn = QPushButton()
-            self.start_win_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            self.start_win_btn.setFixedSize(30, 30)
-            self.start_win_btn.clicked.connect(self.toggle_start_win)
-            self.start_svg = CustomSvgWidget(self.icon_start_win, self.start_win_btn)
-            self.start_svg.setFixedSize(15, 15)
-            self.start_svg.move(7, 7)
-            self.start_svg.setStyleSheet("background: transparent;")
-            self.title_bar_layout.addWidget(self.start_win_btn)
+            spacer_2 = QSpacerItem(5, 1, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+            self.title_bar_layout.addItem(spacer_2)
+
+            self.maximize_button = QPushButton()
+            self.maximize_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.maximize_button.clicked.connect(lambda: self.toggle_maximize(True))
+            self.maximize_button.setFixedSize(50, 38)
+            self.maximize_button.setObjectName("TitleBarBtn")
+            self.max_svg = CustomSvgWidget(self.resize_path, self.maximize_button)
+            self.max_svg.setFixedSize(25, 25)
+            self.max_svg.move(12, 7)
+            self.max_svg.setStyleSheet("background: transparent;")
+            self.title_bar_layout.addWidget(self.maximize_button)
 
             self.close_button = QPushButton()
             self.close_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            self.close_button.clicked.connect(self.custom_hide)
-            self.close_button.setFixedSize(30, 30)
-            self.close_button.setObjectName("CloseButton")
+            self.close_button.clicked.connect(self.close)
+            self.close_button.setFixedSize(50, 38)
+            self.close_button.setObjectName("TitleBarCloseBtn")
             self.close_svg = CustomSvgWidget(self.icon_close_path, self.close_button)
-            self.close_svg.setFixedSize(24, 24)
-            self.close_svg.move(3, 3)
+            self.close_svg.setFixedSize(25, 25)
+            self.close_svg.move(12, 7)
             self.close_svg.setStyleSheet("background: transparent;")
             self.title_bar_layout.addWidget(self.close_button)
-
-            root_layout.addWidget(self.title_bar_widget)
 
             # --- Основное содержимое ---
             self.content_widget = QWidget()
             self.content_widget.setObjectName("ContentWidget")
             main_layout = QHBoxLayout(self.content_widget)
             main_layout.setContentsMargins(5, 5, 5, 5)
-            
+
             self.update_garland_state()
-            
-            # === Сайдбар с элементами управления ===
+
+            self.content_container = SlidingStackedWidget(self)
+
+            self.logs_widget = LogsPage(main_window=self, log_path=self.log_file_path)
+            self.settings_widget = SettingsPage(main_window=self)
+            self.commands_widget = CommandsPage(main_window=self)
+            self.others_widget = OthersPage(main_window=self)
+
+            self.content_container.add_page(self.logs_widget)
+            self.content_container.add_page(self.settings_widget)
+            self.content_container.add_page(self.commands_widget)
+            self.content_container.add_page(self.others_widget)
+
+
+            self.buttons_data = [
+            {
+                "key": "logs_page",
+                "text": "Главная",
+                "icon_path": self.icon_main_path,
+                "svg_attr": "home_svg",
+                "slot": lambda: self.content_container.switch_to(0)
+            },
+            {
+                "key": "links_page",
+                "text": "Ярлыки",
+                "icon_path": self.icon_shortcut_path,
+                "svg_attr": "links_svg",
+                "slot": lambda: self.open_folder_shortcuts()
+            },
+            {
+                "key": "settings_page",
+                "text": "Настройки",
+                "icon_path": self.icon_settings_path,
+                "svg_attr": "settings_svg",
+                "slot": lambda: self.content_container.switch_to(1)
+            },
+            {
+                "key": "commands_page",
+                "text": "Команды",
+                "icon_path": self.icon_commands_path,
+                "svg_attr": "commands_svg",
+                "slot": lambda: self.content_container.switch_to(2)
+            },
+            {
+                "key": "others_page",
+                "text": "Прочее",
+                "icon_path": self.icon_other_path,
+                "svg_attr": "others_svg",
+                "slot": lambda: self.content_container.switch_to(3)
+            },
+            {
+                "key": "toggle_worker",
+                "text": "Остановить работу",
+                "icon_path": self.icon_power_path,
+                "svg_attr": "toggle_worker_svg",
+                "slot": lambda: self.start_assist_toggle()
+            },
+            {
+                "key": "open_widget",
+                "text": "Открыть виджет",
+                "icon_path": self.icon_widget_path,
+                "svg_attr": "open_widget_svg",
+                "slot": lambda: self.open_widget()
+            }
+            ]
+
             sidebar_elements = [
                 {
                     "key": item["key"],
@@ -640,88 +719,42 @@ class Assistant(QMainWindow):
                 }
                 for item in self.buttons_data
             ]
-            self.sidebar = AnimatedSidebar(elements_data=sidebar_elements)
-            self._sidebar_slot_map = {item["key"]: item["slot"] for item in self.buttons_data}
-            self.sidebar.element_clicked.connect(self._handle_sidebar_click)
-            main_layout.addWidget(self.sidebar)
 
-            # === Изменяемая панель (изначально скрыта) ===
-            self.mutable_panel = QWidget()
-            self.mutable_panel.setObjectName("WM_MutablePanel")
-            self.mutable_panel.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-            self.mutable_layout = QVBoxLayout(self.mutable_panel)
-            self.mutable_layout.setContentsMargins(5, 5, 5, 5)
-            self.mutable_panel.hide()
+            self.open_folder_btn = QLabel("Корневая папка")
+            self.open_folder_btn.setToolTip("Открыть папку с данными")
+            self.open_folder_btn.setObjectName("UpdateLabel")
+            self.open_folder_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.open_folder_btn.mousePressEvent = self.open_folder_files
 
-            main_layout.addWidget(self.mutable_panel)
-
-            # === ПРАВАЯ ЧАСТЬ: Логи + подсказки ===
-            self.right_layout = QVBoxLayout()
-            self.right_layout.setContentsMargins(5, 5, 5, 5)
-
-            self.label_version.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            self.label_version.mousePressEvent = self.changelog_window
-            self.right_layout.addWidget(self.label_version, alignment=Qt.AlignmentFlag.AlignRight)
-
-            # Логи
-            self.log_area = MonitorLogWidget(log_file_path=self.log_file_path)
-            self.log_area.setObjectName("LogArea")
-            self.log_area.setReadOnly(True)
-            self.log_area.setFont(QFont("Consolas"))
-            self.log_area.setStyleSheet("font-size: 16px")
-
-            self.help_widget = HelpWidget()
-            self.help_widget.hide()
-            
-            options_layout = QHBoxLayout()
-            options_layout.addStretch()
-            
-            if self.is_admin:
-                self.btn_update_all_presets = QPushButton()
-                self.btn_update_all_presets.setObjectName("ToolButton")
-                self.btn_update_all_presets.setFixedSize(35, 35)
-                self.btn_update_all_presets.setStyleSheet("background: transparent;")
-                self.btn_update_all_presets.setToolTip("Обновить пресеты")
-                self.btn_update_all_presets.clicked.connect(self.update_style_all)
-                self.btn_update_all_presets.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-                self.update_all_preset_svg = CustomSvgWidget(self.update_light_path, self.btn_update_all_presets)
-                self.update_all_preset_svg.setFixedSize(35, 35)
-                self.update_all_preset_svg.setStyleSheet("background: transparent;")
-                options_layout.addWidget(self.btn_update_all_presets)
-                
-            
-            self.clear_logs_button = QPushButton()
-            self.clear_logs_button.setObjectName("ToolButton")
-            self.clear_logs_button.setStyleSheet("background: transparent;")
-            self.clear_logs_button.setToolTip("Очистить логи")
-            self.clear_logs_button.setFixedSize(40, 40)
-            self.clear_logs_button.clicked.connect(self.log_area.clear_logs)
-            self.clear_logs_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            self.clear_logs_svg = CustomSvgWidget(self.icon_clear_logs_path, self.clear_logs_button)
-            self.clear_logs_svg.setFixedSize(40, 40)
-            self.clear_logs_svg.setStyleSheet("background: transparent;")
-            options_layout.addWidget(self.clear_logs_button, alignment=Qt.AlignmentFlag.AlignRight)
-            
-            self.update_label = QLabel("Стабильная версия") # Стабильная версия
+            self.update_label = QLabel("Stable") # Stable
             self.update_label.setToolTip("Проверить обновления")
             self.update_label.setObjectName("UpdateLabel")
             self.update_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self.update_label.mousePressEvent = self.update_answer
 
-            self.right_layout.addWidget(self.log_area)
-            self.right_layout.addWidget(self.help_widget)
-            self.right_layout.addLayout(options_layout)
-            self.right_layout.addWidget(self.update_label, alignment=Qt.AlignmentFlag.AlignRight)
+            self.label_version = VersionLabel(version=self.version)
+            self.label_version.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.label_version.mousePressEvent = self.changelog_window
 
-            # === Добавляем в main_layout ===
-            main_layout.addLayout(self.right_layout)
+            self.animated_sidebar = AnimatedSidebar(elements_data=sidebar_elements, max_width=250, main_window=self)
+            self._sidebar_slot_map = {item["key"]: item["slot"] for item in self.buttons_data}
+            self.animated_sidebar.element_clicked.connect(self._handle_sidebar_click)
 
+            self.animated_sidebar.add_custom_widget(self.open_folder_btn)
+            self.animated_sidebar.add_custom_widget(self.update_label)
+            self.animated_sidebar.add_custom_widget(self.label_version)
+
+            self.help_widget = HelpWidget()
+            self.help_widget.hide()
+
+            main_layout.addWidget(self.animated_sidebar, alignment=Qt.AlignmentFlag.AlignLeft)
+            main_layout.addWidget(self.content_container)
+            main_layout.addWidget(self.help_widget)
+
+            root_layout.addWidget(self.title_bar_widget)
             root_layout.addWidget(self.content_widget)
 
-            # === Анимация ширины ===
-            self.animation = QPropertyAnimation(self.mutable_panel, b"maximumWidth")
-            self.animation.setDuration(500)
-            self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+            #===============================================
 
             # === Tray, логи, прочее ===
             self.tray_icon = QSystemTrayIcon(self)
@@ -755,55 +788,61 @@ class Assistant(QMainWindow):
             
             self.centralWidget().adjustSize()
             self.minimum_size = self.centralWidget().minimumSizeHint()
-            debug_logger.debug(f"[MAIN] Минимальный размер контента: {self.minimum_size.width()}x{self.minimum_size.height()}")      
+            debuglog.debug(f"[MAIN] Минимальный размер контента: {self.minimum_size.width()}x{self.minimum_size.height()}")      
             self.setup_mouse_tracking_for_children(self.central_widget)
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при инициализации GUI: {e}")
+            debuglog.error(f"[MAIN] Ошибка при инициализации GUI: {e}")
             
     def _handle_sidebar_click(self, key: str):
         slot = self._sidebar_slot_map.get(key)
         if slot and callable(slot):
             slot()
         else:
-            debug_logger.error(f"[MAIN] Нет слота для ключа: {key}")
-            
+            debuglog.error(f"[MAIN] Нет слота для ключа: {key}")
+
+    def on_page_changed(self, index):
+        """При смене страницы обновляем активный элемент"""
+        if index == 0:
+            self.animated_sidebar.set_active_element("logs_page")
+        elif index == 1:
+            self.animated_sidebar.set_active_element("settings_page")
+        elif index == 2:
+            self.animated_sidebar.set_active_element("commands_page")
+        elif index == 3:
+            self.animated_sidebar.set_active_element("others_page")
+
+        if index != 0:
+            self.help_widget.show()
+        else:
+            self.help_widget.hide()
+
+    def open_folder_files(self, event):
+        try:
+            path = self.main_folder_path
+            os.startfile(path)
+        except Exception as e:
+            logger.error(f"[MAIN] Ошибка при открытии папки: {e}")
+
     def setup_mouse_tracking_for_children(self, widget):
-        """Рекурсивно устанавливает mouse tracking для всех дочерних виджетов"""
+        """Устанавливает mouse tracking для всех дочерних виджетов"""
         widget.setMouseTracking(True)
         for child in widget.findChildren(QWidget):
             child.setMouseTracking(True)
-            self.setup_mouse_tracking_for_children(child)
             
-    def get_cursor_region(self, pos):
-        """Определяем область курсора для изменения размера"""
-        # Используем геометрию окна вместо rect()
-        width = self.width()
-        height = self.height()
-        x, y = pos.x(), pos.y()
-        
-        if x <= self.margin and y <= self.margin:
-            return "top-left"
-        elif x >= width - self.margin and y <= self.margin:
-            return "top-right"
-        elif x <= self.margin and y >= height - self.margin:
-            return "bottom-left"
-        elif x >= width - self.margin and y >= height - self.margin:
-            return "bottom-right"
-        elif x <= self.margin:
-            return "left"
-        elif x >= width - self.margin:
-            return "right"
-        elif y <= self.margin:
-            return "top"
-        elif y >= height - self.margin:
-            return "bottom"
-        else:
-            return "center"
-    
+    # def setup_mouse_tracking_for_children(self, widget):
+    #     """Рекурсивно устанавливает mouse tracking для всех дочерних виджетов"""
+    #     widget.setMouseTracking(True)
+    #     for child in widget.findChildren(QWidget):
+    #         child.setMouseTracking(True)
+    #         self.setup_mouse_tracking_for_children(child)
+            
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
             self.drag_direction = self.get_cursor_region(pos)
+
+            if self._is_maximized:
+                self.drag_direction = "center"
             
             if self.drag_direction != "center":
                 self.dragging = True
@@ -812,6 +851,11 @@ class Assistant(QMainWindow):
                 self.reached_min_size = False
                 
     def mouseMoveEvent(self, event: QMouseEvent):
+        if self._is_maximized:
+            # Если окно развёрнуто — не показываем курсоры ресайза
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            return
+        
         pos = event.position().toPoint()
         region = self.get_cursor_region(pos)
         
@@ -830,7 +874,7 @@ class Assistant(QMainWindow):
         
         if self.dragging and self.drag_direction != "center":
             self.handle_resize(event.globalPosition().toPoint())
-            
+
     def enterEvent(self, event):
         """При входе в окно устанавливаем правильный курсор"""
         self.setCursor(Qt.CursorShape.ArrowCursor)
@@ -848,10 +892,12 @@ class Assistant(QMainWindow):
     
     def handle_resize(self, global_pos):
         """Обработка изменения размера с отслеживанием минимального размера"""
+        if self._is_maximized:
+            return
+        
         delta = global_pos - self.drag_position
         new_geometry = QRect(self.initial_geometry)
-        
-        # Сохраняем исходную геометрию для проверки изменений
+
         old_geometry = QRect(new_geometry)
         
         # Применяем изменения
@@ -866,8 +912,7 @@ class Assistant(QMainWindow):
         
         if "bottom" in self.drag_direction:
             new_geometry.setBottom(self.initial_geometry.bottom() + delta.y())
-        
-        # Проверяем, не стал ли размер меньше минимального
+
         content_min_width = self.minimum_size.width() + 20  # + отступы
         content_min_height = self.minimum_size.height() + 20
         
@@ -885,17 +930,15 @@ class Assistant(QMainWindow):
 
         # Если изменения допустимы - применяем
         self.setGeometry(new_geometry)
+        self._normal_geometry = new_geometry
         self.reached_min_size = False
         
-        if new_geometry.width() > 400 and new_geometry.height() > 300:
+        if new_geometry.width() > 200 and new_geometry.height() > 200:
             self.setGeometry(new_geometry)
 
         if hasattr(self, 'snow_on_background') and self.snow_on_background:
-            # Обновляем геометрию
             self.snow_on_background.setGeometry(self.central_widget.rect())
-            # Принудительно пересоздаем снежинки
             self.snow_on_background._init_snowflakes()
-            # Обновляем отображение
             self.snow_on_background.update()
             
         if hasattr(self, 'garland_decorator') and self.garland_decorator:
@@ -906,9 +949,7 @@ class Assistant(QMainWindow):
         if not widget:
             return
             
-        widget.installEventFilter(self)  # Фильтр устанавливается на главное окно!
-        
-        # Рекурсивно обходим всех детей
+        widget.installEventFilter(self)
         for child in widget.children():
             if isinstance(child, QWidget):
                 self.install_event_filter_recursive(child)
@@ -918,20 +959,17 @@ class Assistant(QMainWindow):
         if event.type() == QEvent.Enter:
             help_id = obj.property("helpId")
             if help_id and hasattr(self, 'help_widget'):
-                # Вызываем show_help у виджета помощи
                 self.help_widget.show_help(help_id)
                 return True
                 
         elif event.type() == QEvent.Leave:
-            # Опционально: можно очищать справку при уходе мыши
-            # или показывать справку по умолчанию
             pass
             
         return super().eventFilter(obj, event)
         
     def setup_custom_font_label(self, text: str):
         # Загрузка шрифта
-        font_path = get_path("bin", "fonts", "Flatiron", "Flatiron Regular.otf")
+        font_path = get_path("bin", "fonts", "Audiowide", "Audiowide-Regular.ttf")
         font_id = QFontDatabase.addApplicationFont(font_path)
         
         if font_id == -1:
@@ -949,16 +987,6 @@ class Assistant(QMainWindow):
         label.setFont(custom_font)
         
         return label
-            
-    def update_style_list(self):
-        change_color = ColorSettingsWindow(self)
-        change_color.update_style_file()
-        self.apply_styles()
-        
-    def update_style_all(self):
-        change_color = ColorSettingsWindow(self)
-        change_color.update_all_styles()
-        self.apply_styles()
         
     def start_ipc_server(self):
         """Настраивает IPC сервер используя Qt (без потоков)"""
@@ -966,18 +994,18 @@ class Assistant(QMainWindow):
         self.ipc_server.newConnection.connect(self.handle_ipc_connection)
         
         # Удаляем старый сервер если есть (на случай краша)
-        QLocalServer.removeServer("assistant_app")
+        QLocalServer.removeServer("voxodium_app")
         
         # Запускаем сервер
-        if not self.ipc_server.listen("assistant_app"):
-            debug_logger.error(f"[MAIN] IPC server error: {self.ipc_server.errorString()}")
+        if not self.ipc_server.listen("voxodium_app"):
+            debuglog.error(f"[MAIN] IPC server error: {self.ipc_server.errorString()}")
         else:
-            debug_logger.info("[MAIN] IPC server started")
+            debuglog.info("[MAIN] IPC server started")
 
     def handle_ipc_connection(self):
         """Обрабатывает входящие соединения"""
         socket = self.ipc_server.nextPendingConnection()
-        debug_logger.info(f"[MAIN] New connection: {socket}")
+        debuglog.info(f"[MAIN] New connection: {socket}")
         
         if socket:
             # Многократные попытки чтения
@@ -985,24 +1013,24 @@ class Assistant(QMainWindow):
                 if socket.waitForReadyRead(100):  # Короткие интервалы
                     if socket.bytesAvailable() > 0:
                         data = socket.readAll().data()
-                        debug_logger.info(f"[MAIN] IPC data received (attempt {attempt+1}): {data}")
+                        debuglog.info(f"[MAIN] IPC data received (attempt {attempt+1}): {data}")
                         if data == b'show_window':
-                            debug_logger.info("[MAIN] Activating window...")
+                            debuglog.info("[MAIN] Activating window...")
                             self.force_show_window()
                         break
                 else:
-                    debug_logger.warning(f"[MAIN] Attempt {attempt+1}: No data yet")
+                    debuglog.warning(f"[MAIN] Attempt {attempt+1}: No data yet")
             
             socket.disconnectFromServer()
             socket.deleteLater()
-            debug_logger.info("[MAIN] Connection closed")
+            debuglog.info("[MAIN] Connection closed")
             
     def read_ipc_data(self, socket):
         """Читает данные из IPC соединения"""
         try:
             if socket.bytesAvailable() > 0:
                 data = socket.readAll().data()
-                debug_logger.debug(f"[MAIN] IPC data received: {data}")
+                debuglog.debug(f"[MAIN] IPC data received: {data}")
                 if data == b'show_window':
                     self.force_show_window()
             
@@ -1011,15 +1039,15 @@ class Assistant(QMainWindow):
             socket.deleteLater()
             
         except Exception as e:
-            debug_logger.error(f"[MAIN] Error reading IPC data: {e}")
+            debuglog.error(f"[MAIN] Error reading IPC data: {e}")
         
     def force_show_window(self):
         """Принудительное открытие окна из любого состояния"""
-        debug_logger.debug(f"[MAIN] force_show_window called. isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}, isHidden: {self.isHidden()}")
+        debuglog.debug(f"[MAIN] force_show_window called. isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}, isHidden: {self.isHidden()}")
         
         # Всегда показываем окно
         self.show()
-        self.showNormal()  # Сбрасываем minimized/maximized состояние
+        self.showNormal()
         
         # Активация и фокус
         self.activateWindow()
@@ -1032,13 +1060,12 @@ class Assistant(QMainWindow):
             (screen_geometry.width() - self.width()) // 2,
             (screen_geometry.height() - self.height()) // 2
         )
-        
-        # Принудительная перерисовка
+
         self.update()
         self.repaint()
-        self.log_area.start_active_mode()
+        self.logs_widget.log_area.start_active_mode()
         
-        debug_logger.debug(f"[MAIN] After force_show: isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}")
+        debuglog.debug(f"[MAIN] After force_show: isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}")
         
     def update_garland_state(self):
         if self.is_garland:
@@ -1073,10 +1100,10 @@ class Assistant(QMainWindow):
             if self.garland_decorator is not None:
                 self.garland_decorator.next_animation()
             else:
-                debug_logger.error("[MAIN] Не удалось создать гирлянду")
+                debuglog.error("[MAIN] Не удалось создать гирлянду")
                 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при смене анимации гирлянды: {e}")    
+            debuglog.error(f"[MAIN] Ошибка при смене анимации гирлянды: {e}")    
 
     def update_snow_state(self):
         """Обновляет состояние снега через show/hide"""
@@ -1098,7 +1125,7 @@ class Assistant(QMainWindow):
         self.snow_on_background.resize(920, 700)
         self.snow_on_background.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.snow_on_background.raise_()
-        self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), white_balance=50)
+        self.snow_on_background.setSnowColor(self.style_manager.get_raw_color(), white_balance=50)
 
         # Изначально показываем или скрываем в зависимости от состояния
         if self.is_snow:
@@ -1117,29 +1144,27 @@ class Assistant(QMainWindow):
             else:
                 self.snow_on_background.hide()
 
-    def hide_layout(self, layout):
-        """Скрывает все виджеты в layout"""
-        for i in range(layout.count()):
-            item = layout.itemAt(i)
-            if item.widget():
-                item.widget().hide()
+    # def hide_layout(self, layout):
+    #     """Скрывает все виджеты в layout"""
+    #     for i in range(layout.count()):
+    #         item = layout.itemAt(i)
+    #         if item.widget():
+    #             item.widget().hide()
 
-    def show_layout(self, layout):
-        """Показывает все виджеты в layout"""
-        for i in range(layout.count()):
-            item = layout.itemAt(i)
-            if item.widget():
-                item.widget().show()
+    # def show_layout(self, layout):
+    #     """Показывает все виджеты в layout"""
+    #     for i in range(layout.count()):
+    #         item = layout.itemAt(i)
+    #         if item.widget():
+    #             item.widget().show()
                 
     def open_user_profile(self):
-        QDesktopServices.openUrl(QUrl("https://owl-app.ru/profile"))
-    
-    def refresh_user_data(self):
-        pass
+        username = self.user_data["username"]
+        QDesktopServices.openUrl(QUrl(f"{domain}/user/{username}"))
     
     def logout_user(self):
         """Выход с возвратом к LoginWindow"""
-        debug_logger.info("[MAIN] Выход из системы...")
+        debuglog.info("[MAIN] Выход из системы...")
         
         # Очищаем данные
         self.user_data = None
@@ -1168,7 +1193,7 @@ class Assistant(QMainWindow):
             """Установить данные пользователя (вызывается из InitScreen)"""
             self.user_data = user_data
             self.update_user_profile(user_data)
-            debug_logger.info(f"[MAIN] Данные пользователя установлены: {user_data['username']}")
+            debuglog.info(f"[MAIN] Данные пользователя установлены: {user_data['username']}")
     
     def clear_user_data(self):
         """Очистить данные пользователя"""
@@ -1177,7 +1202,7 @@ class Assistant(QMainWindow):
                 
     def update_user_profile(self, user_data=None):
         """Обновить профиль пользователя (можно вызывать без параметров)"""
-        debug_logger.info(f"[MAIN] Обновление профиля...")
+        debuglog.info(f"[MAIN] Обновление профиля...")
         # Используем переданные данные или локальные
         data = user_data or self.user_data
             
@@ -1192,12 +1217,13 @@ class Assistant(QMainWindow):
     def set_default_avatar_svg(self):
         """Установить SVG аватарку по умолчанию"""
         if hasattr(self, 'avatar_svg'):
-            self.style_manager.apply_color_svg(self.avatar_svg, strength=0.90)
+            self.avatar_svg.show()
+            self.style_manager.apply_color_svg(self.avatar_svg)
 
     def load_user_avatar(self, avatar_path):
         """Загрузить пользовательскую аватарку"""
         try:
-            avatar_url = f"{self.auth.base_url}{avatar_path}"
+            avatar_url = f"{self.auth.base_url}/static/{avatar_path}"
             response = requests.get(avatar_url, timeout=10, verify=False)
             
             if response.status_code == 200:
@@ -1221,11 +1247,11 @@ class Assistant(QMainWindow):
                 self.avatar_pixmap_label.setPixmap(rounded_pixmap)
                 
             else:
-                debug_logger.error(f"[MAIN] Ошибка загрузки аватара: {response.status_code}")
+                debuglog.error(f"[MAIN] Ошибка загрузки аватара: {response.status_code}")
                 self.set_default_avatar_svg()
                 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка загрузки аватара: {e}")
+            debuglog.error(f"[MAIN] Ошибка загрузки аватара: {e}")
             self.set_default_avatar_svg()
 
     def create_rounded_pixmap(self, pixmap, size):
@@ -1280,6 +1306,144 @@ class Assistant(QMainWindow):
         QTimer.singleShot(100, lambda: [self.hide(), self.center_window()])
         self.first_run = False
 
+    def save_window_settings(self):
+        """Сохранить размер и положение окна"""
+        try:
+            if not self._normal_geometry:
+                if self._is_maximized:
+                    self._normal_geometry = self._default_geometry
+                else:
+                    self._normal_geometry = self.geometry()
+
+            if isinstance(self._normal_geometry, QRect):
+                geom = [
+                    self._normal_geometry.x(),
+                    self._normal_geometry.y(),
+                    self._normal_geometry.width(),
+                    self._normal_geometry.height()
+                ]
+            else:
+                geom = self._normal_geometry
+
+            settings = {
+                'geometry': geom,
+                'state': {
+                    '_is_maximized': self._is_maximized
+                }
+            }
+
+            with open(winsize_file, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2)
+
+        except Exception as e:
+            logger.error(f"[WINDOW] Ошибка сохранения настроек: {e}")
+    
+    def load_window_settings(self):
+        """Загрузить сохраненные размеры окна"""
+        try:
+            if not os.path.exists(winsize_file):
+                with open(winsize_file, 'w', encoding='utf-8') as f:
+                    json.dump({}, f)
+                return {}
+
+            with open(winsize_file, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+
+            debuglog.info("[MAIN] Размеры окна загружены")
+
+            if 'state' in settings:
+                if settings['state'].get('is_maximized'):
+                    self._is_maximized = True
+                    self.showMaximized()
+                else:
+                    g = settings["geometry"]
+                    if isinstance(g, (list, tuple)) and len(g) == 4:
+                        rect = QRect(g[0], g[1], g[2], g[3])
+                        self.setGeometry(rect)
+
+        except Exception as e:
+            logger.error(f"[WINDOW] Ошибка загрузки настроек: {e}")
+
+    def showMaximized(self):
+        """Кастомное максимизирование для безрамного окна"""
+        super().showMaximized()
+
+        screen = QApplication.primaryScreen()
+        available_geometry = screen.availableGeometry()
+
+        self.setGeometry(available_geometry)
+
+        self.setContentsMargins(0, 0, 0, 0)
+
+    def show_normal_window(self):
+        self.setGeometry(self._default_geometry)
+
+    def toggle_maximize(self, animate=True):
+        """Переключение максимизации с опциональной анимацией"""
+        self.resize_animation.stop()
+        
+        if self._is_maximized:
+            if self._normal_geometry:
+                target_geo = self._normal_geometry
+            else:
+                target_geo = self._default_geometry
+            
+            start_geo = self.geometry()
+            
+            self._is_maximized = False
+            
+            if animate:
+                self.resize_animation.setStartValue(start_geo)
+                self.resize_animation.setEndValue(target_geo)
+                self.resize_animation.start()
+                
+                def on_animation_finished():
+                    self.central_widget.setObjectName("MainWindowWidget")
+                    self.close_button.setObjectName("TitleBarCloseBtn")
+                    self.apply_styles()
+                
+                self.resize_animation.finished.connect(on_animation_finished)
+                self.resize_animation.finished.connect(lambda: self.resize_animation.finished.disconnect())
+            else:
+                self.setGeometry(target_geo)
+                self.central_widget.setObjectName("MainWindowWidget")
+                self.close_button.setObjectName("TitleBarCloseBtn")
+                self.apply_styles()
+            
+        else:
+            self._normal_geometry = self.geometry()
+            screen = QApplication.primaryScreen()
+            target_geo = screen.availableGeometry()
+            
+            start_geo = self.geometry()
+            self._is_maximized = True
+            
+            if animate:
+                self.resize_animation.setStartValue(start_geo)
+                self.resize_animation.setEndValue(target_geo)
+                self.resize_animation.start()
+                
+                def on_animation_finished():
+                    self.central_widget.setObjectName("FullWindowMode")
+                    self.close_button.setObjectName("FullWindowMode_CloseBtn")
+                    self.apply_styles()
+
+                    if hasattr(self, 'snow_on_background') and self.snow_on_background:
+                        self.snow_on_background.setGeometry(self.central_widget.rect())
+                        self.snow_on_background._init_snowflakes()
+                        self.snow_on_background.update()
+                        
+                    if hasattr(self, 'garland_decorator') and self.garland_decorator:
+                        self.garland_decorator.update_size(self.width())
+                
+                self.resize_animation.finished.connect(on_animation_finished)
+                self.resize_animation.finished.connect(lambda: self.resize_animation.finished.disconnect())
+            else:
+                self.setGeometry(target_geo)
+                self.central_widget.setObjectName("FullWindowMode")
+                self.close_button.setObjectName("FullWindowMode_CloseBtn")
+                self.apply_styles()
+
     def center_window(self):
         """Центрирование окна"""
         frame_geo = self.frameGeometry()
@@ -1291,52 +1455,32 @@ class Assistant(QMainWindow):
         """Применяет все стили к окну"""
         try:
             self.styles = self.style_manager.load_styles()
-            self.check_start_win() # Для изменения цвета кнопки автозапуска
 
             if hasattr(self, 'avatar_svg'):
-                self.style_manager.apply_color_svg(self.avatar_svg, strength=0.90)
+                self.style_manager.apply_color_svg(self.avatar_svg)
             if hasattr(self, 'progress_load'):
                 self.style_manager.apply_progressbar(widget=self.progress_load)
             if hasattr(self, 'svg_image'):
-                self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
-            if hasattr(self, 'settings_svg'):
-                self.style_manager.apply_color_svg(self.settings_svg, strength=0.90)
-            if hasattr(self, 'shortcut_svg'):
-                self.style_manager.apply_color_svg(self.shortcut_svg, strength=0.90)
-            if hasattr(self, 'commands_svg'):
-                self.style_manager.apply_color_svg(self.commands_svg, strength=0.90)
-            if hasattr(self, 'guide_svg'):
-                self.style_manager.apply_color_svg(self.guide_svg, strength=0.90)
-            if hasattr(self, 'other_svg'):
-                self.style_manager.apply_color_svg(self.other_svg, strength=0.90)
-            if hasattr(self, 'power_svg'):
-                self.style_manager.apply_color_svg(self.power_svg, strength=0.90)
-            if hasattr(self, 'widget_svg'):
-                self.style_manager.apply_color_svg(self.widget_svg, strength=0.90)
-            if hasattr(self, 'icon_svg'):
-                self.style_manager.apply_color_svg(self.icon_svg, strength=0.95)
+                self.style_manager.apply_color_svg(self.svg_image)
+            if hasattr(self, 'logo_svg'):
+                self.style_manager.apply_color_svg(self.logo_svg)
             if hasattr(self, 'update_light_svg'):
-                self.style_manager.apply_color_svg(self.update_light_svg, strength=0.95)
+                self.style_manager.apply_color_svg(self.update_light_svg)
             if hasattr(self, 'clear_logs_svg'):
-                self.style_manager.apply_color_svg(self.clear_logs_svg, strength=0.95)
+                self.style_manager.apply_color_svg(self.clear_logs_svg)
             if hasattr(self, 'update_all_preset_svg'):
-                self.style_manager.apply_color_svg(self.update_all_preset_svg, strength=0.95)    
+                self.style_manager.apply_color_svg(self.update_all_preset_svg)  
+            if hasattr(self, 'max_svg'):
+                self.style_manager.apply_color_svg(self.max_svg) 
             if hasattr(self, 'close_svg'):
-                self.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#ff0000")
-            
-            # Применение общего стиля окна
-            if hasattr(self, 'central_widget'):
-                self.central_widget.setObjectName("MainWindowWidget")
-            if hasattr(self, 'title_bar_widget'):
-                self.title_bar_widget.setObjectName("TitleBar")
-            if hasattr(self, 'container'):
-                self.container.setObjectName("WindowContainer")
-            # Применяем стили к текущему окну
+                self.style_manager.apply_color_svg(self.close_svg, specified_color="#ff0000")
+
+
             style_sheet = ""
             for widget, styles in self.styles.items():
-                if widget.startswith("Q"):  # Для стандартных виджетов (например, QMainWindow, QPushButton)
+                if widget.startswith("Q"):
                     selector = widget
-                else:  # Для виджетов с objectName (например, TitleBar, CentralWidget)
+                else:
                     selector = f"#{widget}"
 
                 style_sheet += f"{selector} {{\n"
@@ -1344,14 +1488,13 @@ class Assistant(QMainWindow):
                     style_sheet += f"    {prop}: {value};\n"
                 style_sheet += "}\n"
 
-            # Устанавливаем стиль для текущего окна
             self.setStyleSheet(style_sheet)
             self.apply_menu_styles(self.menu_tray)
             if hasattr(self, "snow_on_background"):
-                self.snow_on_background.setSnowColor(self.style_manager.get_snow_color(), white_balance=50)
+                self.snow_on_background.setSnowColor(self.style_manager.get_raw_color(), white_balance=50)
                 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка в методе apply_styles: {e}")
+            debuglog.error(f"[MAIN] Ошибка в методе apply_styles: {e}")
 
     def apply_menu_styles(self, menu: QMenu):
         """Применяет стили из self.styles к QMenu"""
@@ -1369,14 +1512,8 @@ class Assistant(QMainWindow):
         if menu_style.strip():
             menu.setStyleSheet(menu_style)
 
-    def update_colors(self):
-        self.styles = self.style_manager.load_styles()
-        for data in self.svg_settings_list:
-            self.style_manager.apply_color_svg(data["svg"], strength=0.90)
-
-    def show_notification_message(self, message):
+    def show_notification(self, message):
         try:
-            # Проверяем, действительно ли окно скрыто/свёрнуто
             is_window_hidden = self.isMinimized() or not self.isVisible()
 
             toast = ToastNotification(
@@ -1386,7 +1523,7 @@ class Assistant(QMainWindow):
             )
             toast.show()
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при показе всплывающего уведомления: {e}")
+            debuglog.error(f"[MAIN] Ошибка при показе всплывающего уведомления: {e}")
 
     def show_message(self, text="...", title="Уведомление", message_type="info", buttons=QMessageBox.StandardButton.Ok):
         try:
@@ -1399,7 +1536,7 @@ class Assistant(QMainWindow):
             )
             return message.exec_()
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при показе уведомления(оконного): {e}")
+            debuglog.error(f"[MAIN] Ошибка при показе уведомления(оконного): {e}")
             return QDialog.DialogCode.Rejected
 
     def show_supply_notice(self, message, is_confirm=False):
@@ -1408,7 +1545,7 @@ class Assistant(QMainWindow):
             # Отправляем сигнал в главный поток Qt
             self.supply_notice_signal.emit(message, is_confirm)
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при отправке сигнала уведомления: {e}")
+            debuglog.error(f"[MAIN] Ошибка при отправке сигнала уведомления: {e}")
 
     def _handle_supply_notice(self, message, is_confirm=False):
         """Выполняется в главном потоке Qt (обработчик сигнала)"""
@@ -1425,13 +1562,13 @@ class Assistant(QMainWindow):
             toast.show()
 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при показе всплывающего уведомления: {e}")
+            debuglog.error(f"[MAIN] Ошибка при показе всплывающего уведомления: {e}")
 
     def keyPressEvent(self, event):
         """Сворачивает основное окно в трей по нажатию на Esc"""
         if event.key() == Qt.Key.Key_Escape:
-            if self.mutable_panel.isVisible():
-                self.hide_widget()
+            if self.isVisible():
+                self.on_page_changed(0)
                 event.accept()
             else:
                 self.custom_hide()
@@ -1439,12 +1576,12 @@ class Assistant(QMainWindow):
         else:
             super().keyPressEvent(event)
 
-    def open_update_app(self, event):
-        """Запускает скрипт для установки обновления при клике на текст."""
+    def open_update_app(self):
+        """Запускает скрипт для установки обновления"""
         try:
-            self.update_app(type_version=self.type_version, batch_update=self.is_batch_update)
+            self.update_app(type_version=self.type_version)
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при запуске программы обновления: {e}")
+            debuglog.error(f"[MAIN] Ошибка при запуске программы обновления: {e}")
 
     #  тут исправлена логика обработки ручной проверки
     @Slot()
@@ -1454,7 +1591,7 @@ class Assistant(QMainWindow):
             self.is_manual_check = True  # Устанавливаем флаг ручной проверки
             self.check_update_app()
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при запуске программы обновления: {e}")
+            debuglog.error(f"[MAIN] Ошибка при запуске программы обновления: {e}")
 
     def handle_update_status(self, is_success, status_text):
         """Обрабатывает результат проверки обновлений"""
@@ -1462,9 +1599,9 @@ class Assistant(QMainWindow):
             return
 
         # Реагируем только если это ручная проверка
-        if status_text == "Стабильная версия":
+        if status_text == "Stable":
             self.get_reaction(detail=True, name="update_button")
-        elif status_text == "Доступно обновление":
+        elif status_text == "New version":
             pass
         elif not is_success:
             self.get_reaction(detail=True, name="error_file")
@@ -1475,7 +1612,7 @@ class Assistant(QMainWindow):
         """
         Метод для отображения или скрытия кнопки "Установить обновление"
         """
-        if self.update_label.text() == "Доступно обновление": # Стабильная версия Доступно обновление 
+        if self.update_label.text() == "New version": # Stable New version 
             self.update_btn.show()
             self.style_manager.apply_color_svg(self.update_svg, strength=0.90, specified_color="#44D14F")
         else:
@@ -1495,25 +1632,25 @@ class Assistant(QMainWindow):
         if os.path.exists(temp_dir):
             try:
                 send2trash(temp_dir)
-                debug_logger.info(f"[MAIN] Папка update_pack отправлена в корзину: {temp_dir}")
+                debuglog.info(f"[MAIN] Папка update_pack отправлена в корзину: {temp_dir}")
             except Exception as e:
-                debug_logger.error(f"[MAIN] Не удалось удалить {temp_dir}: {e}")
+                debuglog.error(f"[MAIN] Не удалось удалить {temp_dir}: {e}")
 
         # Удаление в корзину папки бэкапа
         if os.path.exists(backup_dir):
             try:
                 send2trash(backup_dir)
-                debug_logger.info(f"[MAIN] Папка бэкапа отправлена в корзину: {backup_dir}")
+                debuglog.info(f"[MAIN] Папка бэкапа отправлена в корзину: {backup_dir}")
             except Exception as e:
-                debug_logger.error(f"[MAIN] Не удалось удалить {backup_dir}: {e}")
+                debuglog.error(f"[MAIN] Не удалось удалить {backup_dir}: {e}")
                 
         # Удаление в корзину batch_dir
         if os.path.exists(batch_dir):
             try:
                 send2trash(batch_dir)
-                debug_logger.info(f"[MAIN] Папка batch_dir отправлена в корзину: {batch_dir}")
+                debuglog.info(f"[MAIN] Папка batch_dir отправлена в корзину: {batch_dir}")
             except Exception as e:
-                debug_logger.error(f"[MAIN] Не удалось удалить {batch_dir}: {e}")
+                debuglog.error(f"[MAIN] Не удалось удалить {batch_dir}: {e}")
 
         # Удаление .zip файлов в корзину
         if os.path.exists(download_dir):
@@ -1522,9 +1659,9 @@ class Assistant(QMainWindow):
                 if os.path.isfile(old_path) and old_file.endswith('.zip'):
                     try:
                         send2trash(old_path)
-                        debug_logger.info(f"[MAIN] Файл отправлен в корзину: {old_path}")
+                        debuglog.info(f"[MAIN] Файл отправлен в корзину: {old_path}")
                     except Exception as e:
-                        debug_logger.error(f"[MAIN] Не удалось удалить {old_path}: {e}")
+                        debuglog.error(f"[MAIN] Не удалось удалить {old_path}: {e}")
 
     def animation_start_load(self):
         self.progress_load.show()
@@ -1534,21 +1671,6 @@ class Assistant(QMainWindow):
         self.progress_load.hide()
         self.progress_load.stopAnimation()
 
-    def swap_update_file(self, current_version):
-        try:
-            temp_folder_name = f"update/{current_version}_temp"
-            temp_dir = get_path(temp_folder_name)
-            debug_logger.info(f"[MAIN] Path update temp: {temp_dir}")
-            if os.path.exists(temp_dir):
-                subprocess.Popen([get_path("swap-updater.exe"), "--update-dir", str(temp_dir)], shell=True)
-                debug_logger.info("[MAIN] swap-updater.exe успешно запущен")
-            else:
-                subprocess.Popen([get_path("swap-updater.exe")], shell=True)
-                debug_logger.info(f"[MAIN] Папка обновления не найдена: {temp_dir}\n"
-                                  "Запуск swap-updater.exe без параметров")
-        except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при запуске swap-updater.exe: {e}")
-
     def check_update_app(self):
         """Проверяет обновления"""
         if self.stop_checking:
@@ -1556,7 +1678,7 @@ class Assistant(QMainWindow):
         try:
             self.animation_start_load()
             self.toggle_update_button()
-            self.update_label.setText("Поиск обновления...")
+            self.update_label.setText("Searching...")
 
             task = VersionCheckThread()
             task.signals.version_checked.connect(self.handle_version_check)
@@ -1566,9 +1688,8 @@ class Assistant(QMainWindow):
 
         except Exception as e:
             self.animation_stop_load()
-            debug_logger.error(f"[MAIN] Неожиданная ошибка: {str(e)}", exc_info=True)
-            self.update_label.show()
-            self.update_label.setText("Ошибка обновления")
+            debuglog.error(f"[MAIN] Неожиданная ошибка: {str(e)}", exc_info=True)
+            self.update_label.setText("Failed update")
             QTimer.singleShot(2000, self.check_update_app)
 
     def handle_version_check(self, stable_version, exp_version):
@@ -1579,43 +1700,22 @@ class Assistant(QMainWindow):
 
         type_version = "exp" if self.beta_version else "stable"
 
-        load_changelog()
+        load_changelog(self.changelog_file_path)
 
         if self.latest_version > self.current_ver:
-            # Запускаем проверку манифеста
-            self.get_changes_manifest_thread = GetManifestThread(self.current_ver, self.auth)
-            self.get_changes_manifest_thread.check_success.connect(self.on_manifest_ready)
-            self.get_changes_manifest_thread.check_failed.connect(self.handle_failed_manifest)
-            self.get_changes_manifest_thread.start()
-        else:
-            self.animation_stop_load()
-            self.update_label.show()
-            self.update_label.setText("Стабильная версия")
-            self.toggle_update_button()
-            self.update_checked.emit(True, "Стабильная версия")
-            self.swap_update_file(self.current_ver)
-            self.stop_checking = False
-            QTimer.singleShot(4000, lambda: self.update_complete())
-            
-    def on_manifest_ready(self, manifest):
-        """Обработка готового манифеста и запуск соответствующей загрузки"""
-        strategy = get_update_strategy(self.current_ver, self.latest_version, manifest)
-        
-        if strategy == "full":
-            debug_logger.info("[MAIN] Требуется полная установка (было критическое обновление)")
             self.start_full_download()
         else:
-            debug_logger.info("[MAIN] Дельта-обновление доступно")
-            # Собираем все файлы из всех версий между current и latest
-            files_to_update = self.collect_all_changed_files(
-                self.current_ver, self.latest_version, manifest
-            )
-            # Передаем manifest в start_delta_download
-            self.start_delta_download(files_to_update, manifest)
+            self.animation_stop_load()
+            self.update_label.setText("Stable")
+            self.toggle_update_button()
+            self.update_checked.emit(True, "Stable")
+            self.stop_checking = False
+            QTimer.singleShot(4000, lambda: self.update_complete())
+
 
     def start_full_download(self):
         """Запуск загрузки полной версии"""
-        self.update_label.setText("Загрузка обновления...")
+        self.update_label.setText("Loading...")
         type_version = "exp" if self.beta_version else "stable"
         self.download_thread = DownloadThread(type_version)
         self.download_thread.download_complete.connect(self.handle_download_complete)
@@ -1623,133 +1723,33 @@ class Assistant(QMainWindow):
         self.download_thread.start()
         self.toggle_update_button()
 
-    def start_delta_download(self, files_to_update, manifest):
-        """Запуск загрузки дельта-обновления"""
-        self.update_label.setText("Загрузка обновления...")
-        self.download_thread = DeltaDownloadThread(
-            files_to_update, 
-            manifest,  # ← передаем manifest в поток
-            self.auth
-        )
-        self.download_thread.download_complete.connect(self.handle_download_complete)
-        self.download_thread.finished.connect(self.animation_stop_load)
-        self.download_thread.start()
-        self.toggle_update_button()
-        
-    def collect_all_changed_files(self, current_ver, target_ver, manifest):
-        """Собирает все измененные файлы между версиями"""
-        # Преобразуем версии из манифеста в объекты Version для сравнения
-        version_objects = []
-        version_to_str_map = {}
-        
-        for ver_str in manifest.keys():
-            try:
-                ver_obj = version.parse(ver_str)
-                version_objects.append(ver_obj)
-                version_to_str_map[ver_obj] = ver_str
-            except:
-                continue
-        
-        # Сортируем объекты Version
-        version_objects.sort()
-        
-        try:
-            # Находим индексы в отсортированном списке объектов Version
-            current_idx = version_objects.index(current_ver)
-            target_idx = version_objects.index(target_ver)
-            
-            all_files = set()
-            for i in range(current_idx + 1, target_idx + 1):
-                version_obj = version_objects[i]
-                version_str = version_to_str_map[version_obj]  # Получаем строковый ключ
-                files = manifest[version_str].get('changed_files', [])  # Используем changed_files
-                all_files.update(files)
-            
-            return list(all_files)
-            
-        except ValueError as e:
-            debug_logger.error(f"[MAIN] Версия не найдена в collect_all_changed_files: {e}")
-            debug_logger.error(f"[MAIN] Текущая: {current_ver}, Целевая: {target_ver}")
-            debug_logger.error(f"[MAIN] Доступные: {[str(v) for v in version_objects]}")
-            return []
-            
-    def handle_failed_manifest(self):
-        self.count += 1
-        self.animation_stop_load()
-        self.update_label.show()
-        self.update_label.setText("Ошибка соединения")
-        if self.count == 3:
-            self.update_label.setText("Не удалось получить обновление")
-        if self.count <= 2: # 3 попытки на запрос версии в случае неудачи
-            QTimer.singleShot(2000, self.check_update_app)
-
     def handle_check_failed(self):
         self.count += 1
         self.animation_stop_load()
         self.update_label.show()
-        self.update_label.setText("Ошибка соединения")
+        self.update_label.setText("Failed connection")
         if self.count == 3:
-            self.update_label.setText("Сервер не доступен")  
+            self.update_label.setText("Server error")  
         if self.count <= 2: # 3 попытки на запрос версии в случае неудачи
             QTimer.singleShot(2000, self.check_update_app)
     
     def handle_download_complete(self, file_path, success=True, skipped=False, error=None, batch=False):
         self.animation_stop_load()
-        self.update_label.show()
-        debug_logger.info(f"[MAIN] Values:", file_path, success, skipped, error, "batch:", batch)
-        self.is_batch_update = batch
-        if self.is_batch_update:
-            # Обработка дельта-обновления
-            if success:
-                self.update_label.setText(f"Доступно обновление")
-                self.show_notification_message(f"Обновление готово к установке")
-                debug_logger.info(f"[MAIN] Файлы обновления по пути: {file_path}")
-                self.stop_checking = True
-                if skipped:
-                    self.show_notification_message("Подготовка к процедуре обновления...\n Не выключайте приложение")
-                    debug_logger.info(f"[MAIN][SKIP] Файлы уже существуют")
-                    self.open_window_and_update()
-                else:
-                    debug_logger.info(f"[MAIN][OK] Новый файл загружен")
+        self.update_label.setText("New version")
+        if success:
+            self.type_version = "exp" if "exp_" in os.path.basename(file_path).lower() else "stable"
+            self.show_notification(f"Доступно обновление (v.{self.latest_version})")
+            self.stop_checking = True
+            if skipped:
+                self.show_notification("Подготовка к процедуре обновления...\n Не выключайте приложение")
+                debuglog.info(f"[MAIN][SKIP] Файл уже существует")
+                self.open_window_and_update()
             else:
-                self.update_label.setText(f"Ошибка обновления: {error}")
+                debuglog.info(f"[MAIN][OK] Новый файл загружен")
         else:
-            # Обработка полного обновления (старая логика)
-            self.update_label.setText("Доступно обновление")
-            if success:
-                self.type_version = "exp" if "exp_" in os.path.basename(file_path).lower() else "stable"
-                version = self.extract_version_simple(file_path)
-                self.show_notification_message(f"Доступно обновление (v.{version})")
-                self.stop_checking = True
-                if skipped:
-                    self.show_notification_message("Подготовка к процедуре обновления...\n Не выключайте приложение")
-                    debug_logger.info(f"[MAIN][SKIP] Файл уже существует")
-                    self.open_window_and_update()
-                else:
-                    debug_logger.info(f"[MAIN][OK] Новый файл загружен")
-            else:
-                debug_logger.error(f"[MAIN] Не удалось скачать: {error}")
+            debuglog.error(f"[MAIN] Не удалось скачать: {error}")
         
         self.toggle_update_button()
-
-    def extract_version_simple(self, file_path):
-        """Извлекает версию из пути (работает с обоими форматами)"""
-        filename = os.path.basename(file_path)
-        
-        # Формат 1: "2.1.0_temp" (дельта-обновление)
-        if filename.endswith('_temp'):
-            return filename.replace('_temp', '')
-        
-        # Формат 2: "stable_2.1.0.zip" или "exp_2.1.0.zip" (полное обновление)
-        parts = filename.split('_')
-        if len(parts) >= 2:
-            # Ищем часть с версией (содержит точки)
-            for part in parts:
-                if '.' in part:
-                    return part.replace('.zip', '')
-        
-        # Если не нашли - возвращаем как есть
-        return filename.split('_')[0] if '_' in filename else filename
 
     def open_window_and_update(self):
         """Обработка действия, если апдейт уже был скачан (активация окна)"""
@@ -1760,23 +1760,22 @@ class Assistant(QMainWindow):
         self.raise_()
         self.activateWindow()
         QApplication.processEvents()
-        QTimer.singleShot(500, lambda: self.update_app(type_version=self.type_version,
-                                                       batch_update=self.is_batch_update))
+        QTimer.singleShot(500, lambda: self.update_app(type_version=self.type_version))
 
     def check_or_create_folders(self):
-        links_path = get_path('user_settings', "links for assist")
-        screenshot_path = get_path('user_settings', "screenshots")
+        links_path = folder_links
+        screenshot_path = folder_screenshots
         path_list = [links_path, screenshot_path]
 
         for folder_path in path_list:
             if os.path.exists(folder_path) and os.path.isdir(folder_path):
-                debug_logger.info(f"[MAIN] Папка {folder_path} найдена")
+                debuglog.info(f"[MAIN] Папка {folder_path} найдена")
             else:
                 try:
                     os.makedirs(folder_path)
-                    debug_logger.info(f'[MAIN] Папка {folder_path} была создана.')
+                    debuglog.info(f'[MAIN] Папка {folder_path} была создана.')
                 except Exception as e:
-                    debug_logger.error(f'[MAIN] Ошибка при создании папки {folder_path}: {e}')
+                    debuglog.error(f'[MAIN] Ошибка при создании папки {folder_path}: {e}')
 
     def reload_commands(self):
         """Централизованное сохранение команд"""
@@ -1812,7 +1811,6 @@ class Assistant(QMainWindow):
             "is_garland": self.is_garland
         }
         try:
-            # Проверяем, существует ли папка user_settings
             os.makedirs(os.path.dirname(self.settings_file_path), exist_ok=True)
 
             # Сохраняем настройки в файл
@@ -1827,11 +1825,11 @@ class Assistant(QMainWindow):
 
             self.commands_manager.update_vaults()  # Синхронизация настроек в менеджере команд
 
-            self.show_notification_message("Настройки сохранены!")
-            debug_logger.debug("[MAIN] Настройки сохранены.")
+            self.show_notification("Настройки сохранены!")
+            debuglog.debug("[MAIN] Настройки сохранены.")
         except Exception as e:
             logger.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
-            debug_logger.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
+            debuglog.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
             raise  # Повторно выбрасываем исключение, если нужно
 
     def update_settings(self, settings_file, default_settings=None):
@@ -1908,11 +1906,10 @@ class Assistant(QMainWindow):
             (screen_geometry.width() - self.width()) // 2,
             (screen_geometry.height() - self.height()) // 2
         )
-        self.log_area.start_active_mode()
+        self.logs_widget.log_area.start_active_mode()
 
     def custom_hide(self):
-        self.close_child_windows.emit()
-        self.log_area.start_background_mode()
+        self.logs_widget.log_area.start_background_mode()
         self.hide()
 
     def changeEvent(self, event):
@@ -1920,14 +1917,14 @@ class Assistant(QMainWindow):
         if event.type() == QEvent.Type.WindowStateChange:
             if self.windowState() & Qt.WindowState.WindowMinimized:
                 self.hide()
-                self.log_area.start_background_mode()
+                self.logs_widget.log_area.start_background_mode()
         super().changeEvent(event)
 
     def closeEvent(self, event):
         """Обработка закрытия окна"""
+        self.save_window_settings()
         if self.is_force_close:
-            self.log_area.stop_monitoring()
-            self.close_child_windows.emit()
+            self.logs_widget.log_area.stop_monitoring()
 
             if self.is_assistant_running:
                 self.stop_assist()
@@ -1938,16 +1935,16 @@ class Assistant(QMainWindow):
 
     def on_shutdown(self):
         try:
-            self.log_area.stop_monitoring()
+            self.logs_widget.log_area.stop_monitoring()
             self.force_close()
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при закрытии приложения: {e}")
+            debuglog.error(f"[MAIN] Ошибка при закрытии приложения: {e}")
 
     def close_app(self):
         """Закрытие приложения."""
         if self.is_assistant_running:
             self.stop_assist()
-            self.log_area.stop_monitoring()
+            self.logs_widget.log_area.stop_monitoring()
             QTimer.singleShot(2500, self.force_close) # Время для проигрывания аудио перед закрытием
         else:
             self.force_close()
@@ -1955,7 +1952,7 @@ class Assistant(QMainWindow):
     def force_close(self):
         """Принудительное закрытие, игнорируя все подтверждения"""
         self.is_force_close = True
-        self.log_area.stop_monitoring()
+        self.logs_widget.log_area.stop_monitoring()
         self.close()
 
         # Гарантированное завершение через 100 мс
@@ -1967,33 +1964,19 @@ class Assistant(QMainWindow):
     def cleanup_before_exit(self):
         """Подготовка к выходу"""
         try:
-            # Проверяем существование splash и check_thread
             if hasattr(self, 'splash') and self.splash:
-                # Безопасно проверяем наличие check_thread
                 if hasattr(self.splash, 'check_thread') and self.splash.check_thread:
                     self.splash.check_thread.quit()
                     self.splash.check_thread.wait(1000)
                 
-                # Закрываем splash если он открыт
                 if self.splash.isVisible():
                     self.splash.close()
-                    
-            # Закрываем главное окно
+
             self.close()
             
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при завершении: {e}")
-            # Принудительно закрываем
+            debuglog.error(f"[MAIN] Ошибка при завершении: {e}")
             self.close()
-
-    def handle_close_confirmation(self, confirmed, event, dialog):
-        """Метод устарел и не используется"""
-        dialog.close()
-        if confirmed:
-            self.stop_assist()
-            event.accept()
-        else:
-            event.ignore()
 
     def start_assist_toggle(self):
         """Обработка нажатия кнопки 'Старт ассистента' или 'Остановить работу'"""
@@ -2005,8 +1988,8 @@ class Assistant(QMainWindow):
     def run_assist(self):
         """Запуск ассистента"""
         self.is_assistant_running = True
-        self.sidebar.update_element_text("start", "Остановить работу")
-        self.log_area.append("Ассистент запущен...")
+        self.animated_sidebar.update_element_text("toggle_worker", "Остановить работу")
+        logger.debug("Ассистент запущен...")
 
         # Запуск ассистента в отдельном потоке
         self.assistant_thread = threading.Thread(target=self.run_script)
@@ -2015,10 +1998,10 @@ class Assistant(QMainWindow):
     def stop_assist(self, reaction=True):
         """Остановка ассистента"""
         self.is_assistant_running = False
-        self.sidebar.update_element_text("start", "Старт ассистента")
-        debug_logger.info("[MAIN][Ассистент остановлен]")
+        self.animated_sidebar.update_element_text("toggle_worker", "Старт ассистента")
+        debuglog.info("[MAIN][Ассистент остановлен]")
         if reaction:
-            debug_logger.info("[MAIN] Реакция на выключение ассистента...")
+            debuglog.info("[MAIN] Реакция на выключение ассистента...")
             self.get_reaction(threading=True, name="close_assist_folder", trace="stop_assist in main")
 
         # Безопасная остановка потока
@@ -2027,9 +2010,9 @@ class Assistant(QMainWindow):
                 if self.assistant_thread.is_alive() and self.assistant_thread != threading.current_thread():
                     self.assistant_thread.join(timeout=1.0)
                     if self.assistant_thread.is_alive():
-                        debug_logger.warning("[MAIN] Поток ассистента не завершился в течение таймаута")
+                        debuglog.warning("[MAIN] Поток ассистента не завершился в течение таймаута")
             except Exception as e:
-                debug_logger.error(f"[MAIN] Ошибка при остановке потока: {e}")
+                debuglog.error(f"[MAIN] Ошибка при остановке потока: {e}")
             finally:
                 self.assistant_thread = None
 
@@ -2041,7 +2024,7 @@ class Assistant(QMainWindow):
             path = self.audio_paths.get(f'{name}')
             if not path:
                 logger.error(f"[MAIN][assistant.get_reaction] Путь не найден")
-                debug_logger.error(f"[MAIN][assistant.get_reaction] Путь не найден")
+                debuglog.error(f"[MAIN][assistant.get_reaction] Путь не найден")
                 return
 
             if threading:
@@ -2053,11 +2036,11 @@ class Assistant(QMainWindow):
                 react(path, trace)
 
         except Exception as e:
-            debug_logger.error(f"[MAIN][assistant.get_reaction] Ошибка: {e}")
+            debuglog.error(f"[MAIN][assistant.get_reaction] Ошибка: {e}")
 
     def censor_counter(self):
         """Добавляет запись о матерном слове в счетчик"""
-        CSV_FILE = get_path('user_settings', 'censor_counter.csv')
+        CSV_FILE = censor_file
         os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
         
         today = datetime.now().date()  # Используем date вместо str
@@ -2073,7 +2056,7 @@ class Assistant(QMainWindow):
                     reader = csv.DictReader(file)
                     
                     if reader.fieldnames != headers:
-                        debug_logger.warning(f"[MAIN] Некорректные заголовки в файле {CSV_FILE}")
+                        debuglog.warning(f"[MAIN] Некорректные заголовки в файле {CSV_FILE}")
                         file_exists = False
                     else:
                         for row in reader:
@@ -2088,11 +2071,11 @@ class Assistant(QMainWindow):
                                     'total_score': total_score
                                 })
                             except (ValueError, KeyError) as e:
-                                debug_logger.warning(f"[MAIN] Пропущена некорректная строка: {row}, ошибка: {e}")
+                                debuglog.warning(f"[MAIN] Пропущена некорректная строка: {row}, ошибка: {e}")
                                 continue
             except Exception as e:
                 logger.error(f"[MAIN] Ошибка чтения файла {CSV_FILE}: {e}")
-                debug_logger.error(f"[MAIN] Ошибка чтения файла {CSV_FILE}: {e}")
+                debuglog.error(f"[MAIN] Ошибка чтения файла {CSV_FILE}: {e}")
                 file_exists = False
         
         if not file_exists:
@@ -2132,21 +2115,21 @@ class Assistant(QMainWindow):
                 writer.writeheader()
                 writer.writerows(data)
             
-            debug_logger.debug(f"[MAIN] Счетчик обновлен. Сегодняшняя запись: {'обновлена' if today_found else 'добавлена'}")
+            debuglog.debug(f"[MAIN] Счетчик обновлен. Сегодняшняя запись: {'обновлена' if today_found else 'добавлена'}")
             
         except Exception as e:
             logger.error(f"[MAIN] Ошибка записи в файл {CSV_FILE}: {e}")
-            debug_logger.error(f"[MAIN] Ошибка записи в файл {CSV_FILE}: {e}")
+            debuglog.error(f"[MAIN] Ошибка записи в файл {CSV_FILE}: {e}")
             
     def check_keywords_file(self):
         """
         Проверяет наличие файла keywords.json и создает его со стандартными значениями из default_keywords.json если нет
         """
-        keywords_path = get_path("user_settings", "keywords.json")
+        keywords_path = user_keywords
         default_keywords_path = get_path("bin", "default_keywords.json")
 
         if not os.path.exists(keywords_path):
-            debug_logger.info(f"[MAIN] Файл keywords.json не найден, создаю...")
+            debuglog.info(f"[MAIN] Файл keywords.json не найден, создаю...")
             if os.path.exists(default_keywords_path):
                 with open(default_keywords_path, 'r', encoding='utf-8') as f:
                     default_keywords = json.load(f)
@@ -2158,11 +2141,11 @@ class Assistant(QMainWindow):
 
             return True
         else:
-            debug_logger.info(f"[MAIN] Файл keywords.json уже существует")
+            debuglog.info(f"[MAIN] Файл keywords.json уже существует")
         
     def apply_keywords_for_values(self):
         try:
-            keywords_path = get_path("user_settings", "keywords.json")
+            keywords_path = user_keywords
             if os.path.exists(keywords_path):
                 with open(keywords_path, 'r', encoding='utf-8') as f:
                     keywords_data = json.load(f)
@@ -2185,7 +2168,7 @@ class Assistant(QMainWindow):
             self.censored_list = keywords_data["censored_list"]
             return True
         except Exception as e:
-            debug_logger.error(f"Ошибка во время применения списков: {e}")
+            debuglog.error(f"Ошибка во время применения списков: {e}")
             return False
 
     # "Основной цикл ассистента"
@@ -2225,7 +2208,7 @@ class Assistant(QMainWindow):
                 if not self.is_assistant_running:
                     break
                 self.command_handled = False
-                debug_logger.info(f"[last_unrecognized_command]---> {self.last_unrecognized_command}")
+                debuglog.info(f"[last_unrecognized_command]---> {self.last_unrecognized_command}")
                 current_time = time.time()
                 
                 words = text.split()
@@ -2247,17 +2230,17 @@ class Assistant(QMainWindow):
                 # Проверка на наличие команд для управления    
                 self.is_keyword_player = any(self.find_closest_command(word, self.keywords_player, threshold=80) for word in words)
 
-                debug_logger.info(f"[MAIN][FIRST_HANDLER][has_action_words] {has_action_words}")
+                debuglog.info(f"[MAIN][FIRST_HANDLER][has_action_words] {has_action_words}")
 
-                debug_logger.info(f"[MAIN][FIRST_HANDLER][Raw Text] {text}")
-                debug_logger.info(f"[MAIN][FIRST_HANDLER][Action] {action_command}")
-                debug_logger.info(f"[MAIN][FIRST_HANDLER][Clean Command] {clean_target}")
+                debuglog.info(f"[MAIN][FIRST_HANDLER][Raw Text] {text}")
+                debuglog.info(f"[MAIN][FIRST_HANDLER][Action] {action_command}")
+                debuglog.info(f"[MAIN][FIRST_HANDLER][Clean Command] {clean_target}")
 
                 # Сбрасываем контекст, если прошло более 10 секунд без активности
                 if self.last_unrecognized_command and (current_time - last_activity_time) > 10:
                     self.last_unrecognized_command = None
                     logger.info("Сброс контекста из-за неактивности")
-                    debug_logger.info("[MAIN] Сброс контекста из-за неактивности")
+                    debuglog.info("[MAIN] Сброс контекста из-за неактивности")
 
                 # Обновляем время последней активности при получении текста
                 last_activity_time = current_time
@@ -2267,7 +2250,7 @@ class Assistant(QMainWindow):
                     name_mentioned = False
                     name_mentioned_time = None
                     logger.info("Сброс флага упоминания имени")
-                    debug_logger.info("[MAIN] Сброс флага упоминания имени")
+                    debuglog.info("[MAIN] Сброс флага упоминания имени")
 
                 # Проверка цензуры
                 if any(self.find_closest_command(word, self.censored_list, threshold=80) for word in words):
@@ -2285,16 +2268,16 @@ class Assistant(QMainWindow):
                         # Проверка таймаута
                         if (current_time - last_activity_time) > 10:
                             logger.info("Таймаут подтверждения — сброс")
-                            debug_logger.info("[MAIN] Таймаут подтверждения — сброс")
+                            debuglog.info("[MAIN] Таймаут подтверждения — сброс")
                             self.last_unrecognized_command = None
                             message = "Время ожидания истекло."
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+                            debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
 
                         # Подтверждение — "да"
                         if any(word in text_lower for word in self.keywords_yes):
-                            debug_logger.info("[MAIN] Пользователь подтвердил команду(ы).")
+                            debuglog.info("[MAIN] Пользователь подтвердил команду(ы).")
 
                             turnoff_value = self.last_unrecognized_command.get('is_shutdown')
                             self.set_shutdown(is_shutdown=turnoff_value)
@@ -2304,21 +2287,21 @@ class Assistant(QMainWindow):
 
                         # Отмена — "нет"
                         elif any(word in text_lower for word in self.keywords_no):
-                            debug_logger.info("[MAIN] Пользователь отменил команду(ы).")
+                            debuglog.info("[MAIN] Пользователь отменил команду(ы).")
                             self.get_reaction(name="confirm_folder")
                             self.last_unrecognized_command = None
                             message = "Хорошо, отменяю."
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+                            debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
 
                         else:
                             # Не распознан ответ — переспрашиваем
-                            debug_logger.info("[MAIN] Не удалось распознать ответ на подтверждение.")
+                            debuglog.info("[MAIN] Не удалось распознать ответ на подтверждение.")
                             self.get_reaction(name="what_folder")
                             message = "Скажите 'да' или 'нет'"
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+                            debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
                     else:
                         text_lower = text.lower().strip()
@@ -2326,16 +2309,16 @@ class Assistant(QMainWindow):
                         # Проверка таймаута
                         if (current_time - last_activity_time) > 10:
                             logger.info("Таймаут подтверждения — сброс")
-                            debug_logger.info("Таймаут подтверждения — сброс")
+                            debuglog.info("Таймаут подтверждения — сброс")
                             self.last_unrecognized_command = None
                             message = "Время ожидания истекло."
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+                            debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
 
                         # Подтверждение — "да"
                         if any(word in text_lower for word in self.keywords_yes):
-                            debug_logger.info("[MAIN] Пользователь подтвердил команду(ы).")
+                            debuglog.info("[MAIN] Пользователь подтвердил команду(ы).")
 
                             pending_commands = self.last_unrecognized_command.get('pending_commands')
 
@@ -2345,7 +2328,7 @@ class Assistant(QMainWindow):
                                 action_type = cmd_info['action_type']
                                 suggested_cmd = cmd_info['suggested_command']
 
-                                debug_logger.info(f"[MAIN] Выполняем: {action_type} {suggested_cmd}")
+                                debuglog.info(f"[MAIN] Выполняем: {action_type} {suggested_cmd}")
 
                                 # Пробуем стандартные команды
                                 default_list = self.find_closest_command(suggested_cmd, default_commands_keys)
@@ -2375,28 +2358,28 @@ class Assistant(QMainWindow):
                                 self.get_reaction(detail=True, name="error_file")
                                 message = "Не удалось выполнить команду(ы)."
                                 self.show_supply_notice(message, is_confirm=True)
-                                debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+                                debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
 
                             self.last_unrecognized_command = None
                             continue
 
                         # Отмена — "нет"
                         elif any(word in text_lower for word in self.keywords_no):
-                            debug_logger.info("[MAIN] Пользователь отменил команду(ы).")
+                            debuglog.info("[MAIN] Пользователь отменил команду(ы).")
                             self.get_reaction(name="confirm_folder")
                             self.last_unrecognized_command = None
                             message = "Хорошо, отменяю."
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+                            debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
 
                         else:
                             # Не распознан ответ — переспрашиваем
-                            debug_logger.info("[MAIN] Не удалось распознать ответ на подтверждение.")
+                            debuglog.info("[MAIN] Не удалось распознать ответ на подтверждение.")
                             self.get_reaction(name="what_folder")
                             message = "Скажите 'да' или 'нет'"
                             self.show_supply_notice(message, is_confirm=True)
-                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+                            debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
                             continue
 
                 # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -2420,7 +2403,7 @@ class Assistant(QMainWindow):
 
                 # Режим уточнения команды (если предыдущая попытка не удалась)
                 if self.is_corrected_command:
-                    debug_logger.info(f"[MAIN][RETRY][Start Mode Correction]")
+                    debuglog.info(f"[MAIN][RETRY][Start Mode Correction]")
                     if self.last_unrecognized_command and self.last_unrecognized_command.get('mode') == 'correction':
                         if text:
                             # Обновляем время последней активности при обработке команды
@@ -2433,7 +2416,7 @@ class Assistant(QMainWindow):
                             # Если действие изменилось — обновляем контекст
                             if new_action_type and new_action_type != current_action_type:
                                 self.last_unrecognized_command['pending_commands'][0]['action_type'] = new_action_type
-                                debug_logger.info(f"[MAIN][RETRY] Действие обновлено на: {new_action_type}")
+                                debuglog.info(f"[MAIN][RETRY] Действие обновлено на: {new_action_type}")
 
                             # Блок А. Для поиска совпадений и запуска методов в соответствии с действием
                             default_list = self.find_closest_command(clean_target, default_commands_keys)
@@ -2460,10 +2443,10 @@ class Assistant(QMainWindow):
 
                                 # Восстанавливаем полную команду
                                 restored_command = f"{action_type} {custom_list}"
-                                debug_logger.info(f"[MAIN][RETRY] Восстановленная команда: {restored_command}")
+                                debuglog.info(f"[MAIN][RETRY] Восстановленная команда: {restored_command}")
 
                                 type_processed = self.commands_manager.get_type_command(custom_list)
-                                debug_logger.info(f"[MAIN][RETRY] Команда: {custom_list}, тип: {type_processed}")
+                                debuglog.info(f"[MAIN][RETRY] Команда: {custom_list}, тип: {type_processed}")
                                 if type_processed == "shortcut" or type_processed == "url":
                                     self.handle_app_command(custom_list, action_type)
                                 elif type_processed == "folder":
@@ -2472,37 +2455,37 @@ class Assistant(QMainWindow):
                                     self.handle_script_command(custom_list, action_type)
                                 else:
                                     logger.warning(f"Команда не обработана: {restored_command}")
-                                    debug_logger.warning(f"[MAIN][RETRY] Команда не обработана: {restored_command}")
+                                    debuglog.warning(f"[MAIN][RETRY] Команда не обработана: {restored_command}")
                                     self.get_reaction(name="what_folder",
                                                     trace="Реакция в блоке, где режим корректировки команды")
 
                                     self.last_unrecognized_command['pending_commands'][0][
                                         'suggested_command'] = clean_target
 
-                                    debug_logger.info(f"[MAIN][RETRY] Обновлена цель для уточнения: {clean_target}")
+                                    debuglog.info(f"[MAIN][RETRY] Обновлена цель для уточнения: {clean_target}")
                                     self.show_supply_notice(text)
-                                    debug_logger.info(f"[MAIN][RETRY] Отправлено уведомление ---> {text}")
+                                    debuglog.info(f"[MAIN][RETRY] Отправлено уведомление ---> {text}")
                                     self.last_unrecognized_command = None
                                     continue
                             # Конец блока В.
 
                             if any(word in text for word in self.keywords_reject):
-                                debug_logger.info("[MAIN] Пользователь отменил команду(ы).")
+                                debuglog.info("[MAIN] Пользователь отменил команду(ы).")
                                 self.get_reaction(name="confirm_folder")
                                 self.last_unrecognized_command = None
                                 message = "Хорошо, отменяю."
                                 self.show_supply_notice(message, is_confirm=True)
-                                debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+                                debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
                                 continue
 
                             if not default_list and not custom_list:
                                 self.get_reaction(name="what_folder",
                                                 trace="Реакция в блоке, где режим корректировки команды")
                                 self.show_supply_notice(text)
-                                debug_logger.info(f"[MAIN] Отправлено уведомление ---> {text}")
+                                debuglog.info(f"[MAIN] Отправлено уведомление ---> {text}")
 
                 if has_assistant_name:
-                    debug_logger.info("[MAIN] <<< Условие, где есть Имя ассистента >>>")
+                    debuglog.info("[MAIN] <<< Условие, где есть Имя ассистента >>>")
                     trigger_react = False
                     _, action_type = self.find_action(text, self.action_up, self.action_down, self.all_actions)
                     if self.find_any_command_in_text(clean_target, self.keywords_search, threshold=80):
@@ -2529,11 +2512,11 @@ class Assistant(QMainWindow):
                                 self.get_reaction(name="echo_folder")
 
                     final_commands = self.handle_text_smart(text, self.all_actions, threshold=60)
-                    debug_logger.info(f"[MAIN][HAS_NAME][handle_text_smart] {final_commands}")
+                    debuglog.info(f"[MAIN][HAS_NAME][handle_text_smart] {final_commands}")
 
                     for command in final_commands:
                         command = command.strip()
-                        debug_logger.info(f"[MAIN][Команда в цикле из списка выше] {command}")
+                        debuglog.info(f"[MAIN][Команда в цикле из списка выше] {command}")
 
                         _, action_type = self.find_action(command, self.action_up, self.action_down, self.all_actions)
 
@@ -2542,9 +2525,9 @@ class Assistant(QMainWindow):
                             # Ищем совпадение со специальными командами
 
                             default_list = self.find_closest_command(clean_target, default_commands_keys)
-                            debug_logger.info(f"[MAIN][HAS_NAME][list] {default_list}")
-                            debug_logger.info(f"[MAIN][HAS_NAME][action_type] {action_type}")
-                            debug_logger.info(f"[MAIN][HAS_NAME][clean_target] {clean_target}")
+                            debuglog.info(f"[MAIN][HAS_NAME][list] {default_list}")
+                            debuglog.info(f"[MAIN][HAS_NAME][action_type] {action_type}")
+                            debuglog.info(f"[MAIN][HAS_NAME][clean_target] {clean_target}")
 
                             if default_list:
                                 self.command_handled = True
@@ -2556,7 +2539,7 @@ class Assistant(QMainWindow):
                             else:
                                 # Пытаемся обработать команду
                                 type_processed = self.commands_manager.get_type_command(clean_target)
-                                debug_logger.info(f"[MAIN][HAS_NAME] Команда: {clean_target}, тип: {type_processed}")
+                                debuglog.info(f"[MAIN][HAS_NAME] Команда: {clean_target}, тип: {type_processed}")
                                 self.command_handled = True
                                 if type_processed == "shortcut" or type_processed == "url":
                                     self.handle_app_command(clean_target, action_type)
@@ -2568,13 +2551,13 @@ class Assistant(QMainWindow):
                                     if clean_target:
                                         # Ищем похожие команды
                                         closest_cmd = self.find_closest_command(clean_target, all_commands)
-                                        debug_logger.info(f"[MAIN][closest_cmd] {closest_cmd}")
+                                        debuglog.info(f"[MAIN][closest_cmd] {closest_cmd}")
 
                                         if closest_cmd:
                                             message = f"Вы имели в виду: '{closest_cmd}'?\nСкажите: Да/Нет"
                                             self.show_supply_notice(message, is_confirm=True)
                                             thread_play_sound(type_sound="what")
-                                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+                                            debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
 
                                             # Сохраняем контекст с предложенной командой + флаг ожидания подтверждения
                                             self.last_unrecognized_command = {
@@ -2604,19 +2587,19 @@ class Assistant(QMainWindow):
                         self.command_handled = True
                         self.show_supply_notice(text)
                         self.get_reaction(name="what_folder", trace="Реакт из триггера")
-                        debug_logger.info(f"[MAIN] Сработал триггер реакции. Отправлено уведомление ---> {text}")
+                        debuglog.info(f"[MAIN] Сработал триггер реакции. Отправлено уведомление ---> {text}")
                         continue
 
                 # Флаг для контроля над обработкой команд без имени ассистента (не относится к плееру)
                 if self.is_keep_watch:
                     if has_action_words and not has_assistant_name:
-                        debug_logger.info("[MAIN] <<< Условие без имени ассистента, только действие и команда >>>")
+                        debuglog.info("[MAIN] <<< Условие без имени ассистента, только действие и команда >>>")
 
                         if self.find_closest_command(clean_target, self.screen_list):
                             self.capture_area()
 
                         final_commands = self.handle_text_smart(text, self.all_actions, threshold=60)
-                        debug_logger.info(f"[MAIN] [final_commands] {final_commands}")
+                        debuglog.info(f"[MAIN] [final_commands] {final_commands}")
 
                         pending_commands = []
 
@@ -2634,9 +2617,9 @@ class Assistant(QMainWindow):
                             if not closest_cmd:
                                 continue
 
-                            debug_logger.info(f"[MAIN][command] {command}")
-                            debug_logger.info(f"[MAIN][clean_target] {clean_target}")
-                            debug_logger.info(f"[MAIN][closest_cmd] {closest_cmd}")
+                            debuglog.info(f"[MAIN][command] {command}")
+                            debuglog.info(f"[MAIN][clean_target] {clean_target}")
+                            debuglog.info(f"[MAIN][closest_cmd] {closest_cmd}")
 
                             pending_commands.append({
                                 'action_type': action_type,
@@ -2659,7 +2642,7 @@ class Assistant(QMainWindow):
                             message = ";\n".join(parts) + "\n\nСкажите: Да/Нет"
                             self.show_supply_notice(message, is_confirm=True)
                             thread_play_sound(type_sound="what")
-                            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+                            debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
 
                             self.last_unrecognized_command = {
                                 'mode': 'confirm',
@@ -2670,7 +2653,7 @@ class Assistant(QMainWindow):
 
                 # Обработка плеера
                 if not self.command_handled and (self.is_keyword_player or has_assistant_name):
-                    debug_logger.info("[MAIN] Успешное условие для управления плеером")
+                    debuglog.info("[MAIN] Успешное условие для управления плеером")
                     # Ищем первое подходящее действие (в порядке приоритета: пауза, след, пред)
                     for word in words:
                         if self.find_closest_command(word, self.keywords_playpause, threshold=80):
@@ -2688,44 +2671,13 @@ class Assistant(QMainWindow):
 
         except Exception as e:
             logger.error(f"Ошибка в основном цикле ассистента: {e}")
-            debug_logger.error(f"[MAIN] Ошибка в основном цикле ассистента: {e}")
-            debug_logger.error(traceback.format_exc())
-            self.show_notification_message(f"[MAIN] Ошибка в основном цикле ассистента: {e}")
+            debuglog.error(f"[MAIN] Ошибка в основном цикле ассистента: {e}")
+            debuglog.error(traceback.format_exc())
+            self.show_notification(f"[MAIN] Ошибка в основном цикле ассистента: {e}")
 
     # "Основной цикл ассистента(конец)"
     # "--------------------------------------------------------------------------------------------------"
     # "Основной цикл ассистента(конец)"
-
-    # def install_game_mode(self):
-    #     try:
-    #         self.game_mode = GamepadManager()
-    #         if self.game_mode.init_success:
-    #             logger.info("Игровой режим успешно инициализирован")
-    #         else:
-    #             logger.warning("Не удалось инициализировать игровой режим")
-    #             self.game_mode = None
-    #     except Exception as e:
-    #         logger.error(f"Ошибка при инициализации GamepadManager: {e}")
-    #         self.game_mode = None
-    #
-    # def start_game_mode(self):
-    #     self.install_game_mode()
-    #     self.game_mode.set_game("God of War")
-    #     logger.info(self.game_mode)
-    #     logger.info(self.game_mode.running)
-    #     if self.game_mode and not self.game_mode.running:
-    #         self.game_mode.start_proxy()
-    #         self.game_mode_bool = True
-    #         logger.info("Игровой режим активирован")
-    #     else:
-    #         logger.warning("Невозможно активировать игровой режим")
-    #
-    # def stop_game_mode(self):
-    #     if self.game_mode and self.game_mode.running:
-    #         self.game_mode.stop_proxy()
-    #         self.game_mode.cleanup()
-    #         self.game_mode_bool = False
-    #         logger.info("Игровой режим деактивирован")
 
     def get_confirm_shutdown(self, closest_cmd, text, action_type, is_shutdown=True):
         try:
@@ -2736,7 +2688,7 @@ class Assistant(QMainWindow):
             message = f"{action_pc} ПК?\n\nСкажите: Да/Нет"
             self.show_supply_notice(message, is_confirm=True)
             thread_play_sound(type_sound="what")
-            debug_logger.info(f"[MAIN] Отправлено уведомление ---> {message}")
+            debuglog.info(f"[MAIN] Отправлено уведомление ---> {message}")
 
             # Сохраняем контекст
             self.last_unrecognized_command = {
@@ -2745,19 +2697,19 @@ class Assistant(QMainWindow):
                 'is_shutdown': action_pc,
             }
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка в методе get_confirm_shutdown: {e}")
+            debuglog.error(f"[MAIN] Ошибка в методе get_confirm_shutdown: {e}")
 
     def set_shutdown(self, is_shutdown):
         try:
             if is_shutdown == "Выключить":
                 shutdown_windows()
-                debug_logger.info("[MAIN] Выполняется обработка запроса: shutdown windows")
+                debuglog.info("[MAIN] Выполняется обработка запроса: shutdown windows")
             elif is_shutdown == "Перезагрузить":
                 restart_windows()
-                debug_logger.info("[MAIN] Выполняется обработка запроса: restart windows")
+                debuglog.info("[MAIN] Выполняется обработка запроса: restart windows")
 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка в методе set_shutdown: {e}")
+            debuglog.error(f"[MAIN] Ошибка в методе set_shutdown: {e}")
 
     def _extract_clean_target(self, text, all_actions):
         """
@@ -3058,27 +3010,22 @@ class Assistant(QMainWindow):
         """Инициализация моделей и аудиопотока через sounddevice."""
         self.cleanup_audio_resources()
         logger.info("Загрузка моделей для распознавания...")
-        debug_logger.debug("[MAIN] Загрузка моделей для распознавания...")
+        debuglog.debug("[MAIN] Загрузка моделей для распознавания...")
 
-        model_path_ru = get_path("bin", "model_ru")
-        # model_path_en = get_path("bin", "model_en")
-        debug_logger.debug(f"[MAIN] Загружена модель RU - {model_path_ru}")
-        # debug_logger.debug(f"Загружена модель EN - {model_path_en}")
+        model_path_ru = vosk_model_ru
+        debuglog.debug(f"[MAIN] Загружена модель RU - {model_path_ru}")
 
         try:
             self.model_ru = Model(model_path_ru)
-            # self.model_en = Model(model_path_en)
             logger.info("Модели успешно загружены.")
-            debug_logger.info("[MAIN] Модели успешно загружены.")
+            debuglog.info("[MAIN] Модели успешно загружены.")
         except Exception as e:
             logger.error(f"Ошибка при загрузке модели: {e}. Возможно путь содержит кириллицу.")
-            debug_logger.error(f"[MAIN] Ошибка при загрузке модели: {e}", exc_info=True)
+            debuglog.error(f"[MAIN] Ошибка при загрузке модели: {e}", exc_info=True)
             return False
 
         try:
-            # Инициализация распознавателей
             self.rec_ru = KaldiRecognizer(self.model_ru, 16000)
-            # self.rec_en = KaldiRecognizer(self.model_en, 16000)
 
             target_id = self.get_microphone_id(self.input_device_name)
             if target_id is None:
@@ -3098,13 +3045,12 @@ class Assistant(QMainWindow):
                     callback=self.audio_callback
                 )
                 self.audio_stream.start()
-                self.input_device_id = target_id  # обновляем ID
+                self.input_device_id = target_id
                 device_name = sd.query_devices(target_id)['name']
-                self.input_device_name = device_name  # фиксируем имя
-                debug_logger.info(f"[MAIN] Аудиопоток запущен: '{device_name}' (ID={target_id})")
+                self.input_device_name = device_name
+                debuglog.info(f"[MAIN] Аудиопоток запущен: '{device_name}' (ID={target_id})")
             except Exception as e:
-                debug_logger.error(f"[MAIN] Не удалось открыть выбранное устройство (ID={target_id}): {e}")
-                # Fallback: попробовать без указания устройства (по умолчанию)
+                debuglog.error(f"[MAIN] Не удалось открыть выбранное устройство (ID={target_id}): {e}")
                 try:
                     self.audio_stream = sd.InputStream(
                         samplerate=16000,
@@ -3118,17 +3064,17 @@ class Assistant(QMainWindow):
                     fallback_name = sd.query_devices(fallback_id)['name']
                     self.input_device_id = fallback_id
                     self.input_device_name = fallback_name
-                    debug_logger.warning(f"[MAIN] Используется устройство по умолчанию: '{fallback_name}'")
+                    debuglog.warning(f"[MAIN] Используется устройство по умолчанию: '{fallback_name}'")
                 except Exception as e2:
-                    debug_logger.error("[MAIN] Не удалось запустить ни одно устройство.", exc_info=True)
+                    debuglog.error("[MAIN] Не удалось запустить ни одно устройство.", exc_info=True)
                     raise e2
 
             self.microphone_available = True
-            self.last_audio_time = time.time()  # начальное значение для watchdog
+            self.last_audio_time = time.time()
             return True
 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Критическая ошибка при инициализации аудио: {e}", exc_info=True)
+            debuglog.error(f"[MAIN] Критическая ошибка при инициализации аудио: {e}", exc_info=True)
             return False
 
     def get_microphone_id(self, preferred_name=None):
@@ -3162,25 +3108,24 @@ class Assistant(QMainWindow):
                 except Exception:
                     continue
 
-            # Сортировка: совпадение по имени → приоритет API → индекс
             if candidates:
                 best = max(candidates, key=lambda x: (x[2], x[1], -x[0]))
                 return best[0]
 
-            return default_in  # fallback
+            return default_in
 
         except Exception as e:
-            debug_logger.warning(f"[MAIN] Ошибка выбора микрофона: {e}")
-            return sd.default.device[0]  # двойной fallback
+            debuglog.warning(f"[MAIN] Ошибка выбора микрофона: {e}")
+            return sd.default.device[0]
 
     def audio_callback(self, indata, frames, time_info, status):
         """
         :param time_info: Временные метки от PortAudio
         """
         if status:
-            debug_logger.warning(f"⚠️ Статус аудио: {status}")
+            debuglog.warning(f"Статус аудио: {status}")
             if any(keyword in str(status).lower() for keyword in ['overrun', 'underrun']):
-                pass  # Будет обработано по тишине
+                pass
             else:
                 return
 
@@ -3197,7 +3142,7 @@ class Assistant(QMainWindow):
                 self.last_audio_time = time.time()
 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при анализе громкости: {e}")
+            debuglog.error(f"[MAIN] Ошибка при анализе громкости: {e}")
 
         data = indata.tobytes()
         ru_text = ""
@@ -3208,25 +3153,18 @@ class Assistant(QMainWindow):
                 result = json.loads(self.rec_ru.Result())
                 ru_text = result.get("text", "").strip().lower()
 
-            # if self.rec_en.AcceptWaveform(data):
-            #     result = json.loads(self.rec_en.Result())
-            #     temp_en = result.get("text", "").strip().lower()
-            #     if temp_en and temp_en != "huh":
-            #         en_text = temp_en
-
             final_text = ru_text or en_text
             if final_text:
                 self.on_final_result(final_text)
 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка в обработке распознавания: {e}")
+            debuglog.error(f"[MAIN] Ошибка в обработке распознавания: {e}")
 
     def on_final_result(self, text):
         """Вызывается при распознавании фразы. Логирует и отправляет дальше."""
         logger.info(f"[Распознано] {text}")
-        debug_logger.info(f"[MAIN] [Распознано] {text}")
+        debuglog.info(f"[MAIN] [Распознано] {text}")
 
-        # Если есть активная очередь (например, get_audio() ждёт), — кладём туда
         if hasattr(self, '_current_queue') and self._current_queue is not None:
             try:
                 self._current_queue.put(text)
@@ -3238,11 +3176,9 @@ class Assistant(QMainWindow):
         Совместимый интерфейс: возвращает генератор текста.
         Но теперь работает через callback + очередь.
         """
-        # Вариант 1: если хочешь оставить yield — используй очередь
         from queue import Queue
         q = Queue()
 
-        # Сохраним ссылку, чтобы можно было выйти
         self.text_queue = q
         self._current_queue = q
 
@@ -3262,7 +3198,7 @@ class Assistant(QMainWindow):
     # === ПРОВЕРКА МИКРОФОНА ===
     def check_microphone(self):
         """Проверка доступности микрофона через sounddevice"""
-        debug_logger.info("[MAIN] Проверка микрофона через sounddevice...")
+        debuglog.info("[MAIN] Проверка микрофона через sounddevice...")
         try:
             devices = sd.query_devices()
             active_mics = []
@@ -3290,7 +3226,7 @@ class Assistant(QMainWindow):
                     continue
 
             if active_mics:
-                debug_logger.info(f"[MAIN] Найдено рабочих микрофонов: {len(active_mics)}")
+                debuglog.info(f"[MAIN] Найдено рабочих микрофонов: {len(active_mics)}")
                 self.microphone_available = True
                 return True
             else:
@@ -3299,7 +3235,7 @@ class Assistant(QMainWindow):
                 return False
 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка проверки микрофона: {e}")
+            debuglog.error(f"[MAIN] Ошибка проверки микрофона: {e}")
             self.microphone_available = False
             return False
 
@@ -3308,13 +3244,12 @@ class Assistant(QMainWindow):
             self.check_microphone()
             if self.microphone_available:
                 if not self.is_assistant_running:
-                    self.show_notification_message(message="Микрофон обнаружен!")
+                    self.show_notification(message="Микрофон обнаружен!")
                     self.run_assist()
-                    # self.check_micro_btn.hide()
                 else:
-                    self.show_notification_message(message="Микрофон подключен!")
+                    self.show_notification(message="Микрофон подключен!")
             else:
-                self.show_notification_message(message="Микрофон не найден!")
+                self.show_notification(message="Микрофон не найден!")
         except Exception as e:
             logger.error(f"Ошибка в _check_microphone_wrapper: {e}")
 
@@ -3324,14 +3259,26 @@ class Assistant(QMainWindow):
             if hasattr(self, 'audio_stream') and self.audio_stream is not None:
                 try:
                     if self.audio_stream.active:
-                        self.audio_stream.abort()  # быстро остановить
+                        self.audio_stream.stop()
+                    self.audio_stream.close()
+                    debuglog.info("[MAIN] Аудиопоток закрыт.")
                 except Exception as e:
-                    debug_logger.error(f"[MAIN] Ошибка при остановке аудиопотока: {e}")
+                    debuglog.error(f"[MAIN] Ошибка при закрытии аудиопотока: {e}")
                 finally:
                     self.audio_stream = None
-                    debug_logger.info("[MAIN] Аудиопоток остановлен и очищен.")
         except Exception as e:
-            debug_logger.error(f"[MAIN] Критическая ошибка аудиопотока: {e}", exc_info=True)
+            debuglog.error(f"[MAIN] Критическая ошибка аудиопотока: {e}", exc_info=True)
+        
+        try:
+            if hasattr(self, 'rec_ru') and self.rec_ru is not None:
+                self.rec_ru = None
+            if hasattr(self, 'model_ru') and self.model_ru is not None:
+                self.model_ru = None
+        except Exception as e:
+            debuglog.error(f"[MAIN] Ошибка при очистке моделей: {e}")
+
+        import gc
+        gc.collect()
 
     def check_silence_timeout(self):
         """Проверяет, сколько времени прошло с последнего звука"""
@@ -3344,12 +3291,12 @@ class Assistant(QMainWindow):
         silent_duration = time.time() - self.last_audio_time
 
         if silent_duration > 10.0:  # 10 секунд тишины
-            debug_logger.warning(f"[MAIN] Нет звука более 10 сек ({silent_duration:.1f}s) — перезапуск аудиопотока")
+            debuglog.warning(f"[MAIN] Нет звука более 10 сек ({silent_duration:.1f}s) — перезапуск аудиопотока")
             self.restart_audio_stream()
 
     def restart_audio_stream(self):
         """Перезапускает только InputStream, не трогая модели и ассистента"""
-        debug_logger.info("[MAIN] Перезапуск аудиопотока...")
+        debuglog.info("[MAIN] Перезапуск аудиопотока...")
 
         try:
             # Останавливаем старый поток
@@ -3357,7 +3304,7 @@ class Assistant(QMainWindow):
                 if self.audio_stream.active:
                     self.audio_stream.abort()
                 self.audio_stream = None
-                debug_logger.info("[MAIN] Старый аудиопоток остановлен")
+                debuglog.info("[MAIN] Старый аудиопоток остановлен")
 
             # Создаём новый — без указания устройства → по умолчанию
             self.audio_stream = sd.InputStream(
@@ -3372,16 +3319,16 @@ class Assistant(QMainWindow):
             # Обновляем время активности
             self.last_audio_time = time.time()
 
-            debug_logger.info("[MAIN] Аудиопоток успешно перезапущен (по умолчанию)")
+            debuglog.info("[MAIN] Аудиопоток успешно перезапущен (по умолчанию)")
 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Не удалось перезапустить поток: {e}")
+            debuglog.error(f"[MAIN] Не удалось перезапустить поток: {e}")
             # Можно попробовать повторно через 10 сек
             QTimer.singleShot(10000, self.restart_audio_stream)
 
     def handle_app_command(self, text, action):
         """Обработка команд для приложений, ярлыков и ссылок"""
-        debug_logger.info(f"[MAIN] Вызван обработчик команд для ярлыков и ссылок: {text}, {action}")
+        debuglog.info(f"[MAIN] Вызван обработчик команд для ярлыков и ссылок: {text}, {action}")
         all_commands = {**self.default_commands, **self.commands}
         for keyword, command_data in all_commands.items():
             if keyword in text:
@@ -3394,7 +3341,7 @@ class Assistant(QMainWindow):
 
     def handle_folder_command(self, text, action):
         """Обработка команд для папок"""
-        debug_logger.error(f"[MAIN] Вызван обработчик команд для папок: {text}, {action}")
+        debuglog.error(f"[MAIN] Вызван обработчик команд для папок: {text}, {action}")
         all_commands = {**self.default_commands, **self.commands}
         for keyword, command_data in all_commands.items():
             if keyword in text:
@@ -3411,11 +3358,11 @@ class Assistant(QMainWindow):
             self.commands_manager.execute_script(script_key, action)
             return True
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при запуске сценария: {e}")
+            debuglog.error(f"[MAIN] Ошибка при запуске сценария: {e}")
             return False
         
     def handle_system_command(self, command, action):
-        debug_logger.info(f"[MAIN] Вызван обработчик команд для запуска системных: {command}, {action}")
+        debuglog.info(f"[MAIN] Вызван обработчик команд для запуска системных: {command}, {action}")
         data_commands = self.default_commands
 
         for keyword, command_data in data_commands.items():
@@ -3436,28 +3383,28 @@ class Assistant(QMainWindow):
         elif type_command == "system":
             self.handle_system_command(command, action)
         else:
-            self.show_notification_message("Тип команды передан некорректно!")
+            self.show_notification("Тип команды передан некорректно!")
 
     def toggle_mute_discord(self):
         toggle = ToggleMuteDiscord()
         toggle.main()
 
     def start_default_command(self, command, action, type_command):
-        debug_logger.info(f"[MAIN][start_default_command] Получены аргументы: {command}, {action}, {type_command}")
+        debuglog.info(f"[MAIN][start_default_command] Получены аргументы: {command}, {action}, {type_command}")
         self.global_handler_command(command, action, type_command)
-        debug_logger.info(f"[MAIN][start_default_command] Команда {command} выполнена с действием {action}")
+        debuglog.info(f"[MAIN][start_default_command] Команда {command} выполнена с действием {action}")
 
     def _open_widget_signal(self):
         try:
             gui_signals.open_widget_signal.emit()
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при запуске сигнала виджета: {e}")
+            debuglog.error(f"[MAIN] Ошибка при запуске сигнала виджета: {e}")
 
     def _close_widget_signal(self):
         try:
             gui_signals.close_widget_signal.emit()
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при запуске сигнала виджета (на закрытие): {e}")
+            debuglog.error(f"[MAIN] Ошибка при запуске сигнала виджета (на закрытие): {e}")
 
     def open_widget(self, is_auto_start=False):
         QTimer.singleShot(100, lambda: self._show_smart_widget(is_auto_start))
@@ -3490,8 +3437,8 @@ class Assistant(QMainWindow):
                 self.get_reaction(name="approve_folder")
 
         except Exception as e:
-            debug_logger.error(f"[MAIN] Ошибка при открытии виджета: {str(e)}")
-            self.show_notification_message(f"Ошибка при открытии виджета: {str(e)}")
+            debuglog.error(f"[MAIN] Ошибка при открытии виджета: {str(e)}")
+            self.show_notification(f"Ошибка при открытии виджета: {str(e)}")
 
     def _close_smart_widget(self):
         """Полное закрытие виджета с очисткой"""
@@ -3505,7 +3452,7 @@ class Assistant(QMainWindow):
         """Слот вызывается когда виджет уничтожен"""
         if hasattr(self, 'widget_window'):
             self.widget_window = None
-        debug_logger.info("[MAIN] Виджет полностью уничтожен")
+        debuglog.info("[MAIN] Виджет полностью уничтожен")
 
     def close_widget(self):
         try:
@@ -3514,8 +3461,8 @@ class Assistant(QMainWindow):
                 self.get_reaction(name="approve_folder")
         except Exception as e:
             self.get_reaction(detail=True, name="error_file")
-            self.show_notification_message(f"Ошибка при закрытии виджета (close_widget): {e}")
-            debug_logger.error(f"[MAIN] Ошибка при закрытии виджета (close_widget): {e}")
+            self.show_notification(f"Ошибка при закрытии виджета (close_widget): {e}")
+            debuglog.error(f"[MAIN] Ошибка при закрытии виджета (close_widget): {e}")
 
     def restore_and_hide(self):
         """Показываем окно и сразу скрываем — чтобы оно стало 'живым'"""
@@ -3527,14 +3474,14 @@ class Assistant(QMainWindow):
 
     def open_folder_shortcuts(self):
         """Обработка нажатия кнопки 'Открыть папку с ярлыками'"""
-        folder_path = get_path('user_settings', "links for assist")
-        debug_logger.info(f"[MAIN] Открытие папки ярлыков , {folder_path}")
+        folder_path = folder_links
+        debuglog.info(f"[MAIN] Открытие папки ярлыков , {folder_path}")
         os.startfile(folder_path)
 
     def open_folder_screenshots(self):
         """Обработка нажатия кнопки 'Открыть папку с ярлыками'"""
-        folder_path = get_path('user_settings', "screenshots")
-        debug_logger.info(f"[MAIN] Открытие папки скриншотов, {folder_path}")
+        folder_path = folder_screenshots
+        debuglog.info(f"[MAIN] Открытие папки скриншотов, {folder_path}")
         os.startfile(folder_path)
 
     def open_settings_of_tray(self):
@@ -3547,458 +3494,21 @@ class Assistant(QMainWindow):
     def open_main_settings(self):
         """Открывает панель настроек"""
         try:
-            if self.mutable_panel.isVisible() and self._current_panel == 'settings':
-                self.hide_widget()
-                return
-
-            self._current_panel = 'settings'
-
-            if self.mutable_panel.isVisible():
-                # Уже открыто — запускаем анимацию переключения
-                self._load_current_panel()
-            else:
-                self.show_widget()  # Запускаем анимацию открытия
+            self.content_container.switch_to(1)
 
         except Exception as e:
-            debug_logger.error(f"Ошибка при открытии mutable_panel: {e}")
+            debuglog.error(f"Ошибка при открытии mutable_panel: {e}")
             self.show_message(f"Ошибка при открытии mutable_panel: {str(e)}", "Ошибка", "error")
-
-    def get_size_widget(self, widget):
-        width = widget.width()
-        height = widget.height()
-        size = widget.size()
-    
-    def show_widget(self):
-        # self._current_panel = 'settings'
-        self._load_current_panel()
-        self.help_widget.show()
-
-        # Сразу анимируем раскрытие mutable_panel
-        self.animation.stop()
-        self.mutable_panel.show()
-        self.animation.setStartValue(0)
-        self.animation.setEndValue(self._get_panel_width())
-        self.animation.setDuration(500)
-        self.animation.setEasingCurve(QEasingCurve.Type.InCubic)
-        self.animation.start()
-
-    def _clear_mutable_panel(self):
-        """Очищает содержимое mutable_panel"""
-        while self.mutable_layout.count():
-            item = self.mutable_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-    def _load_current_panel(self):
-        """Загружает текущую панель (настройки или прочее)"""
-        if self._current_panel == 'settings':
-            if self.mutable_panel.isVisible():
-                # Если панель уже видна - анимируем переключение
-                self._animate_content_switch(self._load_settings_panel)
-            else:
-                self._load_settings_panel()
-        elif self._current_panel == 'other':
-            if self.mutable_panel.isVisible():
-                # Если панель уже видна - анимируем переключение
-                self._animate_content_switch(self._load_other_panel)
-            else:
-                self._load_other_panel()
-        elif self._current_panel == 'guide':
-            if self.mutable_panel.isVisible():
-                # Если панель уже видна - анимируем переключение
-                self._animate_content_switch(self._load_guide_panel)
-            else:
-                self._load_guide_panel()
-        elif self._current_panel == 'commands':
-            if self.mutable_panel.isVisible():
-                # Если панель уже видна - анимируем переключение
-                self._animate_content_switch(self._load_commands_panel)
-            else:
-                self._load_commands_panel()
-    
-    def hide_widget(self):
-        self.help_widget.hide()
-        self.animation.stop()
-        self.animation.setStartValue(self.mutable_panel.width())
-        self.animation.setEndValue(0)
-        self.animation.setDuration(500)
-        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.animation.finished.connect(self._on_panel_hidden)
-        self.animation.start()
-
-    def _on_panel_hidden(self):
-        self.animation.finished.disconnect()
-        self.mutable_panel.hide()
-
-    def _animate_content_switch(self, new_content_callback):
-        """Анимация смены контента в видимой панели"""
-        # Анимация исчезновения текущего контента
-        self.get_size_widget(self.mutable_panel)
-        self.animation.stop()
-        self.animation.setPropertyName(b"maximumWidth")
-        self.animation.setStartValue(self._get_panel_width())
-        self.animation.setEndValue(0)
-        self.animation.setDuration(500)
-        self.animation.setEasingCurve(QEasingCurve.Type.InCubic)
-        self.get_size_widget(self.mutable_panel)
-
-        # После сжатия - загружаем новый контент и расширяем
-        self.animation.finished.connect(lambda: self._expand_after_switch(new_content_callback))
-        self.animation.start()
-
-    def _expand_after_switch(self, new_content_callback):
-        """Вызывается после сжатия при переключении контента"""
-        self.animation.finished.disconnect()
-
-        # Загружаем новый контент
-        new_content_callback()
-
-        # Анимация расширения
-        self.animation.setStartValue(0)
-        self.animation.setEndValue(self._get_panel_width())
-        self.animation.setDuration(500)
-        self.animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        self.animation.start()
-
-    def _get_panel_width(self):
-        """Возвращает ширину панели с пропорциональным масштабированием"""
-        min_panel_width = 420
-        base_window_width = 920
-        max_panel_width = 570
-        
-        current_width = self.central_widget.width()
-        
-        if current_width <= base_window_width:
-            return min_panel_width
-        
-        # Пропорция
-        scale_factor = 0.25
-        additional_width = (current_width - base_window_width) * scale_factor
-        
-        calculated_width = min_panel_width + int(additional_width)
-        
-        # Ограничиваем максимальным значением
-        return min(calculated_width, max_panel_width)
-
-    def _load_settings_panel(self):
-        """Инициализация виджетов настроек с SVG на вкладках"""
-        if not hasattr(self, 'mutable_layout') or self.mutable_layout is None:
-            return
-        self.svg_settings_list = []
-        self._clear_mutable_panel()
-
-        self.tabs = QTabWidget()
-        self.tabs.setObjectName("TabWidget")
-
-        self.tab_bar = self.tabs.tabBar()
-        self.tab_bar.setObjectName("WSMainTabBar")
-
-        # Создаем виджеты для содержимого вкладок
-        main_widget = SettingsWidget(self)
-        other_widget = OtherSettingsWidget(self)
-        speech_hook_widget = SpeechHookManagerWidget(self)
-        interface_widget = InterfaceWidget(self)
-        settings_panel = SettingsWidgetPanel(self)
-
-        self.tabs.addTab(main_widget, "")
-        self.tabs.addTab(other_widget, "")
-        self.tabs.addTab(speech_hook_widget, "")
-        self.tabs.addTab(interface_widget, "")
-        self.tabs.addTab(settings_panel, "")
-
-        tab_bar = self.tabs.tabBar()
-
-        def create_centered_svg_tab(svg_path):
-            svg = CustomSvgWidget(svg_path)
-            svg.setFixedSize(30, 30)
-
-            svg.setStyleSheet("background: transparent;")
-            self.style_manager.apply_color_svg(svg, strength=0.90)
-            self.svg_settings_list.append({"svg": svg})
-            container = QWidget()
-            layout = QHBoxLayout(container)
-            layout.setContentsMargins(5, 0, 0, 5)
-            layout.addStretch()
-            layout.addWidget(svg)
-            layout.addStretch()
-            return container
-
-        tab_bar.setTabButton(0, QTabBar.ButtonPosition.LeftSide,
-                             create_centered_svg_tab(self.icon_main_settings_path))
-        tab_bar.setTabButton(1, QTabBar.ButtonPosition.LeftSide,
-                             create_centered_svg_tab(self.icon_advance_settings_path))
-        tab_bar.setTabButton(2, QTabBar.ButtonPosition.LeftSide,
-                             create_centered_svg_tab(self.icon_speech_hook_path))
-        tab_bar.setTabButton(3, QTabBar.ButtonPosition.LeftSide,
-                             create_centered_svg_tab(self.icon_styles_path))
-        tab_bar.setTabButton(4, QTabBar.ButtonPosition.LeftSide,
-                             create_centered_svg_tab(self.icon_panel_path))
-
-        self.tabs.setTabToolTip(0, "Основные настройки")
-        self.tabs.setTabToolTip(1, "Дополнительные настройки")
-        self.tabs.setTabToolTip(2, "Менеджер управления хук-словами")
-        self.tabs.setTabToolTip(3, "Настройки интерфейса")
-        self.tabs.setTabToolTip(4, "Настройки виджет-панели")
-
-        self.mutable_layout.addWidget(self.tabs)
-        # self.mutable_layout.addSpacerItem(QSpacerItem(self._get_panel_width(), 1,
-        #                                               QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed))
-
-        if isinstance(self.tabs.widget(0), SettingsWidget):
-            self.tabs.widget(0).voice_changed.connect(self.update_voice)
-
-    def open_commands_settings(self):
-        """Открывает встроенную панель 'Ваши Команды'"""
-        try:
-            if self.mutable_panel.isVisible() and self._current_panel == 'commands':
-                self.hide_widget()
-                return
-
-            self._current_panel = 'commands'
-
-            if self.mutable_panel.isVisible():
-                # Уже открыто — запускаем анимацию переключения
-                self._load_current_panel()
-            else:
-                self.show_widget()  # Запускаем анимацию открытия
-        except Exception as e:
-            debug_logger.error(f"Ошибка при открытии настроек команд: {e}", exc_info=True)
-            self.show_message(f"Ошибка при открытии настроек команд: {str(e)}", "Ошибка", "error")
-
-    def _load_commands_panel(self):
-        """Инициализация виджетов настроек с SVG на вкладках"""
-        if not hasattr(self, 'mutable_layout') or self.mutable_layout is None:
-            return
-        self.svg_settings_list = []
-        self._clear_mutable_panel()
-
-        self.tabs = QTabWidget()
-        self.tabs.setObjectName("TabWidget")
-
-        self.tab_bar = self.tabs.tabBar()
-        self.tab_bar.setObjectName("WSMainTabBar")
-
-        # Создаем виджеты для содержимого вкладок
-        new_com_widget = CreateCommandsWidget(self)
-        added_com_widget = CommandsWidget(self)
-        process_links_widget = ProcessLinksWidget(self)
-        create_scripts_widget = CreateScriptsWidget(self)
-
-        self.tabs.addTab(new_com_widget, "")
-        self.tabs.addTab(added_com_widget, "")
-        self.tabs.addTab(process_links_widget, "")
-        self.tabs.addTab(create_scripts_widget, "")
-
-        tab_bar = self.tabs.tabBar()
-
-        def create_centered_svg_tab(svg_path):
-            svg = CustomSvgWidget(svg_path)
-            svg.setFixedSize(30, 30)
-            svg.setStyleSheet("background: transparent;")
-            self.style_manager.apply_color_svg(svg, strength=0.90)
-            self.svg_settings_list.append({"svg": svg})
-            container = QWidget()
-            layout = QHBoxLayout(container)
-            layout.setContentsMargins(5, 0, 0, 5)
-            layout.addStretch()
-            layout.addWidget(svg)
-            layout.addStretch()
-            return container
-
-        tab_bar.setTabButton(0, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_create_command_path))
-        tab_bar.setTabButton(1, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_added_commands_path))
-        tab_bar.setTabButton(2, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_process_link_path))
-        tab_bar.setTabButton(3, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_scripts_path))
-
-        self.tabs.setTabToolTip(0, "Создание новых команд")
-        self.tabs.setTabToolTip(1, "Список ваших команд")
-        self.tabs.setTabToolTip(2, "Процессы ярлыков")
-        self.tabs.setTabToolTip(3, "Создание сценариев запуска")
-
-        self.mutable_layout.addWidget(self.tabs)
-        # self.mutable_layout.addSpacerItem(QSpacerItem(self._get_panel_width() + 30, 1, QSizePolicy.Policy.Fixed,
-        #                                               QSizePolicy.Policy.Fixed))
-
-    def other_options(self):
-        """Открывает встроенную панель 'Прочее'"""
-        try:
-            if self.mutable_panel.isVisible() and hasattr(self, '_current_panel') and self._current_panel == 'other':
-                self.hide_widget()
-                return
-
-            self._current_panel = 'other'
-
-            if self.mutable_panel.isVisible():
-                self._load_current_panel()
-            else:
-                self.show_widget()
-
-        except Exception as e:
-            debug_logger.error(f"Ошибка при открытии раздела 'Прочее': {e}")
-            self.show_message("Ошибка при открытии 'Прочее'", "Ошибка", "error")
-
-    def _load_other_panel(self):
-        """Инициализация виджетов настроек (вызывается один раз)"""
-        if not hasattr(self, 'mutable_layout') or self.mutable_layout is None:
-            return
-
-        self._clear_mutable_panel()
-
-        # Создаём вкладки
-        self.tabs = QTabWidget()
-        self.tabs.setObjectName("TabWidget")
-        self.svg_others_list = []
-
-        self.tab_bar = self.tabs.tabBar()
-        self.tab_bar.setObjectName("WSMainTabBar")
-
-        # Добавляем вкладки
-        self.tabs.addTab(CensorCounterWidget(self), "")
-        self.tabs.addTab(CheckUpdateWidget(self), "")
-        self.tabs.addTab(DebugLoggerWidget(self), "")
-
-        # Добавляем вкладку для открытия папки
-        folder_tab = QWidget()
-        self.tabs.addTab(folder_tab, "")
-
-        tab_bar = self.tabs.tabBar()
-
-        def create_centered_svg_tab(svg_path):
-            svg = CustomSvgWidget(svg_path)
-            svg.setFixedSize(30, 30)
-            svg.setStyleSheet("background: transparent;")
-            self.style_manager.apply_color_svg(svg, strength=0.90)
-            self.svg_others_list.append({"svg": svg})
-            container = QWidget()
-            layout = QHBoxLayout(container)
-            layout.setContentsMargins(5, 0, 0, 5)
-            layout.addStretch()
-            layout.addWidget(svg)
-            layout.addStretch()
-            return container
-
-        tab_bar.setTabButton(0, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_censor_path))
-        tab_bar.setTabButton(1, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_updates_path))
-        tab_bar.setTabButton(2, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_logs_path))
-        tab_bar.setTabButton(3, QTabBar.ButtonPosition.LeftSide, create_centered_svg_tab(self.icon_screenshot_path))
-
-        self.tabs.setTabToolTip(0, "Счетчик цензуры")
-        self.tabs.setTabToolTip(1, "Обновления")
-        self.tabs.setTabToolTip(2, "Подробные логи")
-        self.tabs.setTabToolTip(3, "Папка скриншотов")
-
-        # Обработчик переключения вкладок
-        def on_tab_changed(index):
-            if index == 3:  # Если выбрана вкладка "Папка скриншотов"
-                self.open_folder_screenshots()
-                self.tabs.setCurrentIndex(0)
-
-        self.tabs.currentChanged.connect(on_tab_changed)
-
-        # Добавляем в layout
-        self.mutable_layout.addWidget(self.tabs)
-        # self.spacer = QSpacerItem(self._get_panel_width(), 1, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        # self.mutable_layout.addSpacerItem(self.spacer)
-
-    def guide_options(self):
-        """Открывает панель гайдов"""
-        try:
-            if self.mutable_panel.isVisible() and self._current_panel == 'guide':
-                self.hide_widget()
-                return
-
-            self._current_panel = 'guide'
-
-            if self.mutable_panel.isVisible():
-                self._load_current_panel()
-            else:
-                self.show_widget()
-
-        except Exception as e:
-            debug_logger.error(f"Ошибка при открытии гайдов: {e}")
-            self.show_message("Ошибка", "error")
-
-    def _load_guide_panel(self):
-        """Загружает интерфейс гайдов в mutable_panel"""
-        self._clear_mutable_panel()
-        self._current_panel = 'guide'  # Флаг для отслеживания
-
-        self.main = QWidget()
-        self.main_layout = QVBoxLayout(self.main)
-        self.main_layout.setContentsMargins(5, 5, 5, 5)
-
-        self.spacer = QSpacerItem(self._get_panel_width(), 1, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.main_layout.addSpacerItem(self.spacer)
-        # Заголовок
-        label = QLabel("Обучение")
-        label.setStyleSheet("font-size: 16px; font-weight: bold; margin-bottom: 10px; background: transparent;")
-        self.main_layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        # Кнопки для видео
-        path_guides = get_path("bin", "guides")
-        videos = [
-            ("Кастомизация стилей", f"{path_guides}/styles_panel.mp4")
-        ]
-
-        for title, video_path in videos:
-            btn = QPushButton(title)
-            btn.clicked.connect(lambda _, p=video_path: self.open_video(p))
-            self.main_layout.addWidget(btn)
-
-        # Кнопка "Встроенные команды"
-        cmd_btn = QPushButton("Встроенные команды")
-        cmd_btn.clicked.connect(self._load_commands_info)
-        self.main_layout.addWidget(cmd_btn)
-        self.mutable_layout.addWidget(self.main)
-
-    def open_video(self, video_path):
-        full_path = get_path(video_path)
-        if os.path.exists(full_path):
-            QDesktopServices.openUrl(QUrl.fromLocalFile(full_path))
-        else:
-            debug_logger.error(f"Видео не найдено: {full_path}")
-            self.show_message("Видео не найдено", "Ошибка", "error")
-
-    def _load_commands_info(self):
-        self._clear_mutable_panel()
-        self._current_panel = 'commands'
-
-        sections = [
-            ("Формула команды",
-             "'Имя ассистента'\n+\n'открой, включи'/'закрой выключи'\n+\n'команда, созданная вручную или из списка "
-             "встроенных'"),
-            ("Встроенные команды (открыть/закрыть)",
-             "'Пейнт', 'Калькулятор', 'Корзина', 'Ап Дата', 'Переменные окружения', 'Диспетчер задач', 'Микшер',"
-             "'Панель(для вызова виджета)', 'Микро'"),
-            ("Управление плеером без произношения имени бота", "(Плеер) + (Действие)\n\n" +
-             "Пауза, врубай, включи, запусти\n" +
-             "Стоп, выключи, отключи, останови\n" +
-             "Следующий, дальше, вперед\n" +
-             "Предыдущий, назад")
-        ]
-
-        for title, text in sections:
-            lbl_title = QLabel(f"<b>{title}</b>")
-            lbl_title.setStyleSheet("background: transparent;")
-            lbl_text = QLabel(text)
-            lbl_text.setWordWrap(True)
-            lbl_text.setStyleSheet("margin-left: 10px; margin-bottom: 10px; font-size: 13px; background: transparent;")
-            self.mutable_layout.addWidget(lbl_title)
-            self.mutable_layout.addWidget(lbl_text)
-
-        back_btn = QPushButton("Назад к гайдам")
-        back_btn.clicked.connect(self._load_guide_panel)
-        self.mutable_layout.addWidget(back_btn)
 
     def changelog_window(self, event):
         """Открываем окно с логами изменений"""
         dialog = ChangelogWindow(self)
         dialog.show()
 
-    def update_app(self, type_version=None, batch_update=False):
+    def update_app(self, type_version=None):
         """Обработка нажатия кнопки 'Установить обновление'"""
-        debug_logger.info(f"Вызвано создание update_app c флагами type_version {type_version}, batch_update {batch_update}")
-        dialog = UpdateApp(self, type_version, batch_update)
+        debuglog.info(f"Вызвано создание update_app c флагами type_version {type_version}")
+        dialog = UpdateApp(self, type_version)
         dialog.main()
 
     def update_voice(self, new_voice):
@@ -4006,15 +3516,7 @@ class Assistant(QMainWindow):
         self.speaker = new_voice
         self.audio_paths = get_audio_paths(self.speaker)  # Обновляем пути к аудиофайлам
         logger.info(f"Голос изменен на: {new_voice}")
-        debug_logger.info(f"Голос изменен на: {new_voice}")
-
-    def check_start_win(self):
-        """Меняет цвет иконки"""
-        if hasattr(self, 'start_svg'):
-            if self.toggle_start:
-                self.style_manager.apply_color_svg(self.start_svg, strength=0.95)
-            else:
-                self.style_manager.apply_color_svg(self.start_svg, strength=0.95, specified_color="#ffffff")
+        debuglog.info(f"Голос изменен на: {new_voice}")
 
     def check_start_widget(self):
         if self.is_widget:
@@ -4028,30 +3530,19 @@ class Assistant(QMainWindow):
             self.add_to_autostart()
         else:
             self.remove_from_autostart()
-        self.check_start_win()
 
     def add_to_autostart(self):
         """Добавление программы в автозапуск через планировщик задач"""
-        current_directory = get_path()
-        write_directory = os.path.dirname(current_directory)
+        task_name = "Voxodium"
+        target_path = get_full_filepath()
 
-        # Базовые имена задач
-        task_name_base = "VirtualAssistant"
-
-        # Определяем тип запуска и пути
-        if getattr(sys, 'frozen', False):
-            # Запуск как EXE
-            task_name = task_name_base
-            target_path = os.path.join(write_directory, 'Assistant.exe')
-
-        logger.info(f"Путь для планировщика: {target_path}")
-        debug_logger.debug(f"Путь для планировщика: {target_path}")
+        debuglog.debug(f"Путь для планировщика: {target_path}")
 
         # Проверка наличия файла
         if not os.path.isfile(target_path):
             error_msg = f"Ошибка: Файл '{target_path}' не найден."
             logger.error(error_msg)
-            debug_logger.error(error_msg)
+            debuglog.error(error_msg)
             return
 
         # Команда для создания задачи в планировщике
@@ -4059,16 +3550,15 @@ class Assistant(QMainWindow):
             'schtasks',
             '/create',
             '/tn', task_name,
-            '/tr', f'"{target_path}"',  # Путь в кавычках для поддержки пробелов
+            '/tr', f'"{target_path}"',
             '/sc', 'onlogon',
             '/rl', 'highest',
             '/f'
         ]
 
         try:
-            result = subprocess.run(
+            result = subprocess.Popen(
                 command,
-                check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW,
@@ -4078,19 +3568,17 @@ class Assistant(QMainWindow):
 
             success_msg = f"Программа добавлена в автозапуск"
             logger.info(success_msg)
-            debug_logger.info(success_msg)
-            self.show_notification_message(message=f"Программа добавлена в автозапуск")
+            debuglog.info(success_msg)
+            self.show_notification("Автозапуск включен")
 
         except subprocess.CalledProcessError as e:
             error_msg = f"Ошибка при добавлении в автозапуск: {e.stderr}"
             logger.error(error_msg)
-            debug_logger.error(error_msg)
+            debuglog.error(error_msg)
 
     def remove_from_autostart(self):
         """Удаление программы из автозапуска через планировщик задач"""
-        # Определяем имя задачи в зависимости от типа запуска
-        if getattr(sys, 'frozen', False):
-            task_name = "VirtualAssistant"  # Для EXE-версии
+        task_name = "Voxodium"
 
         command = [
             'schtasks',
@@ -4100,9 +3588,8 @@ class Assistant(QMainWindow):
         ]
 
         try:
-            result = subprocess.run(
+            result = subprocess.Popen(
                 command,
-                check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW,
@@ -4110,49 +3597,47 @@ class Assistant(QMainWindow):
                 encoding='cp866'
             )
             success_msg = f"Задача '{task_name}' удалена из автозапуска"
-            debug_logger.info(success_msg)
-            self.show_notification_message(message=f"Программа удалена из автозапуска")
+            debuglog.info(success_msg)
+            self.show_notification(message=f"Автозапуск выключен")
         except subprocess.CalledProcessError as e:
             if "не существует" not in e.stderr:
                 error_msg = f"Ошибка при удалении задачи '{task_name}': {e.stderr}"
-                self.show_notification_message(message=f"{error_msg}")
-                debug_logger.error(error_msg)
+                self.show_notification(message=f"{error_msg}")
+                debuglog.error(error_msg)
             else:
-                debug_logger.info(f"Задача '{task_name}' не найдена в планировщике")
+                debuglog.info(f"Задача '{task_name}' не найдена в планировщике")
 
     def check_autostart(self):
         """Проверка, добавлена ли программа в автозапуск"""
-        # Определяем имя задачи в зависимости от типа запуска
-        task_name = "VirtualAssistant"  # Для EXE-версии
+        task_name = "Voxodium"
 
         command = ['schtasks', '/query', '/tn', task_name]
 
         try:
-            result = subprocess.run(
+            result = subprocess.Popen(
                 command,
-                check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW,
                 text=True,
                 encoding='cp866'
             )
-            debug_logger.info(f"Найдена задача автозапуска: '{task_name}'")
+            debuglog.info(f"Найдена задача автозапуска: '{task_name}'")
             self.toggle_start = True
         except subprocess.CalledProcessError as e:
             if "не существует" not in e.stderr:
-                error_msg = f"Ошибка при проверке задачи '{task_name}': {e.stderr}"
+                error_msg = f"Автозапуск '{task_name}': {e.stderr}"
                 logger.error(error_msg)
-                debug_logger.error(error_msg)
+                debuglog.error(error_msg)
             self.toggle_start = False
-            debug_logger.info(f"Задача '{task_name}' не найдена в планировщике")
+            debuglog.info(f"Задачи '{task_name}' не существует")
 
     def capture_area(self):
         try:
             self.screenshot_tool.capture_area()
         except Exception as e:
             logger.error(f'Ошибка {e}')
-            debug_logger.error(f'Ошибка {e}')
+            debuglog.error(f'[MAIN] Ошибка capture_area {e}')
 
     def capture_fullscreen(self):
         try:
@@ -4161,355 +3646,7 @@ class Assistant(QMainWindow):
         except Exception as e:
             thread_play_sound(type_sound="error")
             logger.error(f'Ошибка {e}')
-            debug_logger.error(f'Ошибка {e}')
-
-
-class UpdateApp(QDialog):
-    def __init__(self, parent=None, type_version="stable", batch_update=False):
-        super().__init__(parent)
-        self.assistant = parent
-        self.batch = batch_update
-        self.type_version = type_version
-        self.extract_dir = get_path("update_pack")
-        os.makedirs(self.extract_dir, exist_ok=True)
-
-    def main(self):
-        if not self.batch:
-            self.update_file_path = self.find_update_file()
-            if not self.update_file_path:
-                debug_logger.error("[UPD] Не найден файл обновления (*.zip)")
-                return
-
-            if not self.extract_archive(self.update_file_path):
-                self.assistant.show_notification_message("[UPD] Не удалось распаковать архив с новой версией")
-                return
-            debug_logger.info(f"[UPD] Архив с новой версией распакован по пути {self.extract_dir}")
-        self.assistant.show_notification_message("Начинаю установку...")
-        QTimer.singleShot(800, lambda: self.start_update())
-
-    def restart_app(self):
-        try:
-            subprocess.Popen([get_path("Update.exe")], shell=True)
-            debug_logger.info("[RESTART] Update.exe запущен")
-        except Exception as e:
-            debug_logger.error(f"[RESTART] Ошибка при запуске Update.exe: {e}")
-
-    def start_update(self):
-        try:
-            if not self.batch:
-                # флаг no-checked для пропуска проверки новой версии в апдейте
-                subprocess.Popen([get_path("Update.exe"), "--no-checked"], shell=True)
-                debug_logger.info("[UPD] Update.exe успешно запущен с флагом --no-checked")
-            else:
-                # flag --batch-update for package update
-                subprocess.Popen([get_path("Update.exe"), "--batch-update"], shell=True)
-                debug_logger.info("[UPD] Update.exe успешно запущен с флагом --batch-update")
-        except Exception as e:
-            debug_logger.error(f"[UPD] Ошибка при запуске Update.exe: {e}")
-
-    def find_update_file(self):
-        update_dir = get_path("update")
-        pattern = f"{self.type_version}_Assistant_*.zip"
-        # Ищем самый свежий файл по дате изменения
-        files = []
-        for file in os.listdir(update_dir):
-            if file.lower().startswith(self.type_version.lower()) and file.lower().endswith('.zip'):
-                file_path = os.path.join(update_dir, file)
-                files.append((file_path, os.path.getmtime(file_path)))
-
-        if files:
-            # Сортируем по дате изменения (новые сначала)
-            files.sort(key=lambda x: x[1], reverse=True)
-            return files[0][0]
-        return None
-
-    def extract_archive(self, archive_path):
-        """Безопасная распаковка архива с обработкой кодировок"""
-        try:
-            # Очищаем папку перед распаковкой
-            for item in os.listdir(self.extract_dir):
-                item_path = os.path.join(self.extract_dir, item)
-                if os.path.isfile(item_path):
-                    os.unlink(item_path)
-                else:
-                    shutil.rmtree(item_path)
-
-            with zipfile.ZipFile(archive_path, 'r') as zip_ref:
-                for file_info in zip_ref.infolist():
-                    # Безопасное извлечение имени файла
-                    file_name = self._safe_decode_filename(file_info.filename)
-
-                    # Защита от Zip Slip
-                    target_path = os.path.join(self.extract_dir, file_name)
-                    if not os.path.abspath(target_path).startswith(os.path.abspath(self.extract_dir)):
-                        raise ValueError(f"Попытка распаковки вне целевой папки: {file_name}")
-
-                    # Создаем папки если нужно
-                    if file_name.endswith('/'):
-                        os.makedirs(target_path, exist_ok=True)
-                    else:
-                        os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                        with open(target_path, 'wb') as f:
-                            f.write(zip_ref.read(file_info))
-            return True
-
-        except Exception as e:
-            debug_logger.error(f"[UPD] Ошибка распаковки: {str(e)}", exc_info=True)
-            self.assistant.show_message(f"Ошибка распаковки: {str(e)}", "Ошибка", "error")
-            return False
-
-    def _safe_decode_filename(self, filename):
-        """Безопасное декодирование имени файла из архива с поддержкой русского"""
-        # Список кодировок для попытки декодирования (в порядке приоритета)
-        encodings = [
-            'cp866',  # DOS/Windows Russian
-            'cp1251',  # Windows Cyrillic
-            'utf-8',  # Unicode
-            'cp437',  # DOS English
-            'iso-8859-1',  # Latin-1
-            'koi8-r'  # Russian KOI8-R
-        ]
-
-        # Сначала пробуем стандартное декодирование (для современных ZIP)
-        try:
-            return filename.encode('cp437').decode('utf-8')
-        except UnicodeError:
-            pass
-
-        # Если не получилось, пробуем все кодировки по очереди
-        for enc in encodings:
-            try:
-                return filename.encode('cp437').decode(enc)
-            except (UnicodeEncodeError, UnicodeDecodeError):
-                continue
-
-        # Если ничего не помогло, возвращаем как есть и логируем проблему
-        debug_logger.warning(f"[UPD] Не удалось декодировать имя файла: {filename}")
-        return filename
-
-
-class InitScreen(QWidget):
-    """
-    Окно инициализации программы, проверка файлов и необходимых параметров перед основным запуском
-    """
-    init_complete = Signal(bool)
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.auth = None
-        self.style_manager = main_apply_colors
-        self.color_path = self.style_manager.color_path
-        self.styles = self.style_manager.load_styles()
-        self.style_path = get_path('user_settings', 'color_settings.json')
-        self.svg_path = get_path("bin", "logo.svg")
-        self.init_ui()
-        self.apply_styles()
-        self.start_checks()
-
-    def init_ui(self):
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(250, 250)
-
-        screen_geometry = self.screen().availableGeometry()
-        self.move(
-            (screen_geometry.width() - self.width()) // 2,
-            (screen_geometry.height() - self.height()) // 2
-        )
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self.main_widget = QWidget()
-        self.main_widget.setObjectName("WindowContainer")
-        content_layout = QVBoxLayout(self.main_widget)
-        content_layout.setContentsMargins(15, 0, 15, 20)
-        content_layout.addStretch()
-
-        self.svg_image = CustomSvgWidget(self.svg_path)
-        self.svg_image.setFixedSize(120, 110)
-        self.svg_image.setStyleSheet("""
-                    background: transparent;
-                    border: none;
-                    outline: none;
-                """)
-        self.color_svg = QGraphicsColorizeEffect()
-        self.svg_image.setGraphicsEffect(self.color_svg)
-        content_layout.addWidget(self.svg_image, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        content_layout.addStretch()
-
-        self.progress = SVGProgressBar(
-            svg_widget=self.svg_image,
-            style="circle",
-            circle_size=180,
-            show_text=False,
-            line_width=3)
-        content_layout.addWidget(self.progress, alignment=Qt.AlignmentFlag.AlignCenter)
-        
-        self.label = QLabel("Инициализация...", self)
-        self.label.setStyleSheet("background: transparent; min-height: 35px; max-height: 35px;")
-        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.label.setWordWrap(True)
-        self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        content_layout.addWidget(self.label)
-
-        self.setLayout(layout)
-        layout.addWidget(self.main_widget, 1)
-
-    def apply_styles(self):
-        try:
-            self.styles = self.style_manager.load_styles()
-
-            self.style_manager.apply_color_svg(self.svg_image, strength=0.95)
-            self.style_manager.apply_progressbar(widget=self.progress)
-
-            style_sheet = ""
-            for widget, styles in self.styles.items():
-                if widget.startswith("Q"):
-                    selector = widget
-                else:
-                    selector = f"#{widget}"
-
-                style_sheet += f"{selector} {{\n"
-                for prop, value in styles.items():
-                    style_sheet += f"    {prop}: {value};\n"
-                style_sheet += "}\n"
-
-            # Устанавливаем стиль для текущего окна
-            self.setStyleSheet(style_sheet)
-            self.main_widget.setStyleSheet("""border-radius:20px""")
-        except Exception as e:
-            debug_logger.error(f"[INIT] Ошибка в методе apply_styles: {e}")
-
-    def show_message(self, text, title="Уведомление", message_type="info", buttons=QMessageBox.StandardButton.Ok):
-        try:
-            message = SimpleNotice(
-                parent=self,
-                message=text,
-                title=title,
-                message_type=message_type,
-                buttons=buttons
-            )
-            return message.exec_()
-        except Exception as e:
-            debug_logger.error(f"[INIT] Ошибка при показе уведомления(оконного): {e}")
-            return QDialog.DialogCode.Rejected
-
-    def start_checks(self):
-        self.check_thread = CheckThread()
-        self.check_thread.progress_update.connect(self.update_progress)
-        self.check_thread.checks_complete.connect(self.on_checks_complete)
-        self.check_thread.start()
-
-    def update_progress(self, message, value):
-        self.label.setText(message)
-        self.progress.setValue(value)
-        QApplication.processEvents()  # Обновляем интерфейс
-
-    def on_checks_complete(self, result, error=""):
-        if result:
-            QTimer.singleShot(200, lambda: self.finalize_initialization(True))
-        else:
-            self.label.setText(f"Ошибка")
-            self.show_message(text=f"{error}", title="Ошибка", message_type="error")
-            self.init_complete.emit(False)
-            QTimer.singleShot(1000, lambda: self.close())
-
-    def finalize_initialization(self, success):
-        self.init_complete.emit(success)
-        self.close()
-
-
-class CheckThread(QThread):
-    checks_complete = Signal(bool, str)
-    progress_update = Signal(str, int)
-
-    def run(self):
-        try:
-            total_steps = 100
-            admin_weight = 30
-            device_weight = 30
-            path_weight = 40
-
-            self.progress_update.emit("Проверка прав администратора...", 0)
-            if not self.check_admin():
-                self.progress_update.emit("Ошибка: Нет прав администратора!", 0)
-                self.checks_complete.emit(False, "Ошибка: Нет прав администратора!")
-                return
-            for i in range(admin_weight):
-                QThread.msleep(5)  # имитация долгой проверки
-                self.progress_update.emit("Проверка прав администратора...", i + 1)
-
-            if not self.check_audio_devices(device_weight):
-                return
-
-            if self.check_main_path(get_path(), path_weight):
-                self.checks_complete.emit(False, "Ошибка: В пути обнаружена кириллица!")
-                return
-
-            self.progress_update.emit("Запуск...", 100)
-            self.checks_complete.emit(True, "")
-        except Exception as e:
-            self.progress_update.emit(f"Критическая ошибка: {str(e)}", 0)
-            self.checks_complete.emit(False, "")
-
-    # noinspection PyUnresolvedReferences
-    def check_admin(self):
-        """Проверка прав администратора"""
-        try:
-            return ctypes.windll.shell32.IsUserAnAdmin()
-        except:
-            return False
-
-    def check_main_path(self, path, path_weight):
-        self.progress_update.emit("Проверяю путь до исполняемого файла...", 61)
-        for i in range(path_weight):
-            QThread.msleep(10)  # имитация долгой проверки
-            self.progress_update.emit("Проверяю путь до исполняемого файла...", i + 61)
-        cyrillic_pattern = re.compile(r'[а-яА-ЯёЁ]')
-        return bool(cyrillic_pattern.search(path))
-
-    def input_device(self, device_weight):
-        p = pyaudio.PyAudio()
-
-        self.progress_update.emit("Ищу устройства ввода...", 30)
-        weight = int(device_weight/2)
-        for i in range(weight):
-            QThread.msleep(10)  # имитация долгой проверки
-            self.progress_update.emit("Ищу устройства ввода...", i + 30)
-
-            try:
-                default_input_device = p.get_default_input_device_info()
-                return True
-            except IOError:
-                self.progress_update.emit("Ошибка: Нет устройств ввода звука.", 30)
-                self.checks_complete.emit(False, "Ошибка: Нет устройств ввода звука")
-                return False
-
-    def output_device(self, device_weight):
-        p = pyaudio.PyAudio()
-
-        self.progress_update.emit("Ищу устройства вывода...", 45)
-        weight = int(device_weight/2)
-        for i in range(weight):
-            QThread.msleep(10)  # имитация долгой проверки
-            self.progress_update.emit("Ищу устройства вывода...", i + 45)
-        try:
-            default_output_device = p.get_default_output_device_info()
-            return True
-        except IOError:
-            self.progress_update.emit("Ошибка: Нет устройств вывода звука.", 45)
-            self.checks_complete.emit(False, "Ошибка: Нет устройств вывода звука")
-            return False
-        finally:
-            p.terminate()
-
-    def check_audio_devices(self, device_weight):
-        if not self.input_device(device_weight) or not self.output_device(device_weight):
-            return False
-
-        self.progress_update.emit("Аудиоустройства проверены.", 60)
-        return True
+            debuglog.error(f'Ошибка {e}')
 
 
 def should_launch_updater():
@@ -4548,12 +3685,14 @@ if __name__ == '__main__':
             if activate_existing_window():
                 sys.exit(0)
 
+
         app = QApplication([])
-        app.setWindowIcon(QIcon(get_path('icon_assist.ico')))
+        app.setWindowIcon(QIcon(get_path('icon.ico')))
         setup_global_font(app, "Open Sans", 10, "Medium")
         window = Assistant()
         app.exec()
 
     except Exception as e:
+        traceback.print_exc()
         logger.error(f"Произошла ошибка при запуске программы: {e}")
-        debug_logger.error(f"Произошла ошибка при запуске программы: {e}")
+        debuglog.error(f"Произошла ошибка при запуске программы: {e}")

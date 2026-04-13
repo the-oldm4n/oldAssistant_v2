@@ -1,8 +1,7 @@
 import shiboken6
 import winsound
-from bin.apply_color_methods import ApplyColor
-from bin.custom_svg_widget import CustomSvgWidget
-from logging_config import debug_logger
+from mygui import CustomSvgWidget, main_apply_colors
+from log_config import debuglog
 from path_builder import get_path
 from PySide6.QtCore import QParallelAnimationGroup, QEasingCurve, QPropertyAnimation, QPoint, QEvent, QTimer, \
     QAbstractAnimation, Qt
@@ -29,10 +28,9 @@ class ToastNotification(QDialog):
             self.parent.installEventFilter(self)
         self.timeout = timeout
         self.message = message
-        self.svg_path = get_path("bin", "logo.svg")
+        self.svg_path = get_path("bin","icons",  "logo-app.svg")
         self.icon_close_path = get_path("bin", "icons", "close.svg")
-        self.style_path = get_path('user_settings', 'color_settings.json')
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.styles = self.style_manager.load_styles()
         self.init_ui()
         self.apply_styles()
@@ -211,7 +209,7 @@ class ToastNotification(QDialog):
                 ToastNotification._active_toast = None
 
         except Exception as e:
-            debug_logger.error(f"Ошибка при закрытии уведомления: {e}")
+            debuglog.error(f"Ошибка при закрытии уведомления: {e}")
     
     def showEvent(self, event):
         try:
@@ -246,7 +244,7 @@ class ToastNotification(QDialog):
             # Таймер для автоматического скрытия
             self.timer.start(self.timeout) 
         except Exception as e:
-            debug_logger.error(f"showEvent FAILED: {e}", exc_info=True)
+            debuglog.error(f"showEvent FAILED: {e}", exc_info=True)
             raise
 
     def hide_animated(self):
@@ -286,7 +284,7 @@ class ToastNotification(QDialog):
             self.setStyleSheet(style_sheet)
 
         except Exception as e:
-            debug_logger.error(f"Ошибка в методе apply_styles: {e}")
+            debuglog.error(f"Ошибка в методе apply_styles: {e}")
 
 
 class SimpleNotice():
@@ -297,9 +295,8 @@ class SimpleNotice():
         self.message = message
         self.title = title
         self.buttons = buttons
-        self.style_path = get_path('user_settings', 'color_settings.json')
         self.icon_close_path = get_path("bin", "icons", "close.svg")
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.styles = self.style_manager.load_styles()
         self.result = None
         self.main = None
@@ -381,7 +378,7 @@ class SimpleNotice():
         title_layout.addStretch()
 
         close_btn = QPushButton("")
-        close_btn.setObjectName("CloseButton")
+        close_btn.setObjectName("TitleBarCloseBtnV2")
         close_btn.setFixedSize(30, 30)
         close_btn.clicked.connect(self.main.reject)
         self.close_svg = CustomSvgWidget(self.icon_close_path, close_btn)
@@ -492,7 +489,7 @@ class SimpleNotice():
             self.main.setStyleSheet(style_sheet)
 
         except Exception as e:
-            debug_logger.error(f"Ошибка в методе apply_styles: {e}")
+            debuglog.error(f"Ошибка в методе apply_styles: {e}")
 
     def exec_(self):
         """Показать диалог и вернуть результат"""
@@ -522,10 +519,9 @@ class SupplyNotice(QDialog):
             self.parent.installEventFilter(self)
         self.timeout = timeout
         self.message = message
-        self.svg_path = get_path("bin", "logo.svg")
-        self.style_path = get_path('user_settings', 'color_settings.json')
+        self.svg_path = get_path("bin","icons",  "logo-app.svg")
         self.icon_close_path = get_path("bin", "icons", "close.svg")
-        self.style_manager = ApplyColor(self)
+        self.style_manager = main_apply_colors
         self.styles = self.style_manager.load_styles()
         self.init_ui()
         self.apply_styles()
@@ -704,7 +700,7 @@ class SupplyNotice(QDialog):
                 SupplyNotice._active_toast = None
 
         except Exception as e:
-            debug_logger.error(f"Ошибка при закрытии уведомления: {e}")
+            debuglog.error(f"Ошибка при закрытии уведомления: {e}")
 
     def showEvent(self, event):
         try:
@@ -739,7 +735,7 @@ class SupplyNotice(QDialog):
             # Таймер для автоматического скрытия
             self.timer.start(self.timeout)      
         except Exception as e:
-            debug_logger.error(f"showEvent FAILED: {e}", exc_info=True)
+            debuglog.error(f"showEvent FAILED: {e}", exc_info=True)
             raise
 
     def hide_animated(self):
@@ -779,4 +775,4 @@ class SupplyNotice(QDialog):
             self.setStyleSheet(style_sheet)
 
         except Exception as e:
-            debug_logger.error(f"Ошибка в методе apply_styles: {e}")
+            debuglog.error(f"Ошибка в методе apply_styles: {e}")

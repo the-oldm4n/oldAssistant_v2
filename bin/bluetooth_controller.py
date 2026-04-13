@@ -3,7 +3,7 @@ import subprocess
 from bin.function_list_main import get_current_speaker
 from bin.lists import get_audio_paths
 from bin.speak_functions import thread_react
-from logging_config import debug_logger
+from log_config import debuglog
 
 
 class BluetoothController:
@@ -27,9 +27,9 @@ class BluetoothController:
                 if callback:
                     callback(result)
             except subprocess.TimeoutExpired:
-                debug_logger.error("[BLUETOOTH] Bluetooth command timeout")
+                debuglog.error("[BLUETOOTH] Bluetooth command timeout")
             except Exception as e:
-                debug_logger.error(f"[BLUETOOTH] Bluetooth error: {e}")
+                debuglog.error(f"[BLUETOOTH] Bluetooth error: {e}")
             finally:
                 with self._lock:
                     self._operation_in_progress = False
@@ -53,7 +53,7 @@ class BluetoothController:
             if result and result.returncode == 0:
                 with self._lock:
                     self.is_enabled = True
-                debug_logger.info("[BLUETOOTH] Enabled")
+                debuglog.info("[BLUETOOTH] Enabled")
         
         # Меняем состояние СРАЗУ, а не после выполнения
         with self._lock:
@@ -81,7 +81,7 @@ class BluetoothController:
             if result and result.returncode == 0:
                 with self._lock:
                     self.is_enabled = False
-                debug_logger.info("[BLUETOOTH] Disabled")
+                debuglog.info("[BLUETOOTH] Disabled")
         
         # Меняем состояние СРАЗУ
         with self._lock:

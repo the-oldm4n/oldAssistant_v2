@@ -7,7 +7,7 @@ import pygetwindow as gw
 import pyautogui
 import time
 import keyboard
-from logging_config import debug_logger
+from log_config import debuglog
 
 
 class ToggleMuteDiscord:
@@ -41,19 +41,19 @@ class ToggleMuteDiscord:
                         discord_windows.append(window)
 
                 if discord_windows:
-                    debug_logger.info(f"Настоящее окно Discord найдено на попытке {attempt + 1}")
+                    debuglog.info(f"Настоящее окно Discord найдено на попытке {attempt + 1}")
                     return discord_windows[0]  # возвращаем окно, а не список
 
-                debug_logger.info(f"Настоящее окно Discord не найдено, попытка {attempt + 1}/{max_attempts}")
+                debuglog.info(f"Настоящее окно Discord не найдено, попытка {attempt + 1}/{max_attempts}")
                 if attempt < max_attempts - 1:
                     time.sleep(delay)
 
             except Exception as e:
-                debug_logger.error(f"Ошибка поиска окна (попытка {attempt + 1}): {e}")
+                debuglog.error(f"Ошибка поиска окна (попытка {attempt + 1}): {e}")
                 if attempt < max_attempts - 1:
                     time.sleep(delay)
 
-        debug_logger.warn("Настоящее окно Discord не найдено после всех попыток")
+        debuglog.warn("Настоящее окно Discord не найдено после всех попыток")
         return None
 
     def get_window(self):
@@ -62,7 +62,7 @@ class ToggleMuteDiscord:
 
     def simulate_key_combo(self):
         """Симуляция нажатия клавиш с проверкой результата - один случайный метод за вызов"""
-        debug_logger.info("Начинаем симуляцию клавиш Ctrl+Shift+M...")
+        debuglog.info("Начинаем симуляцию клавиш Ctrl+Shift+M...")
 
         # Список всех доступных методов
         all_methods = [
@@ -90,7 +90,7 @@ class ToggleMuteDiscord:
             # Если все методы были использованы, выбираем любой
             selected_method = random.choice(all_methods)
 
-        debug_logger.info(f"Выбран метод: {selected_method.__name__}")
+        debuglog.info(f"Выбран метод: {selected_method.__name__}")
 
         # Пробуем только один выбранный метод
         success = selected_method()
@@ -98,7 +98,7 @@ class ToggleMuteDiscord:
         # Запоминаем последний использованный метод
         self.last_used_method = selected_method
 
-        debug_logger.info(f"Результат симуляции клавиш: {success}")
+        debuglog.info(f"Результат симуляции клавиш: {success}")
         return success
 
     def _try_ctypes_hotkey(self):
@@ -109,7 +109,7 @@ class ToggleMuteDiscord:
     def _try_pydirectinput_hotkey(self):
         """Пытается использовать PyDirectInput для эмуляции Ctrl+Shift+M"""
         try:
-            debug_logger.info("Метод <<<[PyDirectInput]>>>")
+            debuglog.info("Метод <<<[PyDirectInput]>>>")
 
             # Нажимаем Ctrl+Shift+M
             pydirectinput.keyDown('ctrl')
@@ -119,10 +119,10 @@ class ToggleMuteDiscord:
             pydirectinput.keyUp('ctrl')
             pydirectinput.keyUp('m')
 
-            debug_logger.info("Метод выполнен")
+            debuglog.info("Метод выполнен")
             return True
         except Exception as e:
-            debug_logger.error(f"Ошибка PyDirectInput: {e}")
+            debuglog.error(f"Ошибка PyDirectInput: {e}")
             return False
 
     def _reset_keyboard(self):
@@ -138,56 +138,56 @@ class ToggleMuteDiscord:
     #     """Пытается использовать pyautogui.hotkey"""
     #     self._reset_keyboard()
     #     try:
-    #         debug_logger.info("Метод <<<[pyautogui.hotkey]>>>")
+    #         debuglog.info("Метод <<<[pyautogui.hotkey]>>>")
     #         pyautogui.hotkey('ctrl', 'shift', 'm')
-    #         debug_logger.info("Метод выполнен")
+    #         debuglog.info("Метод выполнен")
     #         self._reset_keyboard()
     #         return True
     #     except Exception as e:
-    #         debug_logger.error(f"Ошибка pyautogui: {e}")
+    #         debuglog.error(f"Ошибка pyautogui: {e}")
     #         return False
     #
     # def _try_keyboard_lib(self):
     #     """Пытается использовать keyboard"""
     #     self._reset_keyboard()
     #     try:
-    #         debug_logger.info("Метод <<<[keyboard]>>>")
+    #         debuglog.info("Метод <<<[keyboard]>>>")
     #         keyboard.press('ctrl')
     #         keyboard.press('shift')
     #         keyboard.press('m')
     #         keyboard.release('ctrl')
     #         keyboard.release('shift')
     #         keyboard.release('m')
-    #         debug_logger.info("Метод выполнен")
+    #         debuglog.info("Метод выполнен")
     #         self._reset_keyboard()
     #         return True
     #     except Exception as e:
-    #         debug_logger.error(f"Ошибка keyboard: {e}")
+    #         debuglog.error(f"Ошибка keyboard: {e}")
     #         return False
     #
     # def _try_manual_emulation(self):
     #     """Пытается использовать ручную эмуляцию"""
     #     self._reset_keyboard()
     #     try:
-    #         debug_logger.info("Метод <<<[Ручная эмуляция pyautogui]>>>")
+    #         debuglog.info("Метод <<<[Ручная эмуляция pyautogui]>>>")
     #         pyautogui.keyDown('ctrl')
     #         pyautogui.keyDown('shift')
     #         pyautogui.keyDown('m')
     #         pyautogui.keyUp('shift')
     #         pyautogui.keyUp('ctrl')
     #         pyautogui.keyUp('m')
-    #         debug_logger.info("Метод выполнен")
+    #         debuglog.info("Метод выполнен")
     #         self._reset_keyboard()
     #         return True
     #     except Exception as e:
-    #         debug_logger.error(f"Ошибка ручной эмуляции: {e}")
+    #         debuglog.error(f"Ошибка ручной эмуляции: {e}")
     #         return False
     #
     # def _try_pywinauto_send_keys(self):
     #     """Пытается использовать PyWinAuto для отправки ^+m в окно Discord"""
     #     from pywinauto import Application, ElementNotFoundError
     #     try:
-    #         debug_logger.info("Метод <<<[PyWinAuto]>>>")
+    #         debuglog.info("Метод <<<[PyWinAuto]>>>")
     #
     #         # Подключаемся к окну Discord по заголовку
     #         app = Application(backend="uia").connect(title_re=".*Discord.*")
@@ -203,13 +203,13 @@ class ToggleMuteDiscord:
     #         # Отправляем хоткей: ^ = Ctrl, + = Shift, m = M
     #         main_window.type_keys('^+m', set_foreground=True)  # set_foreground=False — не активировать окно!
     #
-    #         debug_logger.info("Метод выполнен")
+    #         debuglog.info("Метод выполнен")
     #         return True
     #     except ElementNotFoundError:
-    #         debug_logger.error("Окно Discord не найдено через PyWinAuto")
+    #         debuglog.error("Окно Discord не найдено через PyWinAuto")
     #         return False
     #     except Exception as e:
-    #         debug_logger.error(f"Ошибка PyWinAuto: {e}")
+    #         debuglog.error(f"Ошибка PyWinAuto: {e}")
     #         return False
 
     def activate_and_mute_discord(self):
@@ -218,57 +218,57 @@ class ToggleMuteDiscord:
             self.discord_window = self.get_discord_window()
             window = self.get_window()
             if not window:
-                debug_logger.warn("Окно Discord не найдено")
+                debuglog.warn("Окно Discord не найдено")
                 return False
 
             # Запоминаем текущее активное окно
             current_window = gw.getActiveWindow()
 
-            debug_logger.info(f"Найдено окно Discord: {window.title}")
-            debug_logger.info(f"Состояние окна: minimized={window.isMinimized}, visible={window.visible}")
+            debuglog.info(f"Найдено окно Discord: {window.title}")
+            debuglog.info(f"Состояние окна: minimized={window.isMinimized}, visible={window.visible}")
 
             # Активируем и разворачиваем окно Discord
             if window.isMinimized:
-                debug_logger.info("Разворачиваем окно...")
+                debuglog.info("Разворачиваем окно...")
                 window.restore()
 
-            debug_logger.info("Активируем окно...")
+            debuglog.info("Активируем окно...")
             window.activate()
             # time.sleep(0.1)
 
             # Убедимся что окно активно
             active_window = gw.getActiveWindow()
             if active_window and 'discord' in active_window.title.lower():
-                debug_logger.info("Окно Discord активно!")
+                debuglog.info("Окно Discord активно!")
             else:
-                debug_logger.info("Внимание: окно Discord не стало активным!")
+                debuglog.info("Внимание: окно Discord не стало активным!")
 
             # Выполняем комбинацию для мута
             success = self.simulate_key_combo()
 
             if not success:
-                debug_logger.error("Метод нажатия клавиш не сработал!")
+                debuglog.error("Метод нажатия клавиш не сработал!")
                 return False
 
             time.sleep(0.5)
 
             # Сворачиваем окно Discord
-            debug_logger.info("Сворачиваем окно...")
+            debuglog.info("Сворачиваем окно...")
             window.minimize()
 
             # Возвращаем фокус
             if current_window:
                 try:
-                    debug_logger.info("Восстанавливаем предыдущее окно...")
+                    debuglog.info("Восстанавливаем предыдущее окно...")
                     current_window.activate()
                 except:
-                    debug_logger.info("Не удалось восстановить предыдущее окно")
+                    debuglog.info("Не удалось восстановить предыдущее окно")
 
-            debug_logger.info("Мут выполнен успешно!")
+            debuglog.info("Мут выполнен успешно!")
             return True
 
         except Exception as e:
-            debug_logger.info(f"Ошибка при активации и муте: {e}")
+            debuglog.info(f"Ошибка при активации и муте: {e}")
             return False
 
     def launch_discord_from_process(self):
@@ -280,31 +280,31 @@ class ToggleMuteDiscord:
                     if 'discord' in name:
                         exe_path = proc.exe()
                         if exe_path:
-                            debug_logger.info(f"Запускаем Discord: {exe_path}")
+                            debuglog.info(f"Запускаем Discord: {exe_path}")
                             subprocess.Popen([exe_path])
                             return True
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
             return False
         except Exception as e:
-            debug_logger.info(f"Ошибка при запуске: {e}")
+            debuglog.info(f"Ошибка при запуске: {e}")
             return False
 
     def smart_discord_mute(self):
         """Умная функция мута Discord с детальным логированием"""
         # Проверяем существует ли окно Discord
         if self.is_discord_window_exists():
-            debug_logger.info("Окно Discord найдено, выполняем мут...")
+            debuglog.info("Окно Discord найдено, выполняем мут...")
             self.activate_and_mute_discord()
             return True
         else:
-            debug_logger.info("Окно Discord не найдено, запускаем...")
+            debuglog.info("Окно Discord не найдено, запускаем...")
             if self.launch_discord_from_process():
                 time.sleep(1.5)
                 self.activate_and_mute_discord()
                 return True
             else:
-                debug_logger.info("Не удалось запустить Discord")
+                debuglog.info("Не удалось запустить Discord")
                 return False
 
     def main(self):
@@ -312,7 +312,7 @@ class ToggleMuteDiscord:
         try:
             return self.smart_discord_mute()
         except Exception as e:
-            debug_logger.error(f"Не удалось выполнить мут микрофона в Discord. Ошибка: {e}")
+            debuglog.error(f"Не удалось выполнить мут микрофона в Discord. Ошибка: {e}")
             return False
 
 
@@ -331,7 +331,7 @@ class LowLevelKeyboard:
         """Пытается использовать низкоуровневый метод ctypes"""
         self._reset_keyboard()
         try:
-            debug_logger.info("Метод <<<[ctypes hotkey]>>>")
+            debuglog.info("Метод <<<[ctypes hotkey]>>>")
 
             # Нажимаем клавиши в правильном порядке
             self.user32.keybd_event(self.VK_CONTROL, 0, self.KEYEVENTF_KEYDOWN, 0)
@@ -348,11 +348,11 @@ class LowLevelKeyboard:
             time.sleep(0.01)
             self.user32.keybd_event(self.VK_CONTROL, 0, self.KEYEVENTF_KEYUP, 0)
 
-            debug_logger.info("Метод выполнен")
+            debuglog.info("Метод выполнен")
             self._reset_keyboard()
             return True
         except Exception as e:
-            debug_logger.error(f"Ошибка ctypes: {e}")
+            debuglog.error(f"Ошибка ctypes: {e}")
             self._reset_keyboard()
             return False
 
@@ -368,4 +368,4 @@ class LowLevelKeyboard:
                     pass
             time.sleep(0.01)
         except Exception as e:
-            debug_logger.debug(f"Ошибка при сбросе клавиатуры: {e}")
+            debuglog.debug(f"Ошибка при сбросе клавиатуры: {e}")

@@ -4,6 +4,7 @@ import re
 from PySide6.QtWidgets import QWidget
 from PySide6.QtCore import Qt, QTimer, QPointF
 from PySide6.QtGui import QPainter, QColor, QBrush
+from log_config import debuglog
 
 
 class SnowOverlay(QWidget):
@@ -378,7 +379,7 @@ class SnowOverlay(QWidget):
                     return
                     
             except Exception as e:
-                debug_logger.error(f"Ошибка парсинга градиента: {e}")
+                debuglog.error(f"Ошибка парсинга градиента: {e}")
 
         for flake in self.flakes:
             if len(flake) > 6:

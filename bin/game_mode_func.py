@@ -1,7 +1,7 @@
 
 from typing import Optional, Dict
 import pygame
-from logging_config import logger, debug_logger
+from log_config import logger, debuglog
 import json
 from pathlib import Path
 from vgamepad import VX360Gamepad
@@ -13,7 +13,7 @@ import threading
 
 
 class GamepadManager:
-    def __init__(self, config_path=get_path("user_settings", "game_profiles_binds.json")):
+    def __init__(self, config_path=get_path("user_data", "game_profiles_binds.json")):
         self.gamepad = vg.VX360Gamepad()  # Виртуальный Xbox контроллер
         self.running = False
         self.config = self._load_config(config_path)

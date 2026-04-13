@@ -1,19 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
-version_file = 'F:/PyCharmProjects/oldAssistant_v2/update_app/version.txt'
+version_file = 'F:/PyCharmProjects/voxodium/update_app/version.txt'
 
 block_cipher = None
 
 # Главные файлы проекта (сборка в один файл)
 main_script = 'update_app/update.py'
 additional_files = [
-    ('F:/PyCharmProjects/oldAssistant_v2/update_app/color.json', '.'),
-    ('F:/PyCharmProjects/oldAssistant_v2/update_app/logo.svg', '.'),
-    ('F:/PyCharmProjects/oldAssistant_v2/update_app/icon.ico', '.'),
-    ('F:/PyCharmProjects/oldAssistant_v2/update_app/check_and_download.py', '.'),
-    ('F:/PyCharmProjects/oldAssistant_v2/update_app/apply_colors.py', '.'),
-    ('F:/PyCharmProjects/oldAssistant_v2/update_app/custom_widgets.py', '.'),
-    ('F:/PyCharmProjects/oldAssistant_v2/update_app/utils.py', '.'),
-    ('F:/PyCharmProjects/oldAssistant_v2/update_app/version.txt', '.'),
+    ('F:/PyCharmProjects/voxodium/update_app/for_gui', 'for_gui'),
+    ('F:/PyCharmProjects/voxodium/update_app/icons', 'icons'),
+    ('F:/PyCharmProjects/voxodium/update_app/check_and_download.py', '.'),
+    ('F:/PyCharmProjects/voxodium/update_app/color.json', '.'),
+    ('F:/PyCharmProjects/voxodium/update_app/config.py', '.'),
+    ('F:/PyCharmProjects/voxodium/update_app/icon.ico', '.'),
+    ('F:/PyCharmProjects/voxodium/update_app/utils.py', '.'),
+    ('F:/PyCharmProjects/voxodium/update_app/version.txt', '.'),
 ]
 
 a = Analysis(
@@ -21,11 +21,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=additional_files,
-    hiddenimports=[
-        'requests',
-        'json',
-        'os',
-    ],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -33,7 +29,7 @@ a = Analysis(
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
-    noarchive=False  # Важно для onefile!
+    noarchive=False
 )
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
@@ -45,13 +41,13 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Update',
+    name='updater',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     console=False,
     uac_admin=True,
-    icon='F:/PyCharmProjects/oldAssistant_v2/update_app/icon.ico',
+    icon='F:/PyCharmProjects/voxodium/update_app/icon.ico',
     version=version_file,
 )

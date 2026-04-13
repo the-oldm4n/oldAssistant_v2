@@ -1,0 +1,19 @@
+{
+    "voice": "johnny",
+    "assistant_name": "джон",
+    "assist_name2": "джонни",
+    "assist_name3": "джон",
+    "steam_path": "",
+    "is_censored": false,
+    "volume_assist": 0.15,
+    "run_updater": false,
+    "is_corrected_command": true,
+    "minimize_to_tray": false,
+    "start_win": true,
+    "is_widget": true,
+    "is_keep_watch": false,
+    "input_device_id": 1,
+    "input_device_name": "Микрофон (USB Audio Device)",
+    "is_snow": false,
+    "is_garland": false
+}

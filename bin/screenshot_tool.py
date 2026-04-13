@@ -6,7 +6,7 @@ import win32clipboard
 from PIL import Image, ImageGrab
 import io
 import ctypes
-from logging_config import logger, debug_logger
+from log_config import logger, debuglog
 from path_builder import get_path
 from bin.speak_functions import thread_play_sound
 
@@ -65,19 +65,19 @@ class ScreenshotThread(QThread):
                     snipping_started = True
                 else:
                     if snipping_started and (time.time() - last_change_time > max_wait_after_cancel):
-                        debug_logger.info("Захват отменен пользователем")
+                        debuglog.info("Захват отменен пользователем")
                         return False
                         
                     if not snipping_started and (time.time() - start_time > 3.0):
-                        debug_logger.info("Инструмент захвата не был активирован")
+                        debuglog.info("Инструмент захвата не был активирован")
                         return False
 
             except Exception as e:
-                debug_logger.error(f"Ошибка проверки буфера: {e}")
+                debuglog.error(f"Ошибка проверки буфера: {e}")
 
             time.sleep(0.1)
 
-        debug_logger.warning("Таймаут ожидания скриншота")
+        debuglog.warning("Таймаут ожидания скриншота")
         return False
 
     def _move_latest_screenshot(self):
@@ -97,7 +97,7 @@ class ScreenshotThread(QThread):
                     return True
         except Exception as e:
             logger.error(f"Ошибка переноса: {e}")
-            debug_logger.error(f"Ошибка переноса: {e}")
+            debuglog.error(f"Ошибка переноса: {e}")
         return False
 
     def _get_clipboard_sequence(self):
@@ -121,14 +121,14 @@ class ScreenshotThread(QThread):
                         bmp_data = bmp_header + data
                         return Image.open(io.BytesIO(bmp_data))
                 except Exception as e:
-                    debug_logger.error(f"Ошибка обработки DIB: {e}")
+                    debuglog.error(f"Ошибка обработки DIB: {e}")
 
             try:
                 image = ImageGrab.grabclipboard()
                 if image:
                     return image
             except Exception as e:
-                debug_logger.error(f"Ошибка ImageGrab: {e}")
+                debuglog.error(f"Ошибка ImageGrab: {e}")
 
             png_format = win32clipboard.RegisterClipboardFormat("PNG")
             if win32clipboard.IsClipboardFormatAvailable(png_format):
@@ -137,10 +137,10 @@ class ScreenshotThread(QThread):
                     if isinstance(data, bytes):
                         return Image.open(io.BytesIO(data))
                 except Exception as e:
-                    debug_logger.error(f"Ошибка обработки PNG: {e}")
+                    debuglog.error(f"Ошибка обработки PNG: {e}")
 
         except Exception as e:
-            debug_logger.error(f"Ошибка доступа к буферу: {e}")
+            debuglog.error(f"Ошибка доступа к буферу: {e}")
         finally:
             win32clipboard.CloseClipboard()
 
@@ -148,7 +148,7 @@ class ScreenshotThread(QThread):
     
     
 class SystemScreenshot:
-    def __init__(self, save_dir=get_path("user_settings", "screenshots")):
+    def __init__(self, save_dir=get_path("user_data", "screenshots")):
         self.save_dir = save_dir
         os.makedirs(self.save_dir, exist_ok=True)
         self._worker = None
@@ -163,14 +163,14 @@ class SystemScreenshot:
             # Вызываем системный инструмент
             self._press_win_shift_s()
             logger.info("Выделите область на экране...")
-            debug_logger.info("Выделите область на экране...")
+            debuglog.info("Выделите область на экране...")
 
             # Запускаем в отдельном потоке
             return self._start_capture_thread("area")
 
         except Exception as e:
             logger.error(f"Ошибка: {e}")
-            debug_logger.error(f"Ошибка: {e}")
+            debuglog.error(f"Ошибка: {e}")
             return False
 
     def capture_fullscreen(self):
@@ -186,7 +186,7 @@ class SystemScreenshot:
             
         except Exception as e:
             logger.error(f"Ошибка: {e}")
-            debug_logger.error(f"Ошибка: {e}")
+            debuglog.error(f"Ошибка: {e}")
             return False
         
     def _on_capture_finished(self, success):
@@ -202,7 +202,7 @@ class SystemScreenshot:
         """Обработчик ошибки захвата"""
         thread_play_sound(type_sound="error")
         logger.error(f"Ошибка захвата: {error_msg}")
-        debug_logger.error(f"Ошибка захвата: {error_msg}")
+        debuglog.error(f"Ошибка захвата: {error_msg}")
 
     def cancel_capture(self):
         """Отмена захвата"""
@@ -237,20 +237,20 @@ class SystemScreenshot:
                 else:
                     # Если инструмент был активирован, но буфер не меняется долгое время - это отмена
                     if snipping_started and (time.time() - last_change_time > max_wait_after_cancel):
-                        debug_logger.info("Захват отменен пользователем")
+                        debuglog.info("Захват отменен пользователем")
                         return False
                         
                     # Если инструмент не активировался вообще за разумное время - тоже отмена
                     if not snipping_started and (time.time() - start_time > 3.0):
-                        debug_logger.info("Инструмент захвата не был активирован")
+                        debuglog.info("Инструмент захвата не был активирован")
                         return False
 
             except Exception as e:
-                debug_logger.error(f"Ошибка проверки буфера: {e}")
+                debuglog.error(f"Ошибка проверки буфера: {e}")
 
             time.sleep(0.1)
 
-        debug_logger.warning("Таймаут ожидания скриншота")
+        debuglog.warning("Таймаут ожидания скриншота")
         return False
     
     def _start_capture_thread(self, capture_type):
@@ -271,7 +271,7 @@ class SystemScreenshot:
 
         except Exception as e:
             logger.error(f"Ошибка запуска потока: {e}")
-            debug_logger.error(f"Ошибка запуска потока: {e}")
+            debuglog.error(f"Ошибка запуска потока: {e}")
             return False
         
         # noinspection PyUnresolvedReferences
@@ -311,7 +311,7 @@ class SystemScreenshot:
                     return new_path
         except Exception as e:
             logger.error(f"Ошибка переноса: {e}")
-            debug_logger.error(f"Ошибка переноса: {e}")
+            debuglog.error(f"Ошибка переноса: {e}")
         return None
 
     def _get_clipboard_sequence(self):
@@ -348,7 +348,7 @@ class SystemScreenshot:
                         return Image.open(io.BytesIO(bmp_data))
                 except Exception as e:
                     logger.error(f"Ошибка обработки DIB: {e}")
-                    debug_logger.error(f"Ошибка обработки DIB: {e}")
+                    debuglog.error(f"Ошибка обработки DIB: {e}")
 
             # Альтернативный способ через ImageGrab
             try:
@@ -357,7 +357,7 @@ class SystemScreenshot:
                     return image
             except Exception as e:
                 logger.error(f"Ошибка ImageGrab: {e}")
-                debug_logger.error(f"Ошибка ImageGrab: {e}")
+                debuglog.error(f"Ошибка ImageGrab: {e}")
 
             # Проверяем PNG (если доступен)
             png_format = win32clipboard.RegisterClipboardFormat("PNG")
@@ -368,11 +368,11 @@ class SystemScreenshot:
                         return Image.open(io.BytesIO(data))
                 except Exception as e:
                     logger.error(f"Ошибка обработки PNG: {e}")
-                    debug_logger.error(f"Ошибка обработки PNG: {e}")
+                    debuglog.error(f"Ошибка обработки PNG: {e}")
 
         except Exception as e:
             logger.error(f"Ошибка доступа к буферу: {e}")
-            debug_logger.error(f"Ошибка доступа к буферу: {e}")
+            debuglog.error(f"Ошибка доступа к буферу: {e}")
         finally:
             win32clipboard.CloseClipboard()
 
