@@ -741,7 +741,7 @@ class SettingsWidget(QWidget):
             "volume_assist": 0.15,
             "run_updater": True,
             "minimize_to_tray": False,
-            "start_win": True,
+            "is_start_win": True,
             "is_widget": True,
             "is_keep_watch": False,
             "input_device_id": None,
@@ -850,8 +850,8 @@ class OtherSettingsWidget(QWidget):
 
             self.start_win_check = CustomToggle("Запуск с Windows")
             self.start_win_check.setStyleSheet("background: transparent;")
-            self.start_win_check.setChecked(self.main.toggle_start)
-            self.start_win_check.stateChanged.connect(self.main.toggle_start_win)
+            self.start_win_check.setChecked(self.main.is_start_win)
+            self.start_win_check.stateChanged.connect(self.main.is_start_win_win)
             self.start_win_check.setProperty("helpId", "start_win_check")
             layout.addWidget(self.start_win_check)
 
@@ -914,7 +914,6 @@ class OtherSettingsWidget(QWidget):
             self.device_list.activated.connect(self.on_microphone_selected)
 
         except Exception as e:
-            print(f"Ошибка в init_ui: {e}")
             import traceback
             traceback.print_exc()
             raise

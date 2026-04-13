@@ -1,12 +1,8 @@
 import json
 import os
-import subprocess
-from threading import Thread
-from queue import Queue
-import wmi
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, \
-    QDialog, QLabel, QGridLayout, QStackedWidget, QSizePolicy, QTextEdit, QApplication
+    QDialog, QLabel, QStackedWidget, QSizePolicy, QTextEdit, QApplication
 from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve
 
 from mygui import main_apply_colors, CustomSvgWidget, color_signal
@@ -19,11 +15,19 @@ from bin.sensors_monitor import SensorTab
 from bin.signals import widget_btns_signal
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from log_config import debuglog
-from path_builder import get_path
+from path_builder import get_path, get_app_data_dir
+from config import dev_mode
+
+if dev_mode:
+    config_path = get_path("user_data", "widget_state.json")
+    notes_file = get_path("user_data", "notes.txt")
+else:
+    config_path = os.path.join(get_app_data_dir(), "user_data", "widget_state.json")
+    notes_file = os.path.join(get_app_data_dir(), "user_data", "notes.txt")
 
 
 class WindowStateManager:
-    def __init__(self, config_path=get_path("user_data", "widget_state.json")):
+    def __init__(self):
         self.config_path = config_path
         self.base_keys = [
             "window_position",
@@ -188,7 +192,7 @@ class WindowStateManager:
 class SmartWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.assistant = parent
+        self.main = parent
         widget_btns_signal.buttons_updated.connect(self.repaint_main_buttons)
         self.buttons_data = {}
         self.player_buttons = {}
@@ -198,8 +202,8 @@ class SmartWidget(QWidget):
         self.snow_on_label = None
         self.is_height_compact = False
         color_signal.color_changed.connect(self.update_colors)
-        self.notes_file = get_path("user_data", "notes.txt")
-        self.widget_state = get_path("user_data", "widget_state.json")
+        self.notes_file = notes_file
+        self.widget_state = config_path
 
         # Пути к иконкам
         self.camera_path = get_path("bin", "icons", "camera.svg")
@@ -220,7 +224,7 @@ class SmartWidget(QWidget):
         self.mic_on_path = get_path("bin", "icons", "mic_on.svg")
         self.mic_off_path = get_path("bin", "icons", "mic_off.svg")
         self.youtube_path = get_path("bin", "icons", "logo-youtube.svg")
-        self.ohm_path = self.assistant.ohm_path
+        self.ohm_path = self.main.ohm_path
         self.ohm_namespace = "root\\OpenHardwareMonitor"
         self.cpu_path = get_path("bin", "icons", "hardware-monitor", "cpu.svg")
         self.gpu_path = get_path("bin", "icons", "hardware-monitor", "gpu.svg")
@@ -469,26 +473,24 @@ class SmartWidget(QWidget):
         state = self.state_manager.load_state()
         self.delay = state["delay"] * 1000
 
-        self.is_autohide = (self.delay > 0)
+        if self.delay <= 0:
+            self.is_autohide = False
         
         if not self.is_autohide:
             self.hide_timer.stop()
         elif self.hide_timer.isActive():
             self.hide_timer.start(self.delay)
+        self.toggle_hide_btns.setChecked(self.is_autohide)
 
     def toggle_autohide(self):
-        if self.delay <= 0:
-            self.is_autohide = False
-        if not self.is_autohide:
-            self.delay = self.temp_delay * 1000
-            self.is_autohide = True
+        if self.delay > 0:
+            self.is_autohide = not self.is_autohide
         else:
-            if self.delay > 0:
-                self.temp_delay = self.delay / 1000
-            self.delay = 0
             self.is_autohide = False
+            self.toggle_hide_btns.setChecked(self.is_autohide)
+            self.main.show_notification("Автоскрытие отключено, т.к. задержка <= 0")
+
         self.state_manager.update_value("is_autohide", self.is_autohide)
-        self.state_manager.update_value("delay", self.delay / 1000)
 
     def create_title_bar(self):
         title_bar = QWidget()
@@ -574,12 +576,12 @@ class SmartWidget(QWidget):
             'screenshot_check': {
                 'icon': self.camera_path,
                 'tooltip': 'Скриншот области',
-                'action': self.assistant.capture_area
+                'action': self.main.capture_area
             },
             'open_youtube': {
                 'icon': self.youtube_path,
                 'tooltip': 'Запустить YouTube',
-                'action': lambda: self.assistant.start_default_command("ютуб", "open", "url")
+                'action': lambda: self.main.start_default_command("ютуб", "open", "url")
             },
             'microphone_check': {
                 'icon': self.mic_on_path,
@@ -589,7 +591,7 @@ class SmartWidget(QWidget):
             'links_check': {
                 'icon': self.shortcut_path,
                 'tooltip': 'Открыть папку с ярлыками',
-                'action': self.assistant.open_folder_shortcuts
+                'action': self.main.open_folder_shortcuts
             },
             'resize_check': {
                 'icon': self.open_main_path,
@@ -619,7 +621,7 @@ class SmartWidget(QWidget):
                 name = data['name_command']
                 move = data.get('move_command', 'open')
                 cmd_type = data['type_command']
-                return lambda: self.assistant.start_default_command(name, move, cmd_type)
+                return lambda: self.main.start_default_command(name, move, cmd_type)
             
             buttons_config[checkbox_key] = {
                 'icon': custom_btn_data['icon_path'],
@@ -828,7 +830,6 @@ class SmartWidget(QWidget):
             self.old_pos = event.globalPos()
             self.is_dragging = False
 
-            self.is_autohide = False
             self.hide_timer.stop()
 
             event.accept()
@@ -871,7 +872,6 @@ class SmartWidget(QWidget):
         self.is_dragging = False
         self.old_pos = None
 
-        QTimer.singleShot(100, lambda: setattr(self, 'is_autohide', True))
         if not self.is_height_compact:
             QTimer.singleShot(150, self.start_hide_countdown)
             
@@ -1160,7 +1160,7 @@ class SmartWidget(QWidget):
         if (self.is_autohide and 
             not self.mouse_over_widget and 
             not self.is_height_compact and
-            self.delay > 0):  # Добавил проверку задержки
+            self.delay > 0):
             
             self.hide_timer.start(self.delay)
 
@@ -1388,28 +1388,20 @@ class SmartWidget(QWidget):
     def open_settings(self):
         """Переключатель для основного окна и настроек"""
         try:
-            if self.assistant.isVisible():
-                if not (hasattr(self.assistant, 'mutable_panel') and self.assistant.mutable_panel.isVisible()):
-                    self.assistant.open_main_settings()
-                else:
-                    self.assistant.hide_widget()
-                    self.assistant.custom_hide()
+            if self.main.isVisible():
+                self.main.open_main_settings()
             else:
-                # Если основное окно скрыто - показываем его
-                self.assistant.show()
-
-                # Открываем настройки, только если они еще не открыты
-                if not (hasattr(self.assistant, 'mutable_panel') and self.assistant.mutable_panel.isVisible()):
-                    self.assistant.open_main_settings()
+                self.main.show()
+                self.main.open_main_settings()
         except Exception as e:
             debuglog.error(f"[PANEL] Ошибка при переключении окна настроек: {e}")
 
     def open_main_window(self):
         try:
-            if self.assistant.isVisible():
-                self.assistant.custom_hide()
+            if self.main.isVisible():
+                self.main.custom_hide()
             else:
-                self.assistant.proper_show()
+                self.main.proper_show()
         except Exception as e:
             debuglog.error(f"[PANEL] Ошибка при открытии основного окна через виджет {e}")
 
@@ -1522,13 +1514,13 @@ class SmartWidget(QWidget):
         self.sensors_tab.stop_monitoring()
 
         # Проверяем состояние главного окна
-        if self.assistant:
-            if self.assistant.isVisible() and not self.assistant.isMinimized():
+        if self.main:
+            if self.main.isVisible() and not self.main.isMinimized():
                 # Если главное окно видимо и не свернуто - просто закрываем виджет
                 pass
             else:
                 # В противном случае вызываем специальный метод
-                self.assistant.restore_and_hide()
+                self.main.restore_and_hide()
                 
         self.deleteLater()
         super().closeEvent(event)

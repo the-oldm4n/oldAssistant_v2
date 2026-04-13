@@ -101,7 +101,7 @@ from bin.update_dialog import UpdateApp
 
 
 build_ini = get_config_value("app", "build")
-version_file = "3.0.0"
+version_file = "3.0.1"
 update_version(version_file)
 
 
@@ -146,8 +146,6 @@ class Assistant(QMainWindow):
         self.latest_version = None
         self.current_ver = None
         self.beta_version = False
-        self.is_batch_update = False
-        self.toggle_start = False
         self.is_assistant_running = False
         self.microphone_available = True
         self.first_run = True
@@ -456,6 +454,7 @@ class Assistant(QMainWindow):
         self.run_updater = self.settings.get("run_updater", True)
         self.is_corrected_command = self.settings.get("is_corrected_command", False)
         self.is_min_tray = self.settings.get("minimize_to_tray", False)
+        self.is_start_win = self.settings.get("is_start_win", False)
         self.is_widget = self.settings.get("is_widget", True)
         self.is_keep_watch = self.settings.get("is_keep_watch", False)
         self.input_device_id = self.settings.get("input_device_id", None)
@@ -1802,7 +1801,7 @@ class Assistant(QMainWindow):
             "run_updater": self.run_updater,
             "is_corrected_command": self.is_corrected_command,
             "minimize_to_tray": self.is_min_tray,
-            "start_win": self.toggle_start,
+            "is_start_win": self.is_start_win,
             "is_widget": self.is_widget,
             "is_keep_watch": self.is_keep_watch,
             "input_device_id": self.input_device_id,
@@ -1849,7 +1848,7 @@ class Assistant(QMainWindow):
                 "run_updater": True,
                 "is_corrected_command": False,
                 "minimize_to_tray": True,
-                "start_win": True,
+                "is_start_win": True,
                 "is_widget": True,
                 "is_keep_watch": False,
                 "input_device_id": None,
@@ -3522,11 +3521,11 @@ class Assistant(QMainWindow):
         if self.is_widget:
             self.open_widget(is_auto_start=True)
 
-    def toggle_start_win(self):
+    def is_start_win_win(self):
         """Переключает состояние и меняет цвет иконки"""
-        self.toggle_start = not self.toggle_start
+        self.is_start_win = not self.is_start_win
 
-        if self.toggle_start:
+        if self.is_start_win:
             self.add_to_autostart()
         else:
             self.remove_from_autostart()
@@ -3623,13 +3622,13 @@ class Assistant(QMainWindow):
                 encoding='cp866'
             )
             debuglog.info(f"Найдена задача автозапуска: '{task_name}'")
-            self.toggle_start = True
+            self.is_start_win = True
         except subprocess.CalledProcessError as e:
             if "не существует" not in e.stderr:
                 error_msg = f"Автозапуск '{task_name}': {e.stderr}"
                 logger.error(error_msg)
                 debuglog.error(error_msg)
-            self.toggle_start = False
+            self.is_start_win = False
             debuglog.info(f"Задачи '{task_name}' не существует")
 
     def capture_area(self):

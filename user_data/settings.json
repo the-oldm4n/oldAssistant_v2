@@ -15,5 +15,6 @@
     "input_device_id": 1,
     "input_device_name": "Микрофон (USB Audio Device)",
     "is_snow": false,
-    "is_garland": false
+    "is_garland": false,
+    "is_start_win": true
 }
