@@ -30,11 +30,13 @@ if dev_mode:
     custom_presets = get_path('user_data', 'presets')
     user_keywords = get_path("user_data", "keywords.json")
     widget_state = get_path("user_data", "widget_state.json")
+    script_icons_path = get_path("data", "script-icons")
 else:
     user_icons_folder = os.path.join(get_app_data_dir(), "user_data", "user-icons")
     custom_presets = os.path.join(get_app_data_dir(), 'user_data', 'presets')
     user_keywords = os.path.join(get_app_data_dir(), "user_data", "keywords.json")
     widget_state = os.path.join(get_app_data_dir(), "user_data", "widget_state.json")
+    script_icons_path = os.path.join(get_app_data_dir(), "data", "script-icons")
 
 base_presets = get_path('bin', 'color_presets')
 
@@ -2563,7 +2565,7 @@ class CustomBtnForPanel(QDialog):
         self.drag_pos = None
         self.button_data = button_data  # Данные редактируемой кнопки (если есть)
         self.is_edit = button_data is not None
-        self.btn_icons_folder = get_path("bin", "icons", "script-icons")
+        self.btn_icons_folder = script_icons_path
         self.user_icons_folder = user_icons_folder
         self.check_folder(folder_path=[self.user_icons_folder, self.btn_icons_folder])
         self.icon_close_path = get_path("bin", "icons", "close.svg")

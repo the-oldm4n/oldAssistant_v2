@@ -85,7 +85,7 @@ from bin.help_widget import HelpWidget
 from bin.login_widget import LoginWindow
 from bin.register_module import AuthManager
 from bin.screenshot_tool import SystemScreenshot
-from bin.signals import gui_signals, commands_signal
+from bin.signals import gui_signals, commands_signal, tool_widget_signal
 from bin.toast_notification import ToastNotification, SimpleNotice, SupplyNotice
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from bin.widget_window import SmartWidget
@@ -101,7 +101,7 @@ from bin.update_dialog import UpdateApp
 
 
 build_ini = get_config_value("app", "build")
-version_file = "3.0.1"
+version_file = "3.0.2"
 update_version(version_file)
 
 
@@ -141,6 +141,13 @@ class Assistant(QMainWindow):
     supply_notice_signal = Signal(str, bool)
     def __init__(self):
         super().__init__()
+        ### signals for smartwidget
+        tool_widget_signal.open_main_window.connect(self.open_window_from_tool)
+        tool_widget_signal.open_settings.connect(self.open_settings_from_tool)
+        tool_widget_signal.trigger_capture_area.connect(self.capture_area)
+        tool_widget_signal.trigger_open_shortcuts.connect(self.open_folder_screenshots)
+        tool_widget_signal.run_command.connect(self.start_default_command)
+
         self.start_ipc_server()
         self.version = self.get_version()
         self.latest_version = None
@@ -155,7 +162,6 @@ class Assistant(QMainWindow):
         self.garland_decorator = None
         self.is_manual_check = False
         self.stop_checking = False
-        self.is_force_close = False
         self.count = 0
         color_signal.color_changed.connect(self.apply_styles)
         gui_signals.open_widget_signal.connect(self.open_widget)
@@ -510,7 +516,14 @@ class Assistant(QMainWindow):
             self.drag_start_geometry = None
             self._drag_click_offset = None
 
-            self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+            # self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+            self.setWindowFlags(
+                Qt.WindowType.FramelessWindowHint |
+                Qt.WindowType.WindowSystemMenuHint |
+                Qt.WindowType.WindowMinimizeButtonHint |
+                Qt.WindowType.WindowMaximizeButtonHint |
+                Qt.WindowType.WindowCloseButtonHint
+            )
             self.setWindowIcon(QIcon(get_path('icon.ico')))
             self.setWindowTitle("VOXODIUM")
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -539,7 +552,7 @@ class Assistant(QMainWindow):
             # --- Title Bar ---
             self.title_bar_widget = QWidget()
             self.title_bar_widget.setMaximumHeight(40)
-            self.title_bar_widget.setObjectName("TitleBar")
+            self.title_bar_widget.setObjectName("TitleBarV2")
             self.title_bar_layout = QHBoxLayout(self.title_bar_widget)
             self.title_bar_layout.setContentsMargins(10, 0, 0, 0)
 
@@ -628,7 +641,7 @@ class Assistant(QMainWindow):
 
             self.close_button = QPushButton()
             self.close_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            self.close_button.clicked.connect(self.close)
+            self.close_button.clicked.connect(self.custom_hide)
             self.close_button.setFixedSize(50, 38)
             self.close_button.setObjectName("TitleBarCloseBtn")
             self.close_svg = CustomSvgWidget(self.icon_close_path, self.close_button)
@@ -1121,7 +1134,7 @@ class Assistant(QMainWindow):
             return  # Уже создан
         
         self.snow_on_background = SnowOverlay(parent=self.central_widget)
-        self.snow_on_background.resize(920, 700)
+        self.snow_on_background.resize(1000, 1000)
         self.snow_on_background.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.snow_on_background.raise_()
         self.snow_on_background.setSnowColor(self.style_manager.get_raw_color(), white_balance=50)
@@ -1399,6 +1412,7 @@ class Assistant(QMainWindow):
                 def on_animation_finished():
                     self.central_widget.setObjectName("MainWindowWidget")
                     self.close_button.setObjectName("TitleBarCloseBtn")
+                    self.title_bar_widget.setObjectName("TitleBarV2")
                     self.apply_styles()
                 
                 self.resize_animation.finished.connect(on_animation_finished)
@@ -1407,6 +1421,7 @@ class Assistant(QMainWindow):
                 self.setGeometry(target_geo)
                 self.central_widget.setObjectName("MainWindowWidget")
                 self.close_button.setObjectName("TitleBarCloseBtn")
+                self.title_bar_widget.setObjectName("TitleBarV2")
                 self.apply_styles()
             
         else:
@@ -1425,6 +1440,7 @@ class Assistant(QMainWindow):
                 def on_animation_finished():
                     self.central_widget.setObjectName("FullWindowMode")
                     self.close_button.setObjectName("FullWindowMode_CloseBtn")
+                    self.title_bar_widget.setObjectName("FullWindowMode_TitleBar")
                     self.apply_styles()
 
                     if hasattr(self, 'snow_on_background') and self.snow_on_background:
@@ -1441,6 +1457,7 @@ class Assistant(QMainWindow):
                 self.setGeometry(target_geo)
                 self.central_widget.setObjectName("FullWindowMode")
                 self.close_button.setObjectName("FullWindowMode_CloseBtn")
+                self.title_bar_widget.setObjectName("FullWindowMode_TitleBar")
                 self.apply_styles()
 
     def center_window(self):
@@ -1473,7 +1490,6 @@ class Assistant(QMainWindow):
                 self.style_manager.apply_color_svg(self.max_svg) 
             if hasattr(self, 'close_svg'):
                 self.style_manager.apply_color_svg(self.close_svg, specified_color="#ff0000")
-
 
             style_sheet = ""
             for widget, styles in self.styles.items():
@@ -1562,6 +1578,16 @@ class Assistant(QMainWindow):
 
         except Exception as e:
             debuglog.error(f"[MAIN] Ошибка при показе всплывающего уведомления: {e}")
+
+    def resizeEvent(self, event):
+        if hasattr(self, 'snow_on_background') and self.snow_on_background:
+            self.snow_on_background.setGeometry(self.central_widget.rect())
+            self.snow_on_background._init_snowflakes()
+            self.snow_on_background.update()
+            
+        if hasattr(self, 'garland_decorator') and self.garland_decorator:
+            self.garland_decorator.update_size(self.width())
+        return super().resizeEvent(event)
 
     def keyPressEvent(self, event):
         """Сворачивает основное окно в трей по нажатию на Esc"""
@@ -1883,7 +1909,7 @@ class Assistant(QMainWindow):
 
     def on_tray_icon_activated(self, reason):
         """Обработка активации иконки в трее."""
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:  # Одинарный щелчок
+        if reason == QSystemTrayIcon.ActivationReason.Trigger:
             if self.isVisible():
                 self.hide()
             else:
@@ -1911,26 +1937,22 @@ class Assistant(QMainWindow):
         self.logs_widget.log_area.start_background_mode()
         self.hide()
 
-    def changeEvent(self, event):
-        """Обработка изменения состояния окна."""
-        if event.type() == QEvent.Type.WindowStateChange:
-            if self.windowState() & Qt.WindowState.WindowMinimized:
-                self.hide()
-                self.logs_widget.log_area.start_background_mode()
-        super().changeEvent(event)
+    # def changeEvent(self, event):
+    #     """Обработка изменения состояния окна."""
+    #     if event.type() == QEvent.Type.WindowStateChange:
+    #         if self.windowState() & Qt.WindowState.WindowMinimized:
+    #             self.hide()
+    #             self.logs_widget.log_area.start_background_mode()
+    #     super().changeEvent(event)
 
     def closeEvent(self, event):
         """Обработка закрытия окна"""
         self.save_window_settings()
-        if self.is_force_close:
-            self.logs_widget.log_area.stop_monitoring()
+        self.logs_widget.log_area.stop_monitoring()
 
-            if self.is_assistant_running:
-                self.stop_assist()
-            event.accept()
-        else:
-            self.custom_hide()
-            event.ignore()
+        if self.is_assistant_running:
+            self.stop_assist()
+        event.accept()
 
     def on_shutdown(self):
         try:
@@ -1950,7 +1972,6 @@ class Assistant(QMainWindow):
 
     def force_close(self):
         """Принудительное закрытие, игнорируя все подтверждения"""
-        self.is_force_close = True
         self.logs_widget.log_area.stop_monitoring()
         self.close()
 
@@ -3410,25 +3431,19 @@ class Assistant(QMainWindow):
     
     def _show_smart_widget(self, is_auto_start=False):
         try:
-            # Проверяем существует ли виджет и не удален ли он
             widget_exists = (
                 hasattr(self, 'widget_window') and
                 self.widget_window is not None)
 
             if widget_exists and self.widget_window.isVisible():
-                # Полное закрытие с очисткой
                 self._close_smart_widget()
                 return
 
             if widget_exists:
-                # Виджет существует, но скрыт - показываем
                 self.widget_window.show()
             else:
-                # Создаем новый виджет
-                self.widget_window = SmartWidget(self)
-                # Устанавливаем атрибут для автоматического удаления
+                self.widget_window = SmartWidget()
                 self.widget_window.setAttribute(Qt.WA_DeleteOnClose, True)
-                # Подключаем сигнал уничтожения
                 self.widget_window.destroyed.connect(self._on_widget_destroyed)
                 self.widget_window.show()
 
@@ -3646,6 +3661,25 @@ class Assistant(QMainWindow):
             thread_play_sound(type_sound="error")
             logger.error(f'Ошибка {e}')
             debuglog.error(f'Ошибка {e}')
+
+    def open_settings_from_tool(self):
+        try:
+            if self.isVisible():
+                self.open_main_settings()
+            else:
+                self.show()
+                self.open_main_settings()
+        except Exception as e:
+            debuglog.error(f"[MAIN][open_window_from_tool] Ошибка при переключении окна настроек: {e}")
+
+    def open_window_from_tool(self):
+        try:
+            if self.isVisible():
+                self.custom_hide()
+            else:
+                self.proper_show()
+        except Exception as e:
+            debuglog.error(f"[PANEL][open_window_from_tool] Ошибка при открытии основного окна через виджет {e}")
 
 
 def should_launch_updater():

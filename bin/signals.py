@@ -29,3 +29,13 @@ class UpdatePresetsSignal(QObject):
     presets_updated = Signal()
 
 update_presets_signal = UpdatePresetsSignal()
+
+
+class ToolWidgetSignal(QObject):
+    open_settings = Signal()
+    open_main_window = Signal()
+    trigger_capture_area = Signal()
+    trigger_open_shortcuts = Signal()
+    run_command = Signal(str, str, str)
+
+tool_widget_signal = ToolWidgetSignal()

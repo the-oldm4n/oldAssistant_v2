@@ -1,7 +1,9 @@
 {
     "BasedColors": {
         "svg": "qlineargradient(x1:0.10, y1:0.79, x2:0.90, y2:0.21, stop:0 #354dd4, stop:1 #8f21a0)",
-        "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #7373ff, stop:1 #5593ff)"
+        "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #7373ff, stop:1 #5593ff)",
+        "text": "#cae1ff",
+        "text_edit": "#a5ddff"
     },
     "QWidget": {
         "background-color": "qlineargradient(x1:0.50, y1:1.00, x2:0.50, y2:0.00, stop:0 #19011a, stop:1 #170f2e)",
@@ -97,12 +99,6 @@
         "color": "#cae1ff",
         "font-size": "13px"
     },
-    "clock_mini": {
-        "color": "#a5ddff"
-    },
-    "clock_title": {
-        "color": "#a5ddff"
-    },
     "TitleBar": {
         "background": "transparent",
         "border-bottom": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #7373ff, stop:1 #5593ff)",
@@ -129,8 +125,7 @@
         "background-color": "transparent"
     },
     "QMainWindow": {
-        "background-color": "transparent",
-        "border": "none"
+        "background-color": "transparent"
     },
     "QMenu": {
         "background-color": "qlineargradient(x1:0.10, y1:0.79, x2:0.90, y2:0.21, stop:0 rgba(21, 31, 85, 0.59), stop:1 rgba(57, 13, 64, 0.59))",
@@ -343,22 +338,13 @@
     "CustomButton:hover": {
         "background-color": "qlineargradient(x1:0.51, y1:0.00, x2:0.49, y2:1.00, stop:0 #312878, stop:1 #3a4577)"
     },
-    "details_label": {
-        "background-color": "transparent",
-        "font-size": "11px"
-    },
-    "name_label": {
-        "background-color": "transparent",
-        "font-size": "14px",
-        "color": "#cae1ff"
-    },
     "TitleBarBtn": {
         "background-color": "transparent",
         "border": "none",
         "border-radius": "0px"
     },
     "TitleBarBtn:hover": {
-        "background-color": "qlineargradient(x1:0.51, y1:0.00, x2:0.49, y2:1.00, stop:0 #3a4577, stop:1 #312878)",
+        "background-color": "qlineargradient(x1:0.51, y1:0.00, x2:0.49, y2:1.00, stop:0 #312878, stop:1 #3a4577)",
         "border": "none"
     },
     "TitleBarCloseBtn": {
@@ -384,10 +370,7 @@
         "border-left": "none"
     },
     "FullWindowMode": {
-        "border-left": "none",
-        "border-right": "none",
-        "border-bottom": "none",
-        "border-top": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #7373ff, stop:1 #5593ff)",
+        "border": "1px solid transparent",
         "border-radius": "0px"
     },
     "FullWindowMode_CloseBtn": {
@@ -398,12 +381,32 @@
     "FullWindowMode_CloseBtn:hover": {
         "background-color": "#E76565"
     },
+    "FullWindowMode_TitleBar": {
+        "border-radius": "0px",
+        "background": "qlineargradient(x1:0.10, y1:0.79, x2:0.90, y2:0.21, stop:0 rgba(18, 26, 71, 1.0), stop:1 rgba(48, 11, 53, 1.0))",
+        "border": "1px solid transparent"
+    },
     "TitleBarLogin": {
         "background": "transparent"
     },
     "LoginContainer": {
         "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #7373ff, stop:1 #5593ff)",
         "border-radius": "20px"
+    },
+    "TitleBarV2": {
+        "background": "qlineargradient(x1:0.10, y1:0.79, x2:0.90, y2:0.21, stop:0 rgba(18, 26, 71, 1.0), stop:1 rgba(48, 11, 53, 1.0))",
+        "border-top": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #7373ff, stop:1 #5593ff)",
+        "border-left": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #7373ff, stop:1 #5593ff)",
+        "border-right": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #7373ff, stop:1 #5593ff)",
+        "border-top-left-radius": "10px",
+        "border-top-right-radius": "10px"
+    },
+    "TransparentWidget": {
+        "background": "transparent"
+    },
+    "FooterChangelog": {
+        "background": "qlineargradient(x1:0.10, y1:0.79, x2:0.90, y2:0.21, stop:0 rgba(15, 22, 61, 1.0), stop:1 rgba(41, 9, 46, 1.0))",
+        "border-radius": "15px"
     },
     "CustomPage": {
         "background-color": "transparent"

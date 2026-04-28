@@ -19,23 +19,22 @@ class SavePresetDialog(QDialog):
         self.init_ui()
 
     def init_ui(self):
-        # Основной контейнер
         self.container = QWidget(self)
         self.container.setObjectName("WindowContainer")
-        self.container.setGeometry(0, 0, self.width(), self.height())
 
-        # Кастомный заголовок
+        self.root_layout = QVBoxLayout(self.container)
+        self.root_layout.setContentsMargins(0, 0, 0, 0)
+        self.root_layout.setSpacing(0)
+
         self.title_bar = QWidget(self.container)
-        self.title_bar.setObjectName("TitleBar")
+        self.title_bar.setObjectName("TitleBarV2")
         self.title_bar.setFixedHeight(40)
-        self.title_bar.setGeometry(1, 1, self.width() - 2, 35)
         self.title_layout = QHBoxLayout(self.title_bar)
         self.title_layout.setContentsMargins(10, 5, 10, 5)
         self.title_layout.setSpacing(5)
 
         self.title_label = QLabel('Сохранить пресет', self.title_bar)
         self.title_label.setStyleSheet("background: transparent")
-        self.title_label.setGeometry(10, 5, 200, 20)
         self.title_layout.addWidget(self.title_label)
 
         self.close_btn = QPushButton("", self.title_bar)
@@ -49,20 +48,16 @@ class SavePresetDialog(QDialog):
         self.title_layout.addWidget(self.close_btn)
         self.parent_window.style_manager.apply_color_svg(self.close_svg, specified_color="#FF0000")
 
-        # Основное содержимое
         self.content_widget = QWidget(self.container)
-        self.content_widget.setGeometry(1, 36, self.width() - 2, self.height() - 37)
         self.content_widget.setObjectName("ContentWidget")
+        self.content_widget.setMinimumWidth(320)
 
-        # Поле ввода
         self.input_field = QLineEdit(self.content_widget)
         self.input_field.setPlaceholderText('Введите имя пресета:')
 
-        # Label для ошибок
         self.error_label = QLabel(self.content_widget)
         self.error_label.setStyleSheet("color: red; font-size: 11px; background-color: transparent; height: 15px;")
 
-        # Кнопки
         self.ok_button = QPushButton('Сохранить', self.content_widget)
         self.ok_button.setStyleSheet("padding: 1px 10px;")
         self.ok_button.setObjectName("AcceptButton")
@@ -73,10 +68,9 @@ class SavePresetDialog(QDialog):
         self.cancel_button.setObjectName("RejectButton")
         self.cancel_button.clicked.connect(self.reject)
 
-        # Размещение элементов
         main_layout = QVBoxLayout(self.content_widget)
         main_layout.setContentsMargins(10, 10, 10, 10)
-        main_layout.setSpacing(10)  # Уменьшили отступ
+        main_layout.setSpacing(10)
 
         main_layout.addWidget(self.input_field)
         main_layout.addWidget(self.error_label)
@@ -86,6 +80,9 @@ class SavePresetDialog(QDialog):
         button_layout.addWidget(self.ok_button)
         button_layout.addWidget(self.cancel_button)
         main_layout.addLayout(button_layout)
+
+        self.root_layout.addWidget(self.title_bar)
+        self.root_layout.addWidget(self.content_widget)
 
         self.set_position_strategy()
 

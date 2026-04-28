@@ -1,11 +1,11 @@
 {
     "window_position": {
-        "x": 2360,
-        "y": 505
+        "x": 2431,
+        "y": 502
     },
     "window_size": {
-        "width": 87,
-        "height": 122
+        "width": 91,
+        "height": 115
     },
     "delay": 1.0,
     "is_autohide": true,
@@ -21,10 +21,10 @@
         "microphone_check": true,
         "links_check": true,
         "resize_check": true,
-        "custom_xuingc99": false,
+        "custom_xuingc99": true,
         "custom_v7znfge9": false
     },
-    "font_family": "cinzel_decorative",
+    "font_family": "michroma",
     "default_buttons": {
         "turnoff_check": {
             "tooltip": "\u0412\u044b\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435 \u043a\u043e\u043c\u043f\u044c\u044e\u0442\u0435\u0440\u0430",
@@ -62,7 +62,7 @@
                 "name": "recycler",
                 "type": "system"
             },
-            "icon_path": "F:\\PyCharmProjects\\voxodium\\bin\\icons\\script-icons\\recycle.svg",
+            "icon_path": "F:\\PyCharmProjects\\voxodium\\data\\script-icons\\recycle.svg",
             "id": "xuingc99",
             "move_command": "open",
             "name": "\u041a\u043e\u0440\u0437\u0438\u043d\u0430",
@@ -75,7 +75,7 @@
                 "name": "bluetooth",
                 "type": "system"
             },
-            "icon_path": "F:\\PyCharmProjects\\voxodium\\bin\\icons\\script-icons\\bluetooth.svg",
+            "icon_path": "F:\\PyCharmProjects\\voxodium\\data\\script-icons\\bluetooth.svg",
             "id": "v7znfge9",
             "move_command": "open",
             "name": "Bluetooth",

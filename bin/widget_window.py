@@ -12,7 +12,7 @@ from bin.frosted_widget import SnowOverlay
 from bin.function_list_main import shutdown_windows
 from bin.lists import fonts_list
 from bin.sensors_monitor import SensorTab
-from bin.signals import widget_btns_signal
+from bin.signals import widget_btns_signal, tool_widget_signal
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from log_config import debuglog
 from path_builder import get_path, get_app_data_dir
@@ -25,6 +25,7 @@ else:
     config_path = os.path.join(get_app_data_dir(), "user_data", "widget_state.json")
     notes_file = os.path.join(get_app_data_dir(), "user_data", "notes.txt")
 
+ohm_path = get_path("data", "OHM", "OpenHardwareMonitor.exe")
 
 class WindowStateManager:
     def __init__(self):
@@ -188,11 +189,9 @@ class WindowStateManager:
         return bool(value)
 
 
-
 class SmartWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.main = parent
         widget_btns_signal.buttons_updated.connect(self.repaint_main_buttons)
         self.buttons_data = {}
         self.player_buttons = {}
@@ -224,7 +223,7 @@ class SmartWidget(QWidget):
         self.mic_on_path = get_path("bin", "icons", "mic_on.svg")
         self.mic_off_path = get_path("bin", "icons", "mic_off.svg")
         self.youtube_path = get_path("bin", "icons", "logo-youtube.svg")
-        self.ohm_path = self.main.ohm_path
+        self.ohm_path = ohm_path
         self.ohm_namespace = "root\\OpenHardwareMonitor"
         self.cpu_path = get_path("bin", "icons", "hardware-monitor", "cpu.svg")
         self.gpu_path = get_path("bin", "icons", "hardware-monitor", "gpu.svg")
@@ -245,7 +244,6 @@ class SmartWidget(QWidget):
         }
         # Стили
         self.style_manager = main_apply_colors
-        self.color_path = self.style_manager.color_path
         self.styles = self.style_manager.load_styles()
 
         # Таймер времени
@@ -488,9 +486,17 @@ class SmartWidget(QWidget):
         else:
             self.is_autohide = False
             self.toggle_hide_btns.setChecked(self.is_autohide)
-            self.main.show_notification("Автоскрытие отключено, т.к. задержка <= 0")
 
         self.state_manager.update_value("is_autohide", self.is_autohide)
+
+    def on_capture_area(self):
+        tool_widget_signal.trigger_capture_area.emit()
+
+    def on_open_screenshots(self):
+        tool_widget_signal.trigger_open_shortcuts.emit()
+
+    def on_run_command(self, name, move, cmd_type):
+        tool_widget_signal.run_command.emit(name, move, cmd_type)
 
     def create_title_bar(self):
         title_bar = QWidget()
@@ -576,12 +582,12 @@ class SmartWidget(QWidget):
             'screenshot_check': {
                 'icon': self.camera_path,
                 'tooltip': 'Скриншот области',
-                'action': self.main.capture_area
+                'action': self.on_capture_area
             },
             'open_youtube': {
                 'icon': self.youtube_path,
                 'tooltip': 'Запустить YouTube',
-                'action': lambda: self.main.start_default_command("ютуб", "open", "url")
+                'action': lambda: self.on_run_command("ютуб", "open", "url")
             },
             'microphone_check': {
                 'icon': self.mic_on_path,
@@ -591,7 +597,7 @@ class SmartWidget(QWidget):
             'links_check': {
                 'icon': self.shortcut_path,
                 'tooltip': 'Открыть папку с ярлыками',
-                'action': self.main.open_folder_shortcuts
+                'action': self.on_open_screenshots
             },
             'resize_check': {
                 'icon': self.open_main_path,
@@ -621,7 +627,7 @@ class SmartWidget(QWidget):
                 name = data['name_command']
                 move = data.get('move_command', 'open')
                 cmd_type = data['type_command']
-                return lambda: self.main.start_default_command(name, move, cmd_type)
+                return lambda: self.on_run_command(name, move, cmd_type)
             
             buttons_config[checkbox_key] = {
                 'icon': custom_btn_data['icon_path'],
@@ -969,7 +975,7 @@ class SmartWidget(QWidget):
     def apply_font_styles(self, font_family, font_name):
         """Применить шрифт с индивидуальным размером для каждого семейства"""
         font_size = self.get_font_size_for_family(font_name)
-
+        text_color = self.style_manager.get_raw_text_color("text_edit")
         debuglog.info(f"[PANEL] Применение шрифта: {font_family} с размером: {font_size}")
 
         styles = f"""
@@ -977,6 +983,7 @@ class SmartWidget(QWidget):
             #clock_mini {{
                 font-family: "{font_family}";
                 font-size: {font_size};
+                color: {text_color};
                 font-weight: normal;
                 padding: 0px;
                 background: transparent;
@@ -986,6 +993,7 @@ class SmartWidget(QWidget):
             #clock_title {{
                 font-family: "{font_family}";
                 font-size: {font_size};
+                color: {text_color};
                 font-weight: normal;
                 padding: 0px 5px, 0px 5px;
                 background: transparent;
@@ -1387,23 +1395,10 @@ class SmartWidget(QWidget):
 
     def open_settings(self):
         """Переключатель для основного окна и настроек"""
-        try:
-            if self.main.isVisible():
-                self.main.open_main_settings()
-            else:
-                self.main.show()
-                self.main.open_main_settings()
-        except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка при переключении окна настроек: {e}")
+        tool_widget_signal.open_settings.emit()
 
     def open_main_window(self):
-        try:
-            if self.main.isVisible():
-                self.main.custom_hide()
-            else:
-                self.main.proper_show()
-        except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка при открытии основного окна через виджет {e}")
+        tool_widget_signal.open_main_window.emit()
 
     def lock_state(self):
         """Переключает возможность перетаскивания виджета между тремя состояниями"""
@@ -1508,19 +1503,9 @@ class SmartWidget(QWidget):
             debuglog.error(f"[PANEL] Ошибка при переключении трека: {e}")
 
     def closeEvent(self, event):
-        # Сохраняем состояние виджета
         self.save_state()
         self.save_notes()
         self.sensors_tab.stop_monitoring()
-
-        # Проверяем состояние главного окна
-        if self.main:
-            if self.main.isVisible() and not self.main.isMinimized():
-                # Если главное окно видимо и не свернуто - просто закрываем виджет
-                pass
-            else:
-                # В противном случае вызываем специальный метод
-                self.main.restore_and_hide()
                 
         self.deleteLater()
         super().closeEvent(event)
@@ -1529,7 +1514,6 @@ class SmartWidget(QWidget):
         try:
             self.styles = self.style_manager.load_styles()
 
-            # Применяем стили к текущему окну
             style_sheet = ""
             for widget, styles in self.styles.items():
                 if widget.startswith("Q"):
@@ -1542,7 +1526,6 @@ class SmartWidget(QWidget):
                     style_sheet += f"    {prop}: {value};\n"
                 style_sheet += "}\n"
 
-            # Устанавливаем стиль для текущего окна
             self.setStyleSheet(style_sheet)
         except Exception as e:
             debuglog.error(f"[PANEL] Ошибка в методе apply_styles: {e}")

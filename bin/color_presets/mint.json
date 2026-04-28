@@ -1,7 +1,9 @@
 {
     "BasedColors": {
         "svg": "qlineargradient(x1:0.73, y1:0.94, x2:0.27, y2:0.06, stop:0 #114edd, stop:1 #12ce70)",
-        "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #1369d2, stop:1 #0dc17c)"
+        "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #1369d2, stop:1 #0dc17c)",
+        "text": "#c0fcff",
+        "text_edit": "#62b595"
     },
     "QWidget": {
         "background-color": "qlineargradient(x1:0.98, y1:0.35, x2:0.02, y2:0.65, stop:0 #080808, stop:1 #0d1616)",
@@ -97,12 +99,6 @@
         "color": "#c0fcff",
         "font-size": "13px"
     },
-    "clock_mini": {
-        "color": "#62b595"
-    },
-    "clock_title": {
-        "color": "#62b595"
-    },
     "TitleBar": {
         "background": "transparent",
         "border-bottom": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #1369d2, stop:1 #0dc17c)",
@@ -129,8 +125,7 @@
         "background-color": "transparent"
     },
     "QMainWindow": {
-        "background-color": "transparent",
-        "border": "none"
+        "background-color": "transparent"
     },
     "QMenu": {
         "background-color": "qlineargradient(x1:0.73, y1:0.94, x2:0.27, y2:0.06, stop:0 rgba(7, 31, 88, 0.59), stop:1 rgba(7, 82, 45, 0.59))",
@@ -343,22 +338,13 @@
     "CustomButton:hover": {
         "background-color": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 #071815, stop:1 #0d0d0d)"
     },
-    "details_label": {
-        "background-color": "transparent",
-        "font-size": "11px"
-    },
-    "name_label": {
-        "background-color": "transparent",
-        "font-size": "14px",
-        "color": "#c0fcff"
-    },
     "TitleBarBtn": {
         "background-color": "transparent",
         "border": "none",
         "border-radius": "0px"
     },
     "TitleBarBtn:hover": {
-        "background-color": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 #0d0d0d, stop:1 #071815)",
+        "background-color": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 #071815, stop:1 #0d0d0d)",
         "border": "none"
     },
     "TitleBarCloseBtn": {
@@ -384,10 +370,7 @@
         "border-left": "none"
     },
     "FullWindowMode": {
-        "border-left": "none",
-        "border-right": "none",
-        "border-bottom": "none",
-        "border-top": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #1369d2, stop:1 #0dc17c)",
+        "border": "1px solid transparent",
         "border-radius": "0px"
     },
     "FullWindowMode_CloseBtn": {
@@ -398,12 +381,32 @@
     "FullWindowMode_CloseBtn:hover": {
         "background-color": "#E76565"
     },
+    "FullWindowMode_TitleBar": {
+        "border-radius": "0px",
+        "background": "qlineargradient(x1:0.73, y1:0.94, x2:0.27, y2:0.06, stop:0 rgba(6, 26, 74, 1.0), stop:1 rgba(6, 69, 37, 1.0))",
+        "border": "1px solid transparent"
+    },
     "TitleBarLogin": {
         "background": "transparent"
     },
     "LoginContainer": {
         "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #1369d2, stop:1 #0dc17c)",
         "border-radius": "20px"
+    },
+    "TitleBarV2": {
+        "background": "qlineargradient(x1:0.73, y1:0.94, x2:0.27, y2:0.06, stop:0 rgba(6, 26, 74, 1.0), stop:1 rgba(6, 69, 37, 1.0))",
+        "border-top": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #1369d2, stop:1 #0dc17c)",
+        "border-left": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #1369d2, stop:1 #0dc17c)",
+        "border-right": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #1369d2, stop:1 #0dc17c)",
+        "border-top-left-radius": "2px",
+        "border-top-right-radius": "2px"
+    },
+    "TransparentWidget": {
+        "background": "transparent"
+    },
+    "FooterChangelog": {
+        "background": "qlineargradient(x1:0.73, y1:0.94, x2:0.27, y2:0.06, stop:0 rgba(5, 22, 63, 1.0), stop:1 rgba(5, 59, 32, 1.0))",
+        "border-radius": "2px"
     },
     "CustomPage": {
         "background-color": "transparent"

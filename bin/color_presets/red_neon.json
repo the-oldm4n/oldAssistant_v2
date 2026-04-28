@@ -1,7 +1,9 @@
 {
     "BasedColors": {
         "svg": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 #7c0000, stop:1 #e12b34)",
-        "border": "1px solid #7c1530"
+        "border": "1px solid #7c1530",
+        "text": "#ffffff",
+        "text_edit": "#F18E90"
     },
     "QWidget": {
         "background-color": "#100306",
@@ -97,12 +99,6 @@
         "color": "#ffffff",
         "font-size": "13px"
     },
-    "clock_mini": {
-        "color": "#F18E90"
-    },
-    "clock_title": {
-        "color": "#F18E90"
-    },
     "TitleBar": {
         "background": "transparent",
         "border-bottom": "1px solid #7c1530",
@@ -129,8 +125,7 @@
         "background-color": "transparent"
     },
     "QMainWindow": {
-        "background-color": "transparent",
-        "border": "none"
+        "background-color": "transparent"
     },
     "QMenu": {
         "background-color": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 rgba(50, 0, 0, 0.59), stop:1 rgba(90, 17, 21, 0.59))",
@@ -343,22 +338,13 @@
     "CustomButton:hover": {
         "background-color": "#6d1616"
     },
-    "details_label": {
-        "background-color": "transparent",
-        "font-size": "11px"
-    },
-    "name_label": {
-        "background-color": "transparent",
-        "font-size": "14px",
-        "color": "#ffffff"
-    },
     "TitleBarBtn": {
         "background-color": "transparent",
         "border": "none",
         "border-radius": "0px"
     },
     "TitleBarBtn:hover": {
-        "background-color": "#781818",
+        "background-color": "#6d1616",
         "border": "none"
     },
     "TitleBarCloseBtn": {
@@ -384,10 +370,7 @@
         "border-left": "none"
     },
     "FullWindowMode": {
-        "border-left": "none",
-        "border-right": "none",
-        "border-bottom": "none",
-        "border-top": "1px solid #7c1530",
+        "border": "1px solid transparent",
         "border-radius": "0px"
     },
     "FullWindowMode_CloseBtn": {
@@ -398,12 +381,32 @@
     "FullWindowMode_CloseBtn:hover": {
         "background-color": "#E76565"
     },
+    "FullWindowMode_TitleBar": {
+        "border-radius": "0px",
+        "background": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 rgba(41, 0, 0, 1.0), stop:1 rgba(75, 14, 17, 1.0))",
+        "border": "1px solid transparent"
+    },
     "TitleBarLogin": {
         "background": "transparent"
     },
     "LoginContainer": {
         "border": "1px solid #7c1530",
         "border-radius": "20px"
+    },
+    "TitleBarV2": {
+        "background": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 rgba(41, 0, 0, 1.0), stop:1 rgba(75, 14, 17, 1.0))",
+        "border-top": "1px solid #7c1530",
+        "border-left": "1px solid #7c1530",
+        "border-right": "1px solid #7c1530",
+        "border-top-left-radius": "0px",
+        "border-top-right-radius": "0px"
+    },
+    "TransparentWidget": {
+        "background": "transparent"
+    },
+    "FooterChangelog": {
+        "background": "qlineargradient(x1:0.50, y1:0.00, x2:0.50, y2:1.00, stop:0 rgba(35, 0, 0, 1.0), stop:1 rgba(64, 12, 15, 1.0))",
+        "border-radius": "0px"
     },
     "CustomPage": {
         "background-color": "transparent"

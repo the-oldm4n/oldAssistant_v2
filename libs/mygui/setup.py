@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="mygui",
-    version="1.0.5",
+    version="1.0.7",
     packages=find_packages(),
     package_data={
         "mygui": [
@@ -19,7 +19,7 @@ setup(
     ],
     author="Andrey",
     description="Библиотека кастомных виджетов на PySide6",
-    python_requires=">=3.7",
+    python_requires=">=3.9",
     long_description=long_description,
     long_description_content_type="text/markdown",
 )

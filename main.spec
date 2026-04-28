@@ -22,6 +22,7 @@ additional_files = [
     ('F:/PyCharmProjects/voxodium/user_data', 'user_data'),
     ('F:/PyCharmProjects/voxodium/data/OHM', 'data/OHM'),
     ('F:/PyCharmProjects/voxodium/data/model_ru', 'data/model_ru'),
+    ('F:/PyCharmProjects/voxodium/data/script-icons', 'data/script-icons'),
 ]
 
 a = Analysis(

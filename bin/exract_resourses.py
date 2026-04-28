@@ -59,6 +59,7 @@ def ensure_resources():
     resources = [
         ('config.ini', os.path.join(app_data_dir, '.')),
         ('user_data', os.path.join(app_data_dir, 'user_data')),
+        ('data/script-icons', os.path.join(app_data_dir, 'data/script-icons')),
     ]
     
     for resource_name, target_path in resources:

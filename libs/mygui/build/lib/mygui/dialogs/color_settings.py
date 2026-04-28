@@ -94,10 +94,6 @@ class ColorSettingsWindow(QDialog):
             if hasattr(self, 'info_svg'):
                 self.style_manager.apply_color_svg(self.info_svg)
 
-            if hasattr(self, 'title_bar'):
-                self.title_bar.setObjectName("TitleBar")
-            if hasattr(self, 'content_widget'):
-                self.content_widget.setObjectName("ContentWidget")
             style_sheet = ""
             for widget, styles in self.styles.items():
                 if widget.startswith("Q"):
@@ -135,16 +131,16 @@ class ColorSettingsWindow(QDialog):
         event.accept()
 
     def init_ui(self):
-        # Основной контейнер
         self.container = QWidget(self)
         self.container.setObjectName("WindowContainer")
-        self.container.setGeometry(0, 0, self.width(), self.height())
 
-        # Кастомный заголовок
+        self.root_layout = QVBoxLayout(self.container)
+        self.root_layout.setContentsMargins(0, 0, 0, 0)
+        self.root_layout.setSpacing(0)
+
         self.title_bar = QWidget(self.container)
-        self.title_bar.setObjectName("TitleBar")
+        self.title_bar.setObjectName("TitleBarV2")
         self.title_bar.setFixedHeight(40)
-        self.title_bar.setGeometry(1, 1, self.width() - 2, 35)
         self.title_layout = QHBoxLayout(self.title_bar)
         self.title_layout.setContentsMargins(10, 0, 0, 0)
         self.title_layout.setSpacing(5)
@@ -156,9 +152,8 @@ class ColorSettingsWindow(QDialog):
         self.title_label = QLabel("Редактор стилей", self.title_bar)
         self.title_label.setStyleSheet("background: transparent")
         self.title_layout.addWidget(self.title_label)
-        
 
-        self.close_btn = QPushButton("", self.title_bar)
+        self.close_btn = QPushButton(self.title_bar)
         self.close_btn.setFixedSize(50, 40)
         self.close_btn.setObjectName("TitleBarCloseBtn")
         self.close_btn.clicked.connect(self.close)
@@ -168,28 +163,24 @@ class ColorSettingsWindow(QDialog):
         self.close_svg.setStyleSheet("background: transparent;")
         self.title_layout.addWidget(self.close_btn)
 
-        # Основной контент
         self.content_widget = QWidget(self.container)
-        self.content_widget.setGeometry(1, 36, self.width() - 2, self.height() - 37)
+        self.content_widget.setMinimumWidth(450)
+        self.content_widget.setMinimumHeight(550)
         self.content_widget.setObjectName("ContentWidget")
 
-        # Главный layout для content_widget
         self.main_content_layout = QVBoxLayout(self.content_widget)
-        self.main_content_layout.setContentsMargins(5, 5, 5, 5)
+        self.main_content_layout.setContentsMargins(10, 10, 10, 10)
         self.main_content_layout.setSpacing(5)
 
-        # Контейнер для вкладок и связанных элементов
         self.tabs_container = QWidget()
         self.tabs_container.setObjectName("WSTabsContainer")
         self.tabs_layout = QVBoxLayout(self.tabs_container)
         self.tabs_layout.setContentsMargins(5, 5, 5, 5)
         self.tabs_layout.setSpacing(0)
 
-        # Создаем вкладки
         self.tab_widget = QTabWidget()
         self.tab_widget.setObjectName("TabWidget")
 
-        # Вкладки
         self.bg_tab = QWidget()
         self.bg_tab.setObjectName("WSBgTabWidget")
         self.init_gradient_tab(self.bg_tab, 'background', 'Фон')
@@ -218,14 +209,12 @@ class ColorSettingsWindow(QDialog):
 
         self.tabs_layout.addWidget(self.tab_widget)
 
-        # Контейнер для нижних элементов
         self.bottom_container = QWidget()
         self.bottom_container.setObjectName("WSBottomContainer")
         self.bottom_layout = QVBoxLayout(self.bottom_container)
         self.bottom_layout.setContentsMargins(10, 10, 10, 10)
         self.bottom_layout.setSpacing(8)
 
-        # Нижние элементы
         self.save_preset_button = QPushButton('Сохранить стиль')
         self.save_preset_button.clicked.connect(self.save_preset)
 
@@ -240,16 +229,17 @@ class ColorSettingsWindow(QDialog):
         self.apply_button = QPushButton('Применить')
         self.apply_button.clicked.connect(lambda: self.apply_changes(preview=False))
 
-        # Добавляем элементы в нижний контейнер
         self.bottom_layout.addWidget(self.save_preset_button)
         self.bottom_layout.addWidget(self.styles_label)
         self.bottom_layout.addWidget(self.preset_combo_box)
         self.bottom_layout.addStretch()
         self.bottom_layout.addWidget(self.apply_button)
 
-        # Добавляем основные части в главный layout
         self.main_content_layout.addWidget(self.tabs_container)
         self.main_content_layout.addWidget(self.bottom_container)
+
+        self.root_layout.addWidget(self.title_bar)
+        self.root_layout.addWidget(self.content_widget)
 
     def init_gradient_tab(self, tab, element_type, title):
         """Инициализирует вкладку для настройки градиента конкретного элемента"""
@@ -1356,7 +1346,9 @@ class ColorSettingsWindow(QDialog):
         base_styles = {
             "BasedColors": {
                 "svg": self.get_css("svg"),
-                "border": self.get_css("border")
+                "border": self.get_css("border"),
+                "text": self.get_text_css("text"),
+                "text_edit": self.get_text_css("text_edit")
             },
             "QWidget": {
                 "background-color": self.get_css("background"),
@@ -1452,12 +1444,6 @@ class ColorSettingsWindow(QDialog):
                 "color": self.get_text_css('text'),
                 "font-size": "13px"
             },
-            "clock_mini": {
-                "color": self.get_text_css('text_edit')
-            },
-            "clock_title": {
-                "color": self.get_text_css('text_edit')
-            },
             "TitleBar": {
                 "background": "transparent",
                 "border-bottom": self.get_css("border"),
@@ -1469,7 +1455,7 @@ class ColorSettingsWindow(QDialog):
                 "border-radius": self.get_border_radius_css('main')
             },
             "WindowContainer": {
-                "border": self.get_css("border"),
+                "border": self.get_css("border", is_main_border=True),
                 "border-radius": self.get_border_radius_css('main')
             },
             "MainWindowWidget": {
@@ -1484,8 +1470,7 @@ class ColorSettingsWindow(QDialog):
                 "background-color": "transparent"
             },
             "QMainWindow": {
-                "background-color": "transparent",
-                "border": "none"
+                "background-color": "transparent"
             },
             "QMenu": {
                 "background-color": self.get_pressed_css('svg', darken=150, alpha=150),
@@ -1701,22 +1686,13 @@ class ColorSettingsWindow(QDialog):
             "CustomButton:hover": {
                 "background-color": self.get_hover_css('button')
             },
-            "details_label": {
-                "background-color": "transparent",
-                "font-size": "11px"
-            },
-            "name_label": {
-                "background-color": "transparent",
-                "font-size": "14px",
-                "color": self.get_text_css('text')
-            },
             "TitleBarBtn": {
                 "background-color": "transparent",
                 "border": "none",
                 "border-radius": "0px"
             },
             "TitleBarBtn:hover": {
-                "background-color": self.get_css('button'),
+                "background-color": self.get_hover_css('button'),
                 "border": "none"
             },
             "TitleBarCloseBtn": {
@@ -1742,10 +1718,7 @@ class ColorSettingsWindow(QDialog):
                 "border-left": "none",
             },
             "FullWindowMode": {
-                "border-left": "none",
-                "border-right": "none",
-                "border-bottom": "none",
-                "border-top": self.get_css('border'),
+                "border": "1px solid transparent",
                 "border-radius": "0px"
             },
             "FullWindowMode_CloseBtn": {
@@ -1756,13 +1729,33 @@ class ColorSettingsWindow(QDialog):
             "FullWindowMode_CloseBtn:hover": {
                 "background-color": "#E76565"
             },
+            "FullWindowMode_TitleBar": {
+                "border-radius": "0px",
+                "background": self.get_pressed_css('svg', darken=200),
+                "border": "1px solid transparent"
+            },
             "TitleBarLogin": {
                 "background": "transparent"
             },
             "LoginContainer": {
                 "border": self.get_css('border'),
                 "border-radius": "20px"
-            }
+            },
+            "TitleBarV2": {
+                "background": self.get_pressed_css('svg', darken=200),
+                "border-top": self.get_css('border', is_main_border=True),
+                "border-left": self.get_css('border', is_main_border=True),
+                "border-right": self.get_css('border', is_main_border=True),
+                "border-top-left-radius": self.get_border_radius_css('main'),
+                "border-top-right-radius": self.get_border_radius_css('main')
+            },
+            "TransparentWidget": {
+                "background": "transparent"
+            },
+            "FooterChangelog": {
+                "background": self.get_pressed_css('svg', darken=250),
+                "border-radius": self.get_border_radius_css('button'),
+            },
         }
     
         custom_styles = self.load_custom_styles()

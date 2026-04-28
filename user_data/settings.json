@@ -9,12 +9,11 @@
     "run_updater": false,
     "is_corrected_command": true,
     "minimize_to_tray": false,
-    "start_win": true,
+    "is_start_win": true,
     "is_widget": true,
     "is_keep_watch": false,
     "input_device_id": 1,
     "input_device_name": "Микрофон (USB Audio Device)",
-    "is_snow": false,
-    "is_garland": false,
-    "is_start_win": true
+    "is_snow": true,
+    "is_garland": false
 }

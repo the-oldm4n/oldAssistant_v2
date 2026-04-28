@@ -766,6 +766,21 @@ class ApplyColor():
             
         except Exception as e:
             return None
+        
+    def get_raw_text_color(self, text_type: str = "text") -> str:
+        """
+        Парсит стили и возвращает переданный цвет типа текста
+        :param: text_type: тип текста. Всего два варианта - text, text_edit
+        """
+        try:
+            if text_type == "text":
+                return self.styles["BasedColors"]["text"]
+            elif text_type == "text_edit":
+                return self.styles["BasedColors"]["text_edit"]
+            else:
+                return ""
+        except Exception as e:
+            return ""
 
 
 main_apply_colors = ApplyColor()
