@@ -14,7 +14,7 @@ class UpdateApp(QDialog):
         self.type_version = type_version
 
     def main(self):
-        self.main_window.show_notification("Начинаю установку...")
+        self.main_window.show_toast("Начинаю установку...")
         QTimer.singleShot(800, lambda: self.start_update())
 
     def restart_app(self):

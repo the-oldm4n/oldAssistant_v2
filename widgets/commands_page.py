@@ -230,7 +230,7 @@ class CreateCommandsWidget(QWidget):
         """Поиск ярлыков в стандартном расположении"""
         self.main.commands_manager.scan_and_copy_shortcuts()
         self.main.commands_manager.search_links()
-        self.main.show_notification(f"Поиск завершен!")
+        self.main.show_toast(f"Поиск завершен!")
 
         # Обновляем список в форме
         if hasattr(self.shortcut_form, 'refresh_shortcuts'):
@@ -305,7 +305,7 @@ class CreateCommandsWidget(QWidget):
 
         if hasattr(self.shortcut_form, 'refresh_shortcuts'):
             self.shortcut_form.refresh_shortcuts()
-            self.main.show_notification(f"Список ярлыков обновлен!")
+            self.main.show_toast(f"Список ярлыков обновлен!")
 
         
 
@@ -397,7 +397,7 @@ class AppCommandForm(QWidget):
 
         self.commands_manager.commands[key] = new_command
         commands_signal.commands_updated.emit()
-        self.main.show_notification(message=f"Команда '{key}' добавлена!")
+        self.main.show_toast(message=f"Команда '{key}' добавлена!")
         self.key_input.clear()
         self.error_label_clear()
 
@@ -491,7 +491,7 @@ class FolderCommandForm(QWidget):
 
         self.commands_manager.commands[key] = new_command
         commands_signal.commands_updated.emit()
-        self.main.show_notification(message=f"Команда '{key}' добавлена!")
+        self.main.show_toast(message=f"Команда '{key}' добавлена!")
         self.key_input.clear()
         self.folder_path.clear()
         self.error_label_clear()
@@ -609,7 +609,7 @@ class UrlCommandForm(QWidget):
 
         self.commands_manager.commands[key] = new_command
         commands_signal.commands_updated.emit()
-        self.main.show_notification(f"Команда '{key}' добавлена!")
+        self.main.show_toast(f"Команда '{key}' добавлена!")
         self.key_input.clear()
         self.url_path.clear()
         self.error_label_clear()
@@ -758,7 +758,7 @@ class CommandsWidget(QWidget):
                 json.dump(self.main.commands, file, ensure_ascii=False, indent=4)
 
             self.update_commands_list()
-            self.main.show_notification(f"Сценарий '{script_key}' обновлен")
+            self.main.show_toast(f"Сценарий '{script_key}' обновлен")
 
     def edit_command(self):
         """Редактирование выбранной команды"""
@@ -1840,7 +1840,7 @@ class SimpleScriptForm(QWidget):
         self.commands_manager.commands[script_data['name']] = script_structure
         self.commands_manager.save_commands()
         
-        self.main.show_notification(f"Сценарий '{script_data['name']}' сохранен!")
+        self.main.show_toast(f"Сценарий '{script_data['name']}' сохранен!")
         commands_signal.commands_updated.emit()
         self.clear_form()
         

@@ -3,27 +3,34 @@ import json
 import math
 import os
 import re
-from PySide6.QtCore import Signal, Qt, QPoint
-from PySide6.QtGui import QColor, QCursor
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QPushButton, QSpinBox, QSlider, QDialog, QWidget, QTabWidget, \
-    QHBoxLayout, QComboBox, QApplication
+from PySide6.QtCore import Signal, Qt, QPoint, QRect
+from PySide6.QtGui import QColor, QMouseEvent
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QPushButton, QDialog, QWidget, \
+    QHBoxLayout, QComboBox, QApplication, QMainWindow
 
 from mygui.core.apply_color import main_apply_colors
 from mygui.core.signals import color_signal, update_presets_signal
+from mygui.dialogs.settings_widgets.all_styles_widget import AllStylesWidget
+from mygui.dialogs.settings_widgets.background_widget import BackgroundWidget
+from mygui.dialogs.settings_widgets.border_widget import BorderWidget
+from mygui.dialogs.settings_widgets.buttons_widget import ButtonsWidget
+from mygui.dialogs.settings_widgets.radius_widget import RadiusWidget
+from mygui.dialogs.settings_widgets.svg_widget import SvgWidget
+from mygui.dialogs.settings_widgets.text_widget import TextWidget
+from mygui.helpers.custom_stacked_widget import SlidingStackedWidget
+from mygui.paths import ICONS
 from mygui.widgets.custom_svg import CustomSvgWidget
-from mygui.widgets.custom_toggle import CustomToggle
 from mygui.dialogs.color_picker import SimpleColorPicker
 from mygui.dialogs.save_preset import SavePresetDialog
-from mygui.preview.gradient_preview import GradientPreview
 from mygui.config import mygui_config
 
-class ColorSettingsWindow(QDialog):
+
+class ColorSettingsWindow(QMainWindow):
     """Окно изменения оформления интерфейса с поддержкой градиентов"""
-
     colorChanged = Signal()  # Сигнал изменения цвета
-
     def __init__(self, parent=None):
         super().__init__(parent)
+        color_signal.color_changed.connect(self.update_colors)
         self.main = parent
         self.style_manager = main_apply_colors
         self.color_path = self.style_manager.color_path
@@ -32,10 +39,9 @@ class ColorSettingsWindow(QDialog):
         self.custom_presets = mygui_config.custom_presets_path
         os.makedirs(self.custom_presets, exist_ok=True)
 
-        # Настройка окна без рамки
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
-        self.setFixedSize(450, 600)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.default_size = 500, 700
+        self.setMouseTracking(True)
+        self.init_icons()
 
         # Инициализация переменных для цветов и прочего
         self.bg_color = ""
@@ -57,7 +63,7 @@ class ColorSettingsWindow(QDialog):
                 'color1': "",
                 'color2': "",
                 'angle': 0,
-                'widgets': {}  # Будет заполнено в init_ui
+                'widgets': {}
             },
             'buttons': {
                 'enabled': False,
@@ -86,13 +92,21 @@ class ColorSettingsWindow(QDialog):
         self.load_color_settings()
         self.apply_styles()
 
+    def init_icons(self):
+        self.icon_styles_path = os.path.join(ICONS, "styles-icon.svg")
+        self.icon_background_path = os.path.join(ICONS, "background-icon.svg")
+        self.icon_text_path = os.path.join(ICONS, "text-icon.svg")
+        self.icon_border_path = os.path.join(ICONS, "border-icon.svg")
+        self.icon_buttons_path = os.path.join(ICONS, "btn-icon.svg")
+        self.icon_svg_path = os.path.join(ICONS, "svg-icon.svg")
+        self.icon_radius_path = os.path.join(ICONS, "radius-icon.svg")
+        self.icon_close_path = os.path.join(ICONS, "close.svg")
+        print(self.icon_close_path)
+
     def apply_styles(self):
         """Применяет все стили к окну"""
         try:
             self.styles = self.style_manager.load_styles()
-            
-            if hasattr(self, 'info_svg'):
-                self.style_manager.apply_color_svg(self.info_svg)
 
             style_sheet = ""
             for widget, styles in self.styles.items():
@@ -110,29 +124,34 @@ class ColorSettingsWindow(QDialog):
         except Exception as e:
             return False
 
-    def title_bar_mouse_press(self, event):
-        """Обработка нажатия мыши на заголовок"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.drag_pos = event.globalPos() - self.frameGeometry().topLeft()
-            event.accept()
-
-    def title_bar_mouse_move(self, event):
-        """Обработка перемещения мыши при удерживании на заголовке"""
-        if self.drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
-            # Получаем новую позицию основного окна
-            new_pos = event.globalPos() - self.drag_pos
-            self.move(new_pos)
-
-            event.accept()
-
-    def title_bar_mouse_release(self, event):
-        """Обработка отпускания кнопки мыши"""
-        self.drag_pos = None
-        event.accept()
-
     def init_ui(self):
+        self.margin = 7
+        self.drag_pos = None
+        self.dragging = False
+        self.drag_position = None
+        self.drag_direction = None
+        self.initial_geometry = None
+        self.reached_min_size = False
+        self.dragging_maximized = False
+        self.drag_start_pos = None
+        self.drag_start_geometry = None
+        self._drag_click_offset = None
+
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
+
+        self.resize(*self.default_size)
+
+        screen_geometry = self.screen().availableGeometry()
+        self.move(
+            (screen_geometry.width() - self.width()) // 2,
+            (screen_geometry.height() - self.height()) // 2
+        )
+        
         self.container = QWidget(self)
         self.container.setObjectName("WindowContainer")
+        self.setCentralWidget(self.container)
+        self.container.setMouseTracking(True)
 
         self.root_layout = QVBoxLayout(self.container)
         self.root_layout.setContentsMargins(0, 0, 0, 0)
@@ -157,57 +176,128 @@ class ColorSettingsWindow(QDialog):
         self.close_btn.setFixedSize(50, 40)
         self.close_btn.setObjectName("TitleBarCloseBtn")
         self.close_btn.clicked.connect(self.close)
-        self.close_svg = CustomSvgWidget(self.main.icon_close_path, self.close_btn)
+        self.close_svg = CustomSvgWidget(self.icon_close_path, self.close_btn)
         self.close_svg.setFixedSize(25, 25)
         self.close_svg.move(12, 7)
         self.close_svg.setStyleSheet("background: transparent;")
         self.title_layout.addWidget(self.close_btn)
 
         self.content_widget = QWidget(self.container)
-        self.content_widget.setMinimumWidth(450)
-        self.content_widget.setMinimumHeight(550)
         self.content_widget.setObjectName("ContentWidget")
 
         self.main_content_layout = QVBoxLayout(self.content_widget)
         self.main_content_layout.setContentsMargins(10, 10, 10, 10)
         self.main_content_layout.setSpacing(5)
 
-        self.tabs_container = QWidget()
-        self.tabs_container.setObjectName("WSTabsContainer")
-        self.tabs_layout = QVBoxLayout(self.tabs_container)
-        self.tabs_layout.setContentsMargins(5, 5, 5, 5)
-        self.tabs_layout.setSpacing(0)
+        self.button_panel = QWidget()
+        self.button_panel.setObjectName("TabPanel")
+        button_layout = QHBoxLayout(self.button_panel)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(5)
 
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setObjectName("TabWidget")
-
-        self.bg_tab = QWidget()
-        self.bg_tab.setObjectName("WSBgTabWidget")
-        self.init_gradient_tab(self.bg_tab, 'background', 'Фон')
-
-        self.text_tab = QWidget()
-        self.add_text_color_section(self.text_tab)
-
-        self.btn_tab = QWidget()
-        self.init_gradient_tab(self.btn_tab, 'buttons', 'Кнопки')
-
-        self.border_tab = QWidget()
-        self.init_gradient_tab(self.border_tab, 'borders', 'Обводки')
+        self.content_container = SlidingStackedWidget(self)
         
-        self.radius_tab = QWidget()
-        self.change_radius_tab(self.radius_tab)
+        self.all_styles_widget = AllStylesWidget(self.main, self)
+        self.background_widget = BackgroundWidget(self)
+        self.text_widget = TextWidget(self)
+        self.buttons_widget = ButtonsWidget(self)
+        self.svg_widget = SvgWidget(self)
+        self.border_widget = BorderWidget(self)
+        self.radius_widget = RadiusWidget(self)
+        
+        self.content_container.add_page(self.all_styles_widget)
+        self.content_container.add_page(self.background_widget)
+        self.content_container.add_page(self.buttons_widget)
+        self.content_container.add_page(self.text_widget)
+        self.content_container.add_page(self.svg_widget)
+        self.content_container.add_page(self.border_widget)
+        self.content_container.add_page(self.radius_widget)
+        
 
-        self.svg_tab = QWidget()
-        self.init_svg_tab(self.svg_tab, 'svg', 'Иконки')
-
-        self.tab_widget.addTab(self.bg_tab, "Фон")
-        self.tab_widget.addTab(self.text_tab, "Текст")
-        self.tab_widget.addTab(self.btn_tab, "Кнопки")
-        self.tab_widget.addTab(self.border_tab, "Обводки")
-        self.tab_widget.addTab(self.radius_tab, "Радиус обводки")
-        self.tab_widget.addTab(self.svg_tab, "Иконки")
-
-        self.tabs_layout.addWidget(self.tab_widget)
+        buttons_data = [
+            {
+                "key": "all_styles",
+                "text": "Стили",
+                "icon_path": self.icon_styles_path,
+                "tooltip": "Выбор стилей",
+                "index": 0,
+                "widget": self.all_styles_widget
+            },
+            {
+                "key": "background",
+                "text": "Фон",
+                "icon_path": self.icon_background_path,
+                "tooltip": "Задний фон",
+                "index": 1,
+                "widget": self.background_widget
+            },
+            {
+                "key": "buttons",
+                "text": "Кнопки",
+                "icon_path": self.icon_buttons_path,
+                "tooltip": "Кнопки",
+                "index": 2,
+                "widget": self.buttons_widget
+            },
+            {
+                "key": "text",
+                "text": "Текст",
+                "icon_path": self.icon_text_path,
+                "tooltip": "Текст",
+                "index": 3,
+                "widget": self.text_widget
+            },
+            {
+                "key": "svg",
+                "text": "SVG",
+                "icon_path": self.icon_svg_path,
+                "tooltip": "SVG-иконки",
+                "index": 4,
+                "widget": self.radius_widget
+            },
+            {
+                "key": "border",
+                "text": "Обводки",
+                "icon_path": self.icon_border_path,
+                "tooltip": "Бордер",
+                "index": 5,
+                "widget": self.border_widget
+            },
+            {
+                "key": "radius",
+                "text": "Радиус",
+                "icon_path": self.icon_radius_path,
+                "tooltip": "Радиус скругления",
+                "index": 6,
+                "widget": self.radius_widget
+            }
+        ]
+        
+        self.nav_buttons = []
+        self.nav_svgs = []
+        
+        for data in buttons_data:
+            btn = QPushButton()
+            btn.setFixedSize(60, 40)
+            btn.setObjectName("TabBtn")
+            btn.setToolTip(data["tooltip"])
+            
+            if data["icon_path"]:
+                svg = CustomSvgWidget(data["icon_path"], btn)
+                svg.setFixedSize(35, 35)
+                svg.move(12, 2)
+                self.style_manager.apply_color_svg(svg)
+                self.nav_svgs.append(svg)
+            
+            btn.clicked.connect(lambda checked, idx=data["index"]: self.switch_page(idx, "top"))
+            
+            self.nav_buttons.append(btn)
+            button_layout.addWidget(btn)
+        
+        button_layout.addStretch()
+        
+        self.main_content_layout.addWidget(self.button_panel)
+        self.main_content_layout.addWidget(self.content_container)
 
         self.bottom_container = QWidget()
         self.bottom_container.setObjectName("WSBottomContainer")
@@ -235,418 +325,42 @@ class ColorSettingsWindow(QDialog):
         self.bottom_layout.addStretch()
         self.bottom_layout.addWidget(self.apply_button)
 
-        self.main_content_layout.addWidget(self.tabs_container)
         self.main_content_layout.addWidget(self.bottom_container)
 
         self.root_layout.addWidget(self.title_bar)
         self.root_layout.addWidget(self.content_widget)
 
-    def init_gradient_tab(self, tab, element_type, title):
-        """Инициализирует вкладку для настройки градиента конкретного элемента"""
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        self.switch_page(0, "top")
 
-        # Чекбокс для включения градиента
-        checkbox = CustomToggle(f'Использовать градиент для {title.lower()}')
-        checkbox.setStyleSheet("background-color: transparent")
-        checkbox.stateChanged.connect(lambda state: self.toggle_gradient(element_type, state))
-        layout.addWidget(checkbox)
-        
-        solid_color_container = QWidget()
-        solid_color_container.setStyleSheet("background-color: transparent")
-        solid_color_layout = QHBoxLayout(solid_color_container)
-        solid_color_layout.setContentsMargins(0, 0, 0, 0)
+        self.centralWidget().adjustSize()
+        self.minimum_size = self.centralWidget().minimumSizeHint()
+        self.setup_mouse_tracking_for_children(self.container)
 
-        solid_color_label = QLabel("Текущий цвет:")
-        solid_color_label.setStyleSheet("background-color: transparent")
-        solid_color_layout.addWidget(solid_color_label)
-        
-        solid_color_preview = QLabel()
-        solid_color_preview.setFixedSize(30, 30)
-        solid_color_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
-        solid_color_preview.mousePressEvent = lambda event: self.choose_solid_color(element_type)
-        solid_color_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        solid_color_layout.addWidget(solid_color_preview)
-        solid_color_layout.addStretch()
-        
-        layout.addWidget(solid_color_container)
+    def setup_mouse_tracking_for_children(self, widget):
+        """Устанавливает mouse tracking для всех дочерних виджетов"""
+        widget.setMouseTracking(True)
+        for child in widget.findChildren(QWidget):
+            child.setMouseTracking(True)
 
-        # Контейнер для элементов градиента (скрывается при отключении)
-        gradient_group = QWidget()
-        gradient_group.setObjectName("GradientGroup")
-        gradient_layout = QVBoxLayout(gradient_group)
-        gradient_layout.setContentsMargins(0, 0, 0, 0)
+    def switch_page(self, index, direction="right"):
+        self.content_container.switch_to(index, direction)
+        for i, btn in enumerate(self.nav_buttons):
+            btn.setProperty("active", i == index)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
 
-        # Кнопки выбора цветов
-        two_colors_layout = QHBoxLayout()
-        
-        color1_layout = QHBoxLayout()
-        color1_label = QLabel("Цвет 1:")
-        color1_label.setStyleSheet("background-color: transparent")
-        color1_layout.addWidget(color1_label)
-        
-        self.color1_preview = QLabel()
-        self.color1_preview.setFixedSize(30, 30)
-        self.color1_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
-        self.color1_preview.mousePressEvent = lambda event: self.choose_gradient_color(element_type, 1)
-        self.color1_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        color1_layout.addWidget(self.color1_preview)
-        color1_layout.addStretch()
-        
-        color2_layout = QHBoxLayout()
-        color2_label = QLabel("Цвет 2:")
-        color2_label.setStyleSheet("background-color: transparent")
-        color2_layout.addWidget(color2_label)
-        
-        self.color2_preview = QLabel()
-        self.color2_preview.setFixedSize(30, 30)
-        self.color2_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
-        self.color2_preview.mousePressEvent = lambda event: self.choose_gradient_color(element_type, 2)
-        self.color2_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        color2_layout.addWidget(self.color2_preview)
-        color2_layout.addStretch()
-        
-        two_colors_layout.addLayout(color1_layout)
-        two_colors_layout.addLayout(color2_layout)
-        
-        gradient_layout.addLayout(two_colors_layout)
+    def update_colors(self, styles=None, is_preview=False):
+        solid_color = None
+        gradient = None
+        if is_preview:
+            _color = styles.get("BasedColors", {}).get("svg", "#0973ff")
+            if _color.startswith("qlineargradient"):
+                gradient = _color
+            else:
+                solid_color = _color
+        for svg in self.nav_svgs:
+            self.style_manager.apply_color_svg(svg, specified_color=solid_color, spec_gradient=gradient)
 
-        # Управление углом
-        angle_label = QLabel(f'Угол градиента (0-360°):')
-        angle_label.setStyleSheet("background: transparent")
-        gradient_layout.addWidget(angle_label)
-        angle_slider = QSlider(Qt.Orientation.Horizontal)
-        angle_slider.setStyleSheet("background: transparent")
-        angle_slider.setRange(0, 360)
-        angle_slider.setTickInterval(45)
-        angle_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        angle_slider.valueChanged.connect(lambda angle: self.update_gradient_angle(element_type, angle))
-        gradient_layout.addWidget(angle_slider)
-        angle_spin = QSpinBox()
-        angle_spin.setStyleSheet("background: transparent")
-        angle_spin.setRange(0, 360)
-        angle_spin.setSuffix('°')
-        angle_spin.valueChanged.connect(lambda angle: self.update_gradient_angle(element_type, angle))
-        gradient_layout.addWidget(angle_spin)
-
-        # Связываем слайдер и спинбокс
-        angle_slider.valueChanged.connect(angle_spin.setValue)
-        angle_spin.valueChanged.connect(angle_slider.setValue)
-
-        layout.addWidget(gradient_group)  # Добавляем группу в основной layout
-
-        # Превью градиента
-        preview = GradientPreview()
-        layout.addWidget(preview)
-
-        if element_type == "buttons":
-            self.buttons_border_checkbox = CustomToggle("Показывать бордер у кнопок")
-            self.buttons_border_checkbox.setStyleSheet("background: transparent")
-            self.buttons_border_checkbox.setChecked(self.border_in_buttons)
-            self.buttons_border_checkbox.stateChanged.connect(self.on_border_btn_state_changed)
-            layout.addWidget(self.buttons_border_checkbox)
-
-        layout.addStretch()
-
-        # Сохраняем ссылки на элементы для обновления
-        self.gradient_settings[element_type]['widgets'] = {
-            'checkbox': checkbox,
-            'solid_color_container': solid_color_container,
-            'color1_preview': self.color1_preview,
-            'color2_preview': self.color2_preview,
-            'solid_color_preview': solid_color_preview,
-            'gradient_group': gradient_group,
-            'slider': angle_slider,
-            'spinbox': angle_spin,
-            'preview': preview
-        }
-
-        # Инициализируем состояние
-        self.toggle_gradient(element_type, checkbox.isChecked())
-
-    def init_svg_tab(self, tab, element_type, title):
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
-
-        # Чекбокс для включения градиента
-        checkbox = CustomToggle(f'Использовать градиент для {title.lower()}')
-        checkbox.setStyleSheet("background-color: transparent")
-        checkbox.stateChanged.connect(lambda state: self.toggle_gradient(element_type, state))
-        layout.addWidget(checkbox)
-        
-        solid_color_container = QWidget()
-        solid_color_container.setStyleSheet("background-color: transparent")
-        solid_color_layout = QHBoxLayout(solid_color_container)
-        solid_color_layout.setContentsMargins(0, 0, 0, 0)
-
-        solid_color_label = QLabel("Текущий цвет:")
-        solid_color_label.setStyleSheet("background-color: transparent")
-        solid_color_layout.addWidget(solid_color_label)
-        
-        solid_color_preview = QLabel()
-        solid_color_preview.setFixedSize(30, 30)
-        solid_color_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
-        solid_color_preview.mousePressEvent = lambda event: self.choose_solid_color(element_type)
-        solid_color_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        solid_color_layout.addWidget(solid_color_preview)
-        solid_color_layout.addStretch()
-        
-        layout.addWidget(solid_color_container)
-
-        # Контейнер для элементов градиента (скрывается при отключении)
-        gradient_group = QWidget()
-        gradient_group.setObjectName("GradientGroup")
-        gradient_layout = QVBoxLayout(gradient_group)
-        gradient_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Кнопки выбора цветов
-        two_colors_layout = QHBoxLayout()
-        
-        color1_layout = QHBoxLayout()
-        color1_label = QLabel("Цвет 1:")
-        color1_label.setStyleSheet("background-color: transparent")
-        color1_layout.addWidget(color1_label)
-        
-        self.color1_preview = QLabel()
-        self.color1_preview.setFixedSize(30, 30)
-        self.color1_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
-        self.color1_preview.mousePressEvent = lambda event: self.choose_gradient_color(element_type, 1)
-        self.color1_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        color1_layout.addWidget(self.color1_preview)
-        color1_layout.addStretch()
-        
-        color2_layout = QHBoxLayout()
-        color2_label = QLabel("Цвет 2:")
-        color2_label.setStyleSheet("background-color: transparent")
-        color2_layout.addWidget(color2_label)
-        
-        self.color2_preview = QLabel()
-        self.color2_preview.setFixedSize(30, 30)
-        self.color2_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
-        self.color2_preview.mousePressEvent = lambda event: self.choose_gradient_color(element_type, 2)
-        self.color2_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        color2_layout.addWidget(self.color2_preview)
-        color2_layout.addStretch()
-        
-        two_colors_layout.addLayout(color1_layout)
-        two_colors_layout.addLayout(color2_layout)
-        
-        gradient_layout.addLayout(two_colors_layout)
-
-        # Управление углом
-        angle_label = QLabel(f'Угол градиента (0-360°):')
-        angle_label.setStyleSheet("background: transparent")
-        gradient_layout.addWidget(angle_label)
-        angle_slider = QSlider(Qt.Orientation.Horizontal)
-        angle_slider.setStyleSheet("background: transparent")
-        angle_slider.setRange(0, 360)
-        angle_slider.setTickInterval(45)
-        angle_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        angle_slider.valueChanged.connect(lambda angle: self.update_gradient_angle(element_type, angle))
-        gradient_layout.addWidget(angle_slider)
-        angle_spin = QSpinBox()
-        angle_spin.setStyleSheet("background: transparent")
-        angle_spin.setRange(0, 360)
-        angle_spin.setSuffix('°')
-        angle_spin.valueChanged.connect(lambda angle: self.update_gradient_angle(element_type, angle))
-        gradient_layout.addWidget(angle_spin)
-
-        # Связываем слайдер и спинбокс
-        angle_slider.valueChanged.connect(angle_spin.setValue)
-        angle_spin.valueChanged.connect(angle_slider.setValue)
-
-        layout.addWidget(gradient_group)
-
-        # Превью
-        preview = GradientPreview()
-        layout.addWidget(preview)
-
-        layout.addStretch()
-
-        # Сохраняем ссылки на элементы для обновления
-        self.gradient_settings[element_type]['widgets'] = {
-            'checkbox': checkbox,
-            'solid_color_container': solid_color_container,
-            'color1_preview': self.color1_preview,
-            'color2_preview': self.color2_preview,
-            'solid_color_preview': solid_color_preview,
-            'gradient_group': gradient_group,
-            'slider': angle_slider,
-            'spinbox': angle_spin,
-            'preview': preview
-        }
-
-        # Инициализируем состояние
-        self.toggle_gradient(element_type, checkbox.isChecked())
-        
-    def change_radius_tab(self, tab):
-        """Добавляет секцию настроек радиуса"""
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(8)
-
-            # === Радиус кнопок ===
-        btn_radius_layout = QHBoxLayout()
-        btn_radius_label = QLabel("Радиус кнопок (px):")
-        btn_radius_label.setStyleSheet("background: transparent")
-        
-        self.btn_radius_slider = QSlider(Qt.Orientation.Horizontal)
-        self.btn_radius_slider.setStyleSheet("background: transparent")
-        self.btn_radius_slider.setRange(0, 15)
-        self.btn_radius_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.btn_radius_slider.setTickInterval(1)
-        self.btn_radius_slider.valueChanged.connect(self.on_btn_radius_changed)
-        
-        self.btn_radius_value_label = QLabel("0")
-        self.btn_radius_value_label.setObjectName("LabelSliderValue")
-        self.btn_radius_value_label.setFixedWidth(25)
-        self.btn_radius_value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        btn_radius_layout.addWidget(btn_radius_label)
-        btn_radius_layout.addWidget(self.btn_radius_slider)
-        btn_radius_layout.addWidget(self.btn_radius_value_label)
-        layout.addLayout(btn_radius_layout)
-
-        # === Радиус главного окна ===
-        main_radius_layout = QHBoxLayout()
-        main_radius_label = QLabel("Радиус главного окна (px):")
-        main_radius_label.setStyleSheet("background: transparent")
-        
-        self.main_radius_slider = QSlider(Qt.Orientation.Horizontal)
-        self.main_radius_slider.setStyleSheet("background: transparent")
-        self.main_radius_slider.setRange(0, 20)
-        self.main_radius_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.main_radius_slider.setTickInterval(1)
-        self.main_radius_slider.valueChanged.connect(self.on_main_radius_changed)
-        
-        self.main_radius_value_label = QLabel("0")
-        self.main_radius_value_label.setObjectName("LabelSliderValue")
-        self.main_radius_value_label.setFixedWidth(25)
-        self.main_radius_value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        main_radius_layout.addWidget(main_radius_label)
-        main_radius_layout.addWidget(self.main_radius_slider)
-        main_radius_layout.addWidget(self.main_radius_value_label)
-        layout.addLayout(main_radius_layout)
-
-        # === Бордер у главного окна ===
-        self.main_border_checkbox = CustomToggle("Показывать бордер у главного окна")
-        self.main_border_checkbox.setStyleSheet("background: transparent")
-        self.main_border_checkbox.setChecked(self.border_in_main_window)
-        self.main_border_checkbox.stateChanged.connect(self.on_border_state_changed)
-        layout.addWidget(self.main_border_checkbox)
-
-        layout.addStretch()
-        
-    def on_btn_radius_changed(self, value):
-        """Обработчик изменения радиуса кнопок"""
-        self.btn_radius_value_label.setText(str(value))
-        self.border_btn_radius = str(value)
-        self.apply_changes(preview=True)
-
-    def on_main_radius_changed(self, value):
-        """Обработчик изменения радиуса главного окна"""
-        self.main_radius_value_label.setText(str(value))
-        self.border_main_radius = str(value)
-        self.apply_changes(preview=True)
-        
-    def on_border_state_changed(self):
-        """Обновляет внутренние переменные и применяет превью"""
-        self.border_in_main_window = self.main_border_checkbox.isChecked()
-        self.apply_changes(preview=True)
-
-    def on_border_btn_state_changed(self):
-        """Обновляет внутренние переменные и применяет превью"""
-        self.border_in_buttons = self.buttons_border_checkbox.isChecked()
-        self.apply_changes(preview=True)
-
-    def add_text_color_section(self, tab):
-        """Добавляет секцию настроек текста"""
-        layout = QVBoxLayout(tab)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(8)
-
-        text_color_layout = QHBoxLayout()
-        text_color_label = QLabel('Цвет текста:')
-        text_color_label.setStyleSheet("background: transparent")
-        
-        self.text_color_preview = QLabel()
-        self.text_color_preview.setFixedSize(30, 30)
-        self.text_color_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
-        self.text_color_preview.mousePressEvent = lambda event: self.choose_text_color()
-        self.text_color_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        
-        text_edit_color_layout = QHBoxLayout()
-        
-        text_edit_label = QLabel('Цвет текста в поле ввода')
-        text_edit_label.setStyleSheet("background: transparent")
-        
-        self.text_edit_preview = QLabel()
-        self.text_edit_preview.setFixedSize(30, 30)
-        self.text_edit_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
-        self.text_edit_preview.mousePressEvent = lambda event: self.choose_text_edit_color()
-        self.text_edit_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-
-        text_color_layout.addWidget(text_color_label)
-        text_color_layout.addWidget(self.text_color_preview)
-        text_color_layout.addStretch()
-        text_edit_color_layout.addWidget(text_edit_label)
-        text_edit_color_layout.addWidget(self.text_edit_preview)
-        text_edit_color_layout.addStretch()
-        
-        layout.addLayout(text_color_layout)
-        layout.addLayout(text_edit_color_layout)
-
-        preview_layout = QVBoxLayout()
-
-        # Превью текста в логах       
-        self.log_demo = QLabel("Это пример текста в поле ввода")
-        self.log_demo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.log_demo.setMinimumHeight(40)
-        self.log_demo.setStyleSheet("""
-            background: #1a1a1a; 
-            border: 1px solid #333; 
-            border-radius: 5px; 
-            padding: 5px;
-            font-family: 'Courier New', monospace;
-        """)
-        preview_layout.addWidget(self.log_demo)
-
-        layout.addLayout(preview_layout)
-
-        layout.addStretch()
-    
-    def choose_text_color(self):
-        """Показывает пикер цвета для текста"""
-        preview_pos = self.text_color_preview.mapToGlobal(QPoint(5, 5))
-        picker = SimpleColorPicker(self.text_color, self)
-        picker.move(preview_pos.x() + self.text_color_preview.width(), preview_pos.y())
-        picker.color_changed.connect(self.on_text_color_changed)
-        picker.focusOutEvent = lambda event: picker.close()
-        picker.exec()
-        
-    def on_text_color_changed(self, color):
-        """Обработчик изменения цвета текста"""
-        self.text_color = color
-        self.update_color_previews()
-        self.apply_changes(preview=True)
-    
-    def on_text_edit_color_changed(self, color):
-        """Обработчик изменения цвета текста в логах"""
-        self.text_edit_color = color
-        self.update_color_previews()
-        self.apply_changes(preview=True)
-    
-    def choose_text_edit_color(self):
-        preview_pos = self.text_edit_preview.mapToGlobal(QPoint(5, 5))
-        picker = SimpleColorPicker(self.text_edit_color, self)
-        picker.move(preview_pos.x() + self.text_edit_preview.width(), preview_pos.y())
-        picker.color_changed.connect(self.on_text_edit_color_changed)
-        picker.focusOutEvent = lambda event: picker.close()
-        picker.exec()
-    
     def choose_solid_color(self, element_type):
         """Выбор сплошного цвета (когда градиент выключен)"""
         current_color = self.gradient_settings[element_type].get('solid_color', "#000000")
@@ -680,38 +394,14 @@ class ColorSettingsWindow(QDialog):
 
         self.update_gradient_preview(element_type)
         self.apply_changes(preview=True)
-    
-    def update_color_previews(self):
-        """Обновляет цвет превью-лейблов"""
-        # Превью для основного текста
-        self.text_color_preview.setStyleSheet(
-            f"background-color: {self.text_color}; border: 1px solid #ccc; border-radius: 3px;"
-        )
-        
-        # Превью для текста в логах
-        self.text_edit_preview.setStyleSheet(
-            f"background-color: {self.text_edit_color}; border: 1px solid #ccc; border-radius: 3px;"
-        )
-       
-        # Демо текста в логах
-        self.log_demo.setStyleSheet(f"""
-            background: #1a1a1a; 
-            border: 1px solid #333; 
-            border-radius: 5px; 
-            padding: 5px;
-            font-family: 'Consolas', monospace;
-            color: {self.text_edit_color};
-        """)
 
     def toggle_gradient(self, element_type, state):
         """Включает/выключает градиент для конкретного элемента"""
-        from PySide6.QtCore import Qt
-
         # state может быть: 0, 2, True, False, Qt.CheckState
         if isinstance(state, Qt.CheckState):
             enabled = state == Qt.CheckState.Checked
         elif isinstance(state, int):
-            # 0 = Unchecked, 2 = Checked (в PySide6!)
+            # 0 = Unchecked, 2 = Checked
             enabled = state == 2
         else:
             # bool или другие типы
@@ -879,6 +569,10 @@ class ColorSettingsWindow(QDialog):
             styles.get("QPushButton", {}).get("background-color", "#293f85")
         )
         self.load_element_settings(
+            'borders',
+            styles.get("BasedColors", {}).get("border", "#0973ff")
+        )
+        self.load_element_settings(
             'svg',
             styles.get("BasedColors", {}).get("svg", "#0973ff")
         )
@@ -887,7 +581,7 @@ class ColorSettingsWindow(QDialog):
         self.load_element_settings('borders', border_value)
 
         svg_value = styles.get("BasedColors", {}).get("svg", "#0973ff")
-        self.load_element_settings('svg', svg_value)
+        self.svg_color = svg_value
 
         # Синхронизируем устаревшие переменные с текущими значениями
         self.bg_color = self.gradient_settings['background']['solid_color']
@@ -899,9 +593,7 @@ class ColorSettingsWindow(QDialog):
         else:
             # Если формат неожиданный, попробуем взять из gradient_settings
             self.border_color = self.gradient_settings['borders']['solid_color']
-
-        self.svg_color = svg_value
-            
+     
          # Радиус кнопок
         btn_radius_str = styles.get("QPushButton", {}).get("border-radius", "0px")
         self.border_btn_radius = int(btn_radius_str.rstrip("px"))
@@ -909,26 +601,21 @@ class ColorSettingsWindow(QDialog):
         # Радиус главного окна
         main_radius_str = styles.get("MainWindowWidget", {}).get("border-radius", "0px")
         self.border_main_radius = int(main_radius_str.rstrip("px"))
-        
-        # Устанавливаем значения в слайдеры
-        if hasattr(self, 'btn_radius_slider'):
-            self.btn_radius_slider.setValue(self.border_btn_radius)
-            self.btn_radius_value_label.setText(str(self.border_btn_radius))
-            
-        if hasattr(self, 'main_radius_slider'):
-            self.main_radius_slider.setValue(self.border_main_radius)
-            self.main_radius_value_label.setText(str(self.border_main_radius))
+
+        self.radius_widget.set_values()
 
         # Бордер главного окна
         main_border = styles.get("MainWindowWidget", {}).get("border", "none")
         self.border_in_main_window = main_border != "none"
-        self.main_border_checkbox.setChecked(self.border_in_main_window)
+        self.radius_widget.main_border_checkbox.setChecked(self.border_in_main_window)
 
         buttons_border = styles.get("QPushButton", {}).get("border", "none")
         self.border_in_buttons = buttons_border != "none"
-        self.buttons_border_checkbox.setChecked(self.border_in_buttons)
+        self.buttons_widget.buttons_border_checkbox.setChecked(self.border_in_buttons)
 
-        self.update_color_previews()
+        self.text_widget.update_color_previews()
+
+        self.apply_changes(preview=True)
 
     def load_element_settings(self, element_type, css_value):
         """Загружает настройки элемента (градиент или сплошной цвет)"""
@@ -946,11 +633,9 @@ class ColorSettingsWindow(QDialog):
 
         # Для border нужно сначала извлечь цвет/градиент из строки
         if element_type == 'borders':
-            # Извлекаем цвет или градиент из "1px solid ..."
             parts = css_value.split()
             if len(parts) >= 3:
-                color_part = ' '.join(parts[2:])  # Берем всё после "1px solid"
-                # Убираем возможные скобки в конце
+                color_part = ' '.join(parts[2:])
                 color_part = color_part.rstrip(');,')
             else:
                 color_part = "#000000"
@@ -995,12 +680,10 @@ class ColorSettingsWindow(QDialog):
         # Обновляем UI если виджеты уже созданы
         if widgets:
             widgets['checkbox'].setChecked(settings['enabled'])
-            # ЯВНО ВЫЗЫВАЕМ toggle_gradient ПОСЛЕ setChecked
-            # Это необходимо, чтобы обновить видимость gradient_group и доступность других элементов
-            # в соответствии с загруженным значением settings['enabled']
+
             self.toggle_gradient(element_type,
                                  Qt.CheckState.Checked if settings['enabled'] else Qt.CheckState.Unchecked)
-            # ОБНОВЛЯЕМ ЦВЕТА ПРЕВЬЮ
+            
             if 'color1_preview' in widgets:
                 color1 = settings.get('color1', "#000000")
                 widgets['color1_preview'].setStyleSheet(
@@ -1027,20 +710,20 @@ class ColorSettingsWindow(QDialog):
 
         QApplication.processEvents()
         self.container.repaint()
-        self.update_color_previews()
-        self.apply_changes(preview=True)
+        # self.text_widget.update_color_previews()
+        # self.apply_changes(preview=True)
 
     def apply_changes(self, preview=False):
         try:
             new_styles = self.reference_style()
-
             if not preview:
-                self.save_color_settings(new_styles)
+                self.save_new_colors(new_styles)
                 self.colorChanged.emit()
                 color_signal.color_changed.emit()
             else:
                 # Применяем стили только для предпросмотра
                 self.setStyleSheet(self.generate_stylesheet(new_styles))
+                self.update_colors(styles=new_styles, is_preview=True)
         except Exception as e:
             return None
 
@@ -1068,20 +751,18 @@ class ColorSettingsWindow(QDialog):
         """Генерирует строку CSS с правильными селекторами"""
         stylesheet = ""
         for widget, properties in styles.items():
-            # Определяем правильный селектор
-            if widget.startswith("Q"):  # Стандартные Qt виджеты
+            if widget.startswith("Q"):
                 selector = widget
-            else:  # Кастомные ObjectName
+            else:
                 selector = f"#{widget}"
-
             stylesheet += f"{selector} {{\n"
             for prop, value in properties.items():
                 stylesheet += f"    {prop}: {value};\n"
             stylesheet += "}\n"
         return stylesheet
 
-    def save_color_settings(self, new_styles):
-        """Сохраняет новые стили в color_settings.json."""
+    def save_new_colors(self, new_styles):
+        """Сохраняет новые стили в color.json."""
         with open(self.color_path, 'w') as json_file:
             json.dump(new_styles, json_file, indent=4)
 
@@ -1273,7 +954,7 @@ class ColorSettingsWindow(QDialog):
         dialog = SavePresetDialog(self)
 
         if dialog.exec() != QDialog.DialogCode.Accepted:
-            return  # Пользователь отменил действие
+            return
 
         preset_name = dialog.get_text().strip()
 
@@ -1285,48 +966,44 @@ class ColorSettingsWindow(QDialog):
                 json.dump(self.reference_style(), f, indent=4, ensure_ascii=False)
 
             self.load_presets()
-            self.main.show_notification("Пресет сохранен!")
+            self.show_message("Пресет сохранен!")
             update_presets_signal.presets_updated.emit()
 
         except Exception as e:
-            self.main.show_notification(f"Ошибка сохранения:\n{str(e)}")
+            self.show_message(f"Ошибка сохранения:\n{str(e)}")
 
     def load_presets(self):
         """Загружает существующие пресеты в выпадающий список."""
         self.preset_combo_box.clear()
         self.preset_combo_box.addItem("Выбрать пресет")
 
-        # Проверяем, существует ли директория, если нет - создаем
         if not os.path.exists(self.base_presets):
             os.makedirs(self.base_presets)
 
-        # Загружаем все файлы .json из директории пресетов
         for filename in os.listdir(self.base_presets):
             if filename.endswith('.json'):
-                self.preset_combo_box.addItem(filename[:-5])  # Добавляем имя файла без .json
+                self.preset_combo_box.addItem(filename[:-5])
 
         for filename in os.listdir(self.custom_presets):
             if filename.endswith('.json'):
-                self.preset_combo_box.addItem(filename[:-5])  # Добавляем имя файла без .json
+                self.preset_combo_box.addItem(filename[:-5])
 
     def load_preset(self):
         """Загружает выбранный пресет из файла, проверяя обе директории."""
         selected_preset = self.preset_combo_box.currentText()
         if not selected_preset or selected_preset == "Выбрать пресет":
-            return  # Пресет не выбран
+            return
 
-        # Формируем пути к файлам в обеих папках
         base_preset_path = os.path.join(self.base_presets, f"{selected_preset}.json")
         custom_preset_path = os.path.join(self.custom_presets, f"{selected_preset}.json")
 
-        # Проверяем, в какой папке есть файл (приоритет у custom_presets)
         preset_path = None
         if os.path.exists(custom_preset_path):
             preset_path = custom_preset_path
         elif os.path.exists(base_preset_path):
             preset_path = base_preset_path
         else:
-            self.main.show_notification(f"Пресет '{selected_preset}' не найден ни в одной из папок.")
+            self.show_message(f"Пресет '{selected_preset}' не найден ни в одной из папок.")
             return
 
         try:
@@ -1337,9 +1014,8 @@ class ColorSettingsWindow(QDialog):
 
             QApplication.processEvents()
             self.container.repaint()
-
         except Exception as e:
-            self.main.show_notification(f"Ошибка загрузки пресета: {e}")
+            self.show_message(f"Ошибка загрузки пресета: {e}")
             
     def reference_style(self):
         """Эталонный стиль на основе текущих переменных"""
@@ -1398,12 +1074,6 @@ class ColorSettingsWindow(QDialog):
                 "background": "transparent",
                 "border-bottom": self.get_css("border"),
             },
-            "TabWidget": {
-                "background": "transparent"
-            },
-            "TabWidget::pane": {
-                "background": "transparent"
-            },
             "QLineEdit": {
                 "background-color": "transparent",
                 "border": self.get_css("border"),
@@ -1439,35 +1109,6 @@ class ColorSettingsWindow(QDialog):
                 "color": self.get_text_css('text_edit'),
                 "border": "none",
                 "font-size": "15px"
-            },
-            "label_message": {
-                "color": self.get_text_css('text'),
-                "font-size": "13px"
-            },
-            "TitleBar": {
-                "background": "transparent",
-                "border-bottom": self.get_css("border"),
-                "border-bottom-left-radius": "0px",
-                "border-bottom-right-radius": "0px"
-            },
-            "MessageContainer": {
-                "border": self.get_css("border"),
-                "border-radius": self.get_border_radius_css('main')
-            },
-            "WindowContainer": {
-                "border": self.get_css("border", is_main_border=True),
-                "border-radius": self.get_border_radius_css('main')
-            },
-            "MainWindowWidget": {
-                "border": self.get_css("border", is_main_border=True),
-                "border-radius": self.get_border_radius_css('main')
-            },
-            "SettingsWidget": {
-                "border": "none",
-                "border-radius": "10px"
-            },
-            "ContentWidget": {
-                "background-color": "transparent"
             },
             "QMainWindow": {
                 "background-color": "transparent"
@@ -1508,11 +1149,6 @@ class ColorSettingsWindow(QDialog):
                 "height": "8px",
                 "border-radius": "4px",
                 "margin": "0"
-            },
-            "LabelSliderValue": {
-                "background": "transparent",
-                "border": self.get_css("border"),
-                "border-radius": "3px"
             },
             "QScrollBar:vertical": {
                 "border": "none",
@@ -1563,6 +1199,65 @@ class ColorSettingsWindow(QDialog):
                 "background": self.get_pressed_css('svg', darken=50),
                 "border": "none",
                 "outline": "none"
+            },
+            "QSpinBox": {
+                "background-color": "transparent",
+                "border": self.get_css("border"),
+                "border-radius": self.get_border_radius_css('button'),
+                "padding": "5px"
+            },
+            "QDoubleSpinBox": {
+                "background-color": "transparent",
+                "border": self.get_css("border"),
+                "border-radius": self.get_border_radius_css('button'),
+                "padding": "5px"
+            },
+            "QScrollArea": {
+                "background-color": "transparent",
+                "border": "none"
+            },
+            "QGroupBox": {
+                "background-color": self.get_pressed_css('svg', darken=250, alpha=130),
+                "border": self.get_css("border"),
+                "border-radius": "5px",
+                "margin-top": "1.0em"
+            },
+            "QGroupBox::title": {
+                "background-color": "transparent",
+                "subcontrol-position": "top left",
+                "subcontrol-origin": "margin",
+                "padding": "0 10px 0 10px",
+                "margin-top": "-0.5em"
+            },
+            "TitleBar": {
+                "background": "transparent",
+                "border-bottom": self.get_css("border"),
+                "border-bottom-left-radius": "0px",
+                "border-bottom-right-radius": "0px"
+            },
+            "MessageContainer": {
+                "border": self.get_css("border"),
+                "border-radius": self.get_border_radius_css('main')
+            },
+            "WindowContainer": {
+                "border": self.get_css("border", is_main_border=True),
+                "border-radius": self.get_border_radius_css('main')
+            },
+            "MainWindowWidget": {
+                "border": self.get_css("border", is_main_border=True),
+                "border-radius": self.get_border_radius_css('main')
+            },
+            "SettingsWidget": {
+                "border": "none",
+                "border-radius": "10px"
+            },
+            "ContentWidget": {
+                "background-color": "transparent"
+            },
+            "LabelSliderValue": {
+                "background": "transparent",
+                "border": self.get_css("border"),
+                "border-radius": "3px"
             },
             "HelpWidget": {
                 "background":"transparent",
@@ -1626,48 +1321,11 @@ class ColorSettingsWindow(QDialog):
             "ScriptStepFrame": {
                 "border": self.get_css("border")
             },
-            "QSpinBox": {
-                "background-color": "transparent",
-                "border": self.get_css("border"),
-                "border-radius": self.get_border_radius_css('button'),
-                "padding": "5px"
-            },
-            "QDoubleSpinBox": {
-                "background-color": "transparent",
-                "border": self.get_css("border"),
-                "border-radius": self.get_border_radius_css('button'),
-                "padding": "5px"
-            },
             "CreateCommandsWidgets": {
                 "background-color": "transparent"
             },
             "CreateRunWidgets": {
                 "background-color": "transparent"
-            },
-            "TitleBarPanel": {
-                "background-color": "transparent",
-                "border-bottom": self.get_css("border")
-            },
-            "AudioPlayerWidget": {
-                "background-color": "transparent",
-                "border-top": self.get_css("border")
-            },
-            "QScrollArea": {
-                "background-color": "transparent",
-                "border": "none"
-            },
-            "QGroupBox": {
-                "background-color": self.get_pressed_css('svg', darken=250, alpha=130),
-                "border": self.get_css("border"),
-                "border-radius": "5px",
-                "margin-top": "1.0em"
-            },
-            "QGroupBox::title": {
-                "background-color": "transparent",
-                "subcontrol-position": "top left",
-                "subcontrol-origin": "margin",
-                "padding": "0 10px 0 10px",
-                "margin-top": "-0.5em"
             },
             "PrimarySVGBtn": {
                 "background-color": "transparent",
@@ -1755,6 +1413,23 @@ class ColorSettingsWindow(QDialog):
             "FooterChangelog": {
                 "background": self.get_pressed_css('svg', darken=250),
                 "border-radius": self.get_border_radius_css('button'),
+            },
+            "ToastNotif": {
+                "background": self.get_pressed_css('svg', darken=200, alpha=240),
+                "border-radius": "10px",
+            },
+            "StackedWidgetPage": {
+                "background-color": self.get_pressed_css(for_type='border', darken=250, alpha=150),
+                "border-radius": self.get_border_radius_css('main')
+            },
+            "StackedWidget": {
+                "background-color": "transparent"
+            },
+            "StackedWidgetContent": {
+                "background-color": "transparent"
+            },
+            "GradientGroup": {
+                "background-color": "transparent"
             },
         }
     
@@ -1966,11 +1641,9 @@ class ColorSettingsWindow(QDialog):
         except Exception as e:
             print(f"Error loading custom selectors: {e}")
             return {}
-        
-        # Вычисляем значения
+
         evaluated_styles = {}
         for selector, properties in raw_styles.items():
-            # Пропускаем комментарии
             if selector.startswith('_'):
                 continue
                 
@@ -2041,4 +1714,206 @@ class ColorSettingsWindow(QDialog):
         except Exception as e:
             print(f"Error evaluating '{value}': {e}")
             return value
+        
+    def get_cursor_region(self, pos):
+        """Определяем область курсора для изменения размера"""
+        width = self.width()
+        height = self.height()
+        x, y = pos.x(), pos.y()
+        
+        if x <= self.margin and y <= self.margin:
+            return "top-left"
+        elif x >= width - self.margin and y <= self.margin:
+            return "top-right"
+        elif x <= self.margin and y >= height - self.margin:
+            return "bottom-left"
+        elif x >= width - self.margin and y >= height - self.margin:
+            return "bottom-right"
+        elif x <= self.margin:
+            return "left"
+        elif x >= width - self.margin:
+            return "right"
+        elif y <= self.margin:
+            return "top"
+        elif y >= height - self.margin:
+            return "bottom"
+        else:
+            return "center"
+
+    def title_bar_mouse_press(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            global_pos = event.globalPosition().toPoint()
+            window_pos = self.mapFromGlobal(global_pos)
+            region = self.get_cursor_region(window_pos)
+
+            if region == "center":
+                self.dragging_maximized = True
+                self.drag_start_pos = global_pos
+                self.drag_start_geometry = self.geometry()
+                self._drag_click_offset = None
+                event.accept()
+                return
+
+            if region in ["top", "top-left", "top-right", "left", "right"]:
+                self.drag_direction = region
+                self.dragging = True
+                self.drag_position = global_pos
+                self.initial_geometry = self.geometry()
+            elif region == "center":
+                self.drag_pos = global_pos - self.frameGeometry().topLeft()
+            event.accept()
+
+    def title_bar_mouse_move(self, event):
+        global_pos = event.globalPosition().toPoint()
+        window_pos = self.mapFromGlobal(global_pos)
+        region = self.get_cursor_region(window_pos)
+
+        if hasattr(self, 'dragging_maximized') and self.dragging_maximized:
+            if event.buttons() == Qt.MouseButton.LeftButton:
+                if self._drag_click_offset is None:
+                    rel_x = (self.drag_start_pos.x() - self.drag_start_geometry.x()) / self.drag_start_geometry.width()
+                    rel_y = (self.drag_start_pos.y() - self.drag_start_geometry.y()) / self.drag_start_geometry.height()
+                    self._drag_click_offset = (rel_x, rel_y)
+                
+                current_geo = self.geometry()
+
+                new_x = global_pos.x() - int(current_geo.width() * self._drag_click_offset[0])
+                new_y = global_pos.y() - int(current_geo.height() * self._drag_click_offset[1])
+                
+                self.move(new_x, new_y)
+
+                self.drag_pos = global_pos - self.frameGeometry().topLeft()
+                self.dragging_maximized = False
+                self._drag_click_offset = None
+            return
+
+        cursor_map = {
+            "top": Qt.CursorShape.SizeVerCursor,
+            "bottom": Qt.CursorShape.SizeVerCursor,
+            "left": Qt.CursorShape.SizeHorCursor,
+            "right": Qt.CursorShape.SizeHorCursor,
+            "top-left": Qt.CursorShape.SizeFDiagCursor,
+            "top-right": Qt.CursorShape.SizeBDiagCursor,
+            "bottom-left": Qt.CursorShape.SizeBDiagCursor,
+            "bottom-right": Qt.CursorShape.SizeFDiagCursor,
+            "center": Qt.CursorShape.ArrowCursor
+        }
+        self.setCursor(cursor_map.get(region, Qt.CursorShape.ArrowCursor))
+
+        if self.dragging and self.drag_direction in ["top", "top-left", "top-right", "left", "right"]:
+            self.handle_resize(global_pos)
+            event.accept()
+        elif self.drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
+            new_pos = global_pos - self.drag_pos
+            self.move(new_pos)
+            event.accept()
+
+    def title_bar_mouse_release(self, event):
+        """Обработка отпускания кнопки мыши"""
+        self.drag_pos = None
+        self.dragging = False
+        self.drag_direction = None
+        self.initial_geometry = None
+        self.reached_min_size = False
+        self.dragging_maximized = False
+        self.drag_start_pos = None
+        self.drag_start_geometry = None
+        self._drag_click_offset = None
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        event.accept()
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position().toPoint()
+            self.drag_direction = self.get_cursor_region(pos)
+
+            if self.drag_direction != "center":
+                self.dragging = True
+                self.drag_position = event.globalPosition().toPoint()
+                self.initial_geometry = self.geometry()
+                self.reached_min_size = False
+                
+    def mouseMoveEvent(self, event: QMouseEvent):      
+        pos = event.position().toPoint()
+        region = self.get_cursor_region(pos)
+        
+        cursor_map = {
+            "top": Qt.CursorShape.SizeVerCursor,
+            "bottom": Qt.CursorShape.SizeVerCursor,
+            "left": Qt.CursorShape.SizeHorCursor,
+            "right": Qt.CursorShape.SizeHorCursor,
+            "top-left": Qt.CursorShape.SizeFDiagCursor,
+            "top-right": Qt.CursorShape.SizeBDiagCursor,
+            "bottom-left": Qt.CursorShape.SizeBDiagCursor,
+            "bottom-right": Qt.CursorShape.SizeFDiagCursor,
+            "center": Qt.CursorShape.ArrowCursor
+        }
+        self.setCursor(cursor_map.get(region, Qt.CursorShape.ArrowCursor))
+        
+        if self.dragging and self.drag_direction != "center":
+            self.handle_resize(event.globalPosition().toPoint())
+
+    def enterEvent(self, event):
+        """При входе в окно устанавливаем правильный курсор"""
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+
+    def leaveEvent(self, event):
+        """При выходе из окна сбрасываем курсор"""
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+    
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        self.dragging = False
+        self.drag_direction = None
+        self.initial_geometry = None
+        self.reached_min_size = False
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+    
+    def handle_resize(self, global_pos):
+        """Обработка изменения размера с отслеживанием минимального размера"""    
+        delta = global_pos - self.drag_position
+        new_geometry = QRect(self.initial_geometry)
+
+        old_geometry = QRect(new_geometry)
+        
+        # Применяем изменения
+        if "left" in self.drag_direction:
+            new_geometry.setLeft(self.initial_geometry.left() + delta.x())
+        
+        if "right" in self.drag_direction:
+            new_geometry.setRight(self.initial_geometry.right() + delta.x())
+        
+        if "top" in self.drag_direction:
+            new_geometry.setTop(self.initial_geometry.top() + delta.y())
+        
+        if "bottom" in self.drag_direction:
+            new_geometry.setBottom(self.initial_geometry.bottom() + delta.y())
+
+        content_min_width = self.minimum_size.width() + 20  # + отступы
+        content_min_height = self.minimum_size.height() + 20
+        
+        will_shrink = (new_geometry.width() < old_geometry.width() or 
+                      new_geometry.height() < old_geometry.height())
+        
+        reached_min_width = new_geometry.width() <= content_min_width
+        reached_min_height = new_geometry.height() <= content_min_height
+        
+        # Если пытаемся уменьшить, но достигли минимального размера - блокируем
+        if will_shrink and (reached_min_width or reached_min_height):
+            # Не применяем изменения - оставляем старый размер
+            self.reached_min_size = True
+            return
+
+        # Если изменения допустимы - применяем
+        self.setGeometry(new_geometry)
+        self._normal_geometry = new_geometry
+        self.reached_min_size = False
+        
+        if new_geometry.width() > 200 and new_geometry.height() > 200:
+            self.setGeometry(new_geometry)
+
+    def show_message(self, message):
+        if self.main:
+            self.main.show_toast(message)
+        else:
+            print(message)
     

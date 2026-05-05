@@ -12,3 +12,4 @@
 /bin/__pycache__/
 /.idea/
 /voxodium.code-workspace
+/widgets/settings_widgets/__pycache__/

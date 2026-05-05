@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="800"
+   height="800"
+   viewBox="0 0 211.66667 211.66667"
+   version="1.1"
+   id="svg1"
+   inkscape:export-filename="text-icon.svg"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   sodipodi:docname="btn-icon.svg"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:document-units="mm"
+     inkscape:zoom="0.51928154"
+     inkscape:cx="423.66228"
+     inkscape:cy="882.9507"
+     inkscape:window-width="2560"
+     inkscape:window-height="1377"
+     inkscape:window-x="1912"
+     inkscape:window-y="32"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1">
+    <inkscape:page
+       x="0"
+       y="0"
+       width="211.66667"
+       height="211.66667"
+       id="page2"
+       margin="0"
+       bleed="0" />
+  </sodipodi:namedview>
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Слой 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:none;stroke:#000000;stroke-width:12.8401;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1;stroke-dasharray:none;stroke-opacity:1"
+       id="rect1"
+       width="198.827"
+       height="198.82657"
+       x="6.4200501"
+       y="6.4200501"
+       ry="37.771"
+       inkscape:label="rect" />
+    <path
+       d="M 39.6875,171.97916 V 157.8052 h 14.17395 v 14.17396 z m 0,-29.52934 v -14.17431 h 14.17395 v 14.17431 z m 0,-29.52933 V 98.74618 h 14.17395 v 14.17431 z m 0,-29.5297 V 69.21684 h 14.17395 v 14.17395 z m 0,-29.52934 V 39.6875 H 53.86145 V 53.86145 Z M 69.21684,171.97916 V 157.8052 h 14.17431 v 14.17396 z m 0,-118.11771 V 39.6875 H 83.39115 V 53.86145 Z M 98.74618,171.97916 V 157.8052 h 14.17431 v 14.17396 z m 29.52969,0 V 157.8052 h 14.17396 v 14.17396 z m 29.52934,0 V 157.8052 h 14.17396 v 14.17396 z m 0,-29.52934 v -14.17431 h 14.17396 v 14.17431 z m 14.17396,-28.74219 H 157.80521 V 76.30399 q 0,-9.35108 -6.54572,-15.89681 -6.54573,-6.54573 -15.89682,-6.54573 H 98.74618 V 39.6875 h 36.61649 q 15.35539,0 25.98612,10.63038 10.63038,10.63073 10.63038,25.98611 z"
+       id="path1"
+       style="stroke-width:0.196863" />
+  </g>
+</svg>

@@ -71,7 +71,7 @@ class LogsPage(QWidget):
         self.main_layout.addWidget(self.label_error, alignment=Qt.AlignmentFlag.AlignCenter)
 
     def send_msg(self, msg=""):
-        self.main.show_notification(msg)
+        self.main.show_toast(msg)
 
     def open_folder_logs(self):
         try:

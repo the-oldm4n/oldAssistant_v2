@@ -1,6 +1,6 @@
 import os
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextBrowser
+from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextBrowser, QSpacerItem, QSizePolicy
 import markdown2
 
 from mygui import CustomSvgWidget
@@ -13,7 +13,8 @@ class ChangelogWindow(QMainWindow):
         self.drag_pos = None
         self.init_ui()
         self.load_changelog()
-        self.main.style_manager.apply_color_svg(self.close_svg, strength=0.90, specified_color="#FF0000")
+        self.main.style_manager.apply_color_svg(self.close_svg, specified_color="#FF0000")
+        self.main.style_manager.apply_color_svg(self.svg_icon)
 
     def init_ui(self):
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
@@ -32,46 +33,37 @@ class ChangelogWindow(QMainWindow):
 
         root_layout = QVBoxLayout(self.central_widget)
         root_layout.setContentsMargins(0, 0, 0, 0)
-        root_layout.setSpacing(0)
+        root_layout.setSpacing(10)
 
         self.title_bar_widget = QWidget()
-        self.title_bar_widget.setObjectName("TitleBar")
+        self.title_bar_widget.setObjectName("TitleBarV2")
         self.title_bar_layout = QHBoxLayout(self.title_bar_widget)
-        self.title_bar_layout.setContentsMargins(10, 5, 10, 5)
+        self.title_bar_layout.setContentsMargins(10, 0, 0, 0)
         self.title_bar_layout.setSpacing(5)
+
+        spacer_1 = QSpacerItem(50, 1, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        self.title_bar_layout.addItem(spacer_1)
 
         self.title_bar_widget.mousePressEvent = self.title_bar_mouse_press
         self.title_bar_widget.mouseMoveEvent = self.title_bar_mouse_move
         self.title_bar_widget.mouseReleaseEvent = self.title_bar_mouse_release
 
-        link_label = QLabel()
-        link_label.setText('''
-            <a href="https://owl-app.ru" 
-            style="color: #35E808;">
-            owl-app.ru
-            </a>
-        ''')
-        link_label.setStyleSheet("background: transparent;")
-        link_label.setOpenExternalLinks(True)
-        link_label.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        self.title_bar_layout.addWidget(link_label)
-
         self.title_bar_layout.addStretch()
 
-        title_label = setup_custom_font_label("История изменений", font_style="Comfortaa", weight="Medium")
-        title_label.setStyleSheet("background: transparent;")
+        title_label = setup_custom_font_label("История изменений")
+        title_label.setStyleSheet("background: transparent; font-size: 18px")
         title_label.setObjectName("TitleLabel")
         self.title_bar_layout.addWidget(title_label)
 
         self.title_bar_layout.addStretch()
 
         close_btn = QPushButton("")
-        close_btn.setObjectName("TitleBarCloseBtnV2")
-        close_btn.setFixedSize(30, 30)
+        close_btn.setObjectName("TitleBarCloseBtn")
+        close_btn.setFixedSize(50, 40)
         close_btn.clicked.connect(self.close)
         self.close_svg = CustomSvgWidget(self.main.icon_close_path, close_btn)
         self.close_svg.setFixedSize(25, 25)
-        self.close_svg.move(2, 2)
+        self.close_svg.move(12, 7)
         self.close_svg.setStyleSheet("background: transparent;")
         self.title_bar_layout.addWidget(close_btn)
 
@@ -159,7 +151,37 @@ class ChangelogWindow(QMainWindow):
         close_button.clicked.connect(self.close)
         main_layout.addWidget(close_button)
 
-        root_layout.addWidget(self.content_widget)      
+        root_layout.addWidget(self.content_widget)
+
+        footer_widget = QWidget()
+        footer_widget.setObjectName("TransparentWidget")
+        footer_layout = QVBoxLayout(footer_widget)
+        footer_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Внутренний виджет с фоном
+        content_widget = QWidget()
+        content_widget.setObjectName("FooterChangelog")  # здесь будет фон
+        content_layout = QHBoxLayout(content_widget)
+        content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        content_layout.setContentsMargins(10, 5, 10, 5)
+        content_layout.setSpacing(10)
+
+        # Иконка
+        self.svg_icon = CustomSvgWidget(self.main.owlapp_logo_path)
+        self.svg_icon.setFixedSize(20, 20)
+        content_layout.addWidget(self.svg_icon)
+
+        # Ссылка
+        link_label = QLabel()
+        link_label.setStyleSheet("background: transparent;")
+        link_label.setText('<a href="https://owl-app.ru" style="color: #ffffff; text-decoration: none;">owl-app.ru</a>')
+        link_label.setOpenExternalLinks(True)
+        content_layout.addWidget(link_label)
+
+        # Добавляем внутренний виджет во внешний
+        footer_layout.addWidget(content_widget)
+
+        root_layout.addWidget(footer_widget)
 
     def title_bar_mouse_press(self, event):
         """Обработка нажатия мыши на заголовок"""

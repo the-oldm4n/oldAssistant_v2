@@ -39,3 +39,9 @@ class ToolWidgetSignal(QObject):
     run_command = Signal(str, str, str)
 
 tool_widget_signal = ToolWidgetSignal()
+
+
+class ResizeSignal(QObject):
+    is_resizing = Signal()
+
+resize_signal = ResizeSignal()

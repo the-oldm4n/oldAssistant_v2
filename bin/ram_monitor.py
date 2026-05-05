@@ -129,7 +129,7 @@ class DualRAMProgressWidget(QWidget):
         else:
             self.app_ram_bar.set_progress_color("#FF0000")
             debuglog.warning("[MAIN] Превышен лимит памяти")
-            self.show_notification(f"Прозошла утечка памяти. Превышен лимит (1024Мб).")
+            self.show_toast(f"Прозошла утечка памяти. Превышен лимит (1024Мб).")
     
     def update_system_ram(self, percent, used_gb):
         total_gb = psutil.virtual_memory().total / (1024 ** 3)

@@ -35,5 +35,39 @@
     },
     "StatsWidget": {
         "background-color": "transparent"
+    },
+    "ToolPanelTitle": {
+        "background-color": "transparent",
+        "border-bottom": "get_css('border')"
+    },
+    "AudioPlayerWidget": {
+        "background-color": "transparent",
+        "border-top": "get_css('border')"
+    },
+    "ToolPanel": {
+        "background-color": "get_pressed_css(for_type='svg', darken=800, alpha=220)",
+        "border-radius": "10px"
+    },
+    "ToolPanelBtn": {
+        "background-color": "transparent",
+        "border": "none",
+        "border-radius": "5px"
+    },
+    "ToolPanelBtn:hover": {
+        "background": "get_pressed_css(for_type='svg', darken=100, alpha=200)"
+    },
+    "ToolPanelTab": {
+        "background": "rgba(50, 50, 50, 150)",
+        "color": "white",
+        "border": "none",
+        "border-radius": "5px",
+        "padding": "5px",
+        "font-size": "15px"
+    },
+    "ToolPanelTab:hover": {
+        "background": "rgba(70, 70, 70, 200)"
+    },
+    "ToolPanelTab:pressed": {
+        "background": "rgba(40, 110, 230, 200)"
     }
 }

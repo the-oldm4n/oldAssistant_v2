@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="800"
+   height="800"
+   viewBox="0 0 211.66667 211.66667"
+   version="1.1"
+   id="svg1"
+   inkscape:export-filename="svg-icon.svg"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   sodipodi:docname="btn-icon.svg"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:document-units="mm"
+     inkscape:zoom="0.51928154"
+     inkscape:cx="423.66228"
+     inkscape:cy="882.9507"
+     inkscape:window-width="2560"
+     inkscape:window-height="1377"
+     inkscape:window-x="1912"
+     inkscape:window-y="32"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1">
+    <inkscape:page
+       x="0"
+       y="0"
+       width="211.66667"
+       height="211.66667"
+       id="page2"
+       margin="0"
+       bleed="0" />
+  </sodipodi:namedview>
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Слой 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:none;stroke:#000000;stroke-width:12.8401;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1;stroke-dasharray:none;stroke-opacity:1"
+       id="rect1"
+       width="198.827"
+       height="198.82657"
+       x="6.4200501"
+       y="6.4200501"
+       ry="37.771"
+       inkscape:label="rect" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128.007px;line-height:0px;font-family:'Franklin Gothic Medium';-inkscape-font-specification:'Franklin Gothic Medium, ';text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;display:none;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:8.1733;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1;stroke-dasharray:none;stroke-opacity:1"
+       x="125.75118"
+       y="129.79082"
+       id="text4"
+       transform="scale(0.84160853,1.1882009)"
+       inkscape:label="text"><tspan
+         sodipodi:role="line"
+         id="tspan4"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:128.006px;font-family:'Franklin Gothic Medium';-inkscape-font-specification:'Franklin Gothic Medium, ';fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:8.1733;stroke-dasharray:none;stroke-opacity:1;line-height:0px"
+         x="0"
+         y="0">BTN</tspan></text>
+    <rect
+       style="fill:none;fill-opacity:1;stroke:#000000;stroke-width:6.13823;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1;stroke-dasharray:none;stroke-dashoffset:0"
+       id="rect2"
+       width="152.61177"
+       height="152.61177"
+       x="29.527449"
+       y="29.527449"
+       ry="41.655857" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:88.0795px;line-height:0px;font-family:'Franklin Gothic Medium';-inkscape-font-specification:'Franklin Gothic Medium, ';writing-mode:lr-tb;direction:ltr;fill:#000000;fill-opacity:1;stroke:#000000;stroke-width:1.95733;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1"
+       x="52.102497"
+       y="127.23235"
+       id="text3"
+       transform="scale(0.92931744,1.0760586)"><tspan
+         sodipodi:role="line"
+         id="tspan3"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:0px;font-family:'Franklin Gothic Medium';-inkscape-font-specification:'Franklin Gothic Medium, ';fill:#000000;fill-opacity:1;stroke-width:1.95733"
+         x="52.102497"
+         y="127.23235">btn</tspan></text>
+  </g>
+</svg>

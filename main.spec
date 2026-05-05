@@ -30,10 +30,10 @@ a = Analysis(
     pathex=[],
     binaries=[
         (r'F:/PyCharmProjects/voxodium/venv/Lib/site-packages/vosk/libvosk.dll', 'vosk'),
-        (r'F:/PyCharmProjects/voxodium/venv\Lib/site-packages/vgamepad\win/vigem/client/x64/ViGEmClient.dll', 'vgamepad/win/vigem/client/x64')],
+        (r'F:/PyCharmProjects/voxodium/venv/Lib/site-packages/vgamepad/win/vigem/client/x64/ViGEmClient.dll', 'vgamepad/win/vigem/client/x64')],
     datas=additional_files,
     hiddenimports=['mygui'],
-    hookspath=[],
+    hookspath=["F:/PyCharmProjects/voxodium/venv/Lib/site-packages/mygui/hooks"],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],

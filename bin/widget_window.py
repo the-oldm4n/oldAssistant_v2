@@ -269,6 +269,7 @@ class SmartWidget(QWidget):
         self.init_ui()
 
         self.load_font_clock()
+        self.apply_styles()
 
         # Флаги окна
         base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
@@ -301,6 +302,47 @@ class SmartWidget(QWidget):
             self.hide_timer.start(self.delay) 
             if hasattr(self, 'delay') else None
         ))
+
+    def apply_styles(self):
+        try:
+            self.styles = self.style_manager.load_styles()
+
+            style_sheet = ""
+            for widget, styles in self.styles.items():
+                if widget.startswith("Q"):
+                    selector = widget
+                elif "[selected" in widget:
+                    selector = f"#{widget}"
+                else:
+                    selector = f"#{widget}"
+
+                style_sheet += f"{selector} {{\n"
+                for prop, value in styles.items():
+                    style_sheet += f"    {prop}: {value};\n"
+                style_sheet += "}\n"
+
+            self.setStyleSheet(style_sheet)
+        except Exception as e:
+            debuglog.error(f"[PANEL] Ошибка в методе apply_styles: {e}")
+
+    def update_colors(self):
+        self.styles = self.style_manager.load_styles()
+
+        for name, data in self.player_buttons.items():
+            self.style_manager.apply_color_svg(data['svg'], strength=0.90)
+        for name, data in self.buttons_data.items():
+            self.style_manager.apply_color_svg(data['svg'], strength=0.90)
+
+        self.style_manager.apply_color_svg(self.pin_svg, strength=0.95)
+        self.style_manager.apply_color_svg(self.lock_svg, strength=0.95)
+        self.style_manager.apply_color_svg(self.resize_svg, strength=0.95, specified_color="#FFFFFF")
+        self.style_manager.apply_color_svg(self.close_svg, strength=0.95, specified_color="#FFFFFF")
+        
+        if hasattr(self, "snow_on_label") and self.snow_on_label is not None:
+            self.snow_on_label.setSnowColor(self.style_manager.get_raw_color(), white_balance=40)
+
+        self.apply_styles()
+        self.load_font_clock()
         
     def update_snow_state(self):
         """Обновляет состояние снега через show/hide"""
@@ -332,8 +374,7 @@ class SmartWidget(QWidget):
         self.snow_on_label.setAttribute(Qt.WA_TransparentForMouseEvents)
         self.snow_on_label.raise_()
         self.snow_on_label.setSnowColor(self.style_manager.get_raw_color(), white_balance=40)
-        
-        # Изначально показываем или скрываем в зависимости от состояния
+
         if self.is_snow:
             self.snow_on_label.show()
         else:
@@ -349,7 +390,6 @@ class SmartWidget(QWidget):
         self.is_snow = self.state_manager.get_is_snow()
         self.update_snow_state()
 
-    # Упрощенная версия без лишних проверок
     def set_snow_enabled(self, enabled):
         """Включает/выключает снег"""
         self.is_snow = enabled
@@ -363,22 +403,12 @@ class SmartWidget(QWidget):
 
     def init_ui(self):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setStyleSheet("background-color: transparent")
-
         self.setLayout(QVBoxLayout())
         self.layout().setContentsMargins(0, 0, 0, 0)
         self.layout().setSpacing(0)
 
-        # Основной контент
         self.main_container = QWidget()
-        self.main_container.setObjectName("MainContainer")
-        self.background_color = self.style_manager.get_transparent_background_from_border(opacity=210, darken_factor=600)
-        self.main_container.setStyleSheet(f"""
-                #MainContainer {{
-                    background: {self.background_color};
-                    border-radius: 10px;
-                }}
-            """)
+        self.main_container.setObjectName("ToolPanel")
         
         self.setMouseTracking(True)
         self.main_container.setMouseTracking(True)
@@ -500,7 +530,7 @@ class SmartWidget(QWidget):
 
     def create_title_bar(self):
         title_bar = QWidget()
-        title_bar.setObjectName("TitleBarPanel")
+        title_bar.setObjectName("ToolPanelTitle")
         title_bar.setFixedHeight(25)
         layout = QHBoxLayout(title_bar)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -529,24 +559,15 @@ class SmartWidget(QWidget):
 
         for btn_name, config in self.title_config.items():
             btn = QPushButton()
+            btn.setObjectName("ToolPanelBtn")
             btn.setFixedSize(18, 18)
             btn.setToolTip(config['tooltip'])
-            self.back_btn_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=150)
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: transparent;
-                    border: none;
-                }}
-                QPushButton:hover {{
-                    background: {self.back_btn_color};
-                    border-radius: 5px;
-                }}
-            """)
+
             svg = CustomSvgWidget(config['icon'], btn)
             svg.setFixedSize(14, 14)
             svg.move(2, 2)
             self.title_buttons[btn_name] = {'button': btn, 'svg': svg}
-            self.style_manager.apply_color_svg(svg, strength=0.90)
+            self.style_manager.apply_color_svg(svg)
             btn.clicked.connect(config['action'])
             svg_attr_name = btn_name.replace('_btn', '')
             setattr(self, svg_attr_name + "_svg", svg)
@@ -557,7 +578,7 @@ class SmartWidget(QWidget):
 
     def create_main_buttons(self, vertical=False):
         self.btns_panel_widget = QWidget()
-        self.btns_panel_widget.setStyleSheet("background: transparent;")
+        self.btns_panel_widget.setObjectName("TransparentWidget")
         layout_class = QVBoxLayout if vertical else QHBoxLayout
         buttons_layout = layout_class(self.btns_panel_widget)
         buttons_layout.setContentsMargins(0, 0, 0, 0)
@@ -647,34 +668,18 @@ class SmartWidget(QWidget):
                 
             config = buttons_config[checkbox_key]
             btn = QPushButton()
-            btn.setObjectName("BTNonPanel")
+            btn.setObjectName("ToolPanelBtn")
             btn.setFixedSize(40, 40)
             btn.setToolTip(config['tooltip'])
-            
-            self.back_btn_color = self.style_manager.get_transparent_background_from_border(
-                opacity=220, darken_factor=200
-            )
-            
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: transparent;
-                    border: none;
-                }}
-                QPushButton:hover {{
-                    background: {self.back_btn_color};
-                    border-radius: 5px;
-                }}
-            """)
-            
+
             svg = CustomSvgWidget(config['icon'], btn)
             svg.setFixedSize(30, 30)
             svg.move(5, 5)
-            
-            # Сохраняем ссылку
+
             btn_key = checkbox_key.replace('_check', '_btn') if not checkbox_key.startswith('custom_') else f'custom_{checkbox_key.replace("custom_", "")}_btn'
             self.buttons_data[btn_key] = {'button': btn, 'svg': svg}
             
-            self.style_manager.apply_color_svg(svg, strength=0.90)
+            self.style_manager.apply_color_svg(svg)
             btn.clicked.connect(config['action'])
             setattr(self, btn_key, btn)
             buttons_layout.addWidget(btn)
@@ -687,7 +692,6 @@ class SmartWidget(QWidget):
     def create_audio_controls(self):
         widget = QWidget()
         widget.setObjectName("AudioPlayerWidget")
-        widget.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 5, 0, 0)
         layout.setSpacing(0)
@@ -701,24 +705,15 @@ class SmartWidget(QWidget):
         layout.addStretch()
         for btn_name, config in player_config.items():
             btn = QPushButton()
+            btn.setObjectName("ToolPanelBtn")
             btn.setFixedSize(22, 20)
             btn.setToolTip(config['tooltip'])
-            self.back_btn_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=200)
-            btn.setStyleSheet(f"""
-                QPushButton {{
-                    background: transparent;
-                    border: none;
-                }}
-                QPushButton:hover {{
-                    background: {self.back_btn_color};
-                    border-radius: 5px;
-                }}
-            """)
+
             svg = CustomSvgWidget(config['icon'], btn)
             svg.setFixedSize(22, 20)
             svg.move(0, 0)
             self.player_buttons[btn_name] = {'button': btn, 'svg': svg}
-            self.style_manager.apply_color_svg(svg, strength=0.90)
+            self.style_manager.apply_color_svg(svg)
             btn.clicked.connect(config['action'])
             setattr(self, btn_name, btn)
             layout.addWidget(btn, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -739,26 +734,28 @@ class SmartWidget(QWidget):
         tab_buttons_layout.setSpacing(5)
 
         self.btn_sensors = QPushButton("Датчики")
+        self.btn_sensors.setObjectName("ToolPanelTab")
         self.btn_notes = QPushButton("Заметки")
+        self.btn_notes.setObjectName("ToolPanelTab")
 
-        tab_style = """
-            QPushButton {
-                background: rgba(50, 50, 50, 150);
-                color: white;
-                border: none;
-                border-radius: 5px;
-                padding: 5px;
-                font-size: 15px;
-            }
-            QPushButton:hover {
-                background: rgba(70, 70, 70, 200);
-            }
-            QPushButton:pressed {
-                background: rgba(40, 110, 230, 200);
-            }
-        """
+        # tab_style = """
+        #     QPushButton {
+        #         background: rgba(50, 50, 50, 150);
+        #         color: white;
+        #         border: none;
+        #         border-radius: 5px;
+        #         padding: 5px;
+        #         font-size: 15px;
+        #     }
+        #     QPushButton:hover {
+        #         background: rgba(70, 70, 70, 200);
+        #     }
+        #     QPushButton:pressed {
+        #         background: rgba(40, 110, 230, 200);
+        #     }
+        # """
         for btn in [self.btn_sensors, self.btn_notes]:
-            btn.setStyleSheet(tab_style)
+            # btn.setStyleSheet(tab_style)
             btn.setCheckable(True)
             btn.setFixedHeight(25)
             btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -1509,98 +1506,6 @@ class SmartWidget(QWidget):
                 
         self.deleteLater()
         super().closeEvent(event)
-
-    def apply_styles(self):
-        try:
-            self.styles = self.style_manager.load_styles()
-
-            style_sheet = ""
-            for widget, styles in self.styles.items():
-                if widget.startswith("Q"):
-                    selector = widget
-                else:
-                    selector = f"#{widget}"
-
-                style_sheet += f"{selector} {{\n"
-                for prop, value in styles.items():
-                    style_sheet += f"    {prop}: {value};\n"
-                style_sheet += "}\n"
-
-            self.setStyleSheet(style_sheet)
-        except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в методе apply_styles: {e}")
-            
-    def update_background_style(self):
-        """Применяет/обновляет стиль фона"""
-        try:
-            self.background_color = self.style_manager.get_transparent_background_from_border(opacity=210, darken_factor=800)
-            self.main_container.setStyleSheet(f"""
-                #MainContainer {{
-                    background: {self.background_color};
-                    border-radius: 10px;
-                }}
-            """)
-            
-            self.back_btn_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=200)
-            self.back_btn_title_color = self.style_manager.get_transparent_background_from_border(opacity=220, darken_factor=150)
-            
-            for btn_data in self.buttons_data.values():
-                btn = btn_data['button']
-                btn.setStyleSheet(f"""
-                    QPushButton {{
-                        background: transparent;
-                        border: none;
-                    }}
-                    QPushButton:hover {{
-                        background: {self.back_btn_color};
-                        border-radius: 5px;
-                    }}
-                """)
-                
-            for btn_data in self.player_buttons.values():
-                btn = btn_data['button']
-                btn.setStyleSheet(f"""
-                    QPushButton {{
-                        background: transparent;
-                        border: none;
-                    }}
-                    QPushButton:hover {{
-                        background: {self.back_btn_color};
-                        border-radius: 5px;
-                    }}
-                """)
-
-            for btn_data in self.title_buttons.values():
-                btn = btn_data['button']
-                btn.setStyleSheet(f"""
-                    QPushButton {{
-                        background-color: transparent;
-                        border: none;
-                    }}
-                    QPushButton:hover {{
-                        background-color: {self.back_btn_title_color};
-                        border-radius: 5px;
-                    }}
-                """)
-        except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка применения фона: {e}")
-
-    def update_colors(self):
-        self.styles = self.style_manager.load_styles()
-        for name, data in self.player_buttons.items():
-            self.style_manager.apply_color_svg(data['svg'], strength=0.90)
-        for name, data in self.buttons_data.items():
-            self.style_manager.apply_color_svg(data['svg'], strength=0.90)
-
-        self.style_manager.apply_color_svg(self.pin_svg, strength=0.95)
-        self.style_manager.apply_color_svg(self.lock_svg, strength=0.95)
-        self.style_manager.apply_color_svg(self.resize_svg, strength=0.95, specified_color="#FFFFFF")
-        self.style_manager.apply_color_svg(self.close_svg, strength=0.95, specified_color="#FFFFFF")
-        
-        self.update_background_style()
-        
-        if hasattr(self, "snow_on_label") and self.snow_on_label is not None:
-            self.snow_on_label.setSnowColor(self.style_manager.get_raw_color(), white_balance=40)
 
     def _on_sensor_tab_show(self, event):
         """Когда вкладка показана"""

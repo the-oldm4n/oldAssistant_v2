@@ -53,12 +53,6 @@
         "background": "transparent",
         "border-bottom": "1px solid #317026"
     },
-    "TabWidget": {
-        "background": "transparent"
-    },
-    "TabWidget::pane": {
-        "background": "transparent"
-    },
     "QLineEdit": {
         "background-color": "transparent",
         "border": "1px solid #317026",
@@ -94,35 +88,6 @@
         "color": "#aad7aa",
         "border": "none",
         "font-size": "15px"
-    },
-    "label_message": {
-        "color": "#ffffff",
-        "font-size": "13px"
-    },
-    "TitleBar": {
-        "background": "transparent",
-        "border-bottom": "1px solid #317026",
-        "border-bottom-left-radius": "0px",
-        "border-bottom-right-radius": "0px"
-    },
-    "MessageContainer": {
-        "border": "1px solid #317026",
-        "border-radius": "15px"
-    },
-    "WindowContainer": {
-        "border": "1px solid #317026",
-        "border-radius": "15px"
-    },
-    "MainWindowWidget": {
-        "border": "1px solid #317026",
-        "border-radius": "15px"
-    },
-    "SettingsWidget": {
-        "border": "none",
-        "border-radius": "10px"
-    },
-    "ContentWidget": {
-        "background-color": "transparent"
     },
     "QMainWindow": {
         "background-color": "transparent"
@@ -163,11 +128,6 @@
         "height": "8px",
         "border-radius": "4px",
         "margin": "0"
-    },
-    "LabelSliderValue": {
-        "background": "transparent",
-        "border": "1px solid #317026",
-        "border-radius": "3px"
     },
     "QScrollBar:vertical": {
         "border": "none",
@@ -218,6 +178,65 @@
         "background": "qlineargradient(x1:0.21, y1:0.10, x2:0.79, y2:0.90, stop:0 rgba(66, 133, 57, 1.0), stop:1 rgba(48, 77, 65, 1.0))",
         "border": "none",
         "outline": "none"
+    },
+    "QSpinBox": {
+        "background-color": "transparent",
+        "border": "1px solid #317026",
+        "border-radius": "3px",
+        "padding": "5px"
+    },
+    "QDoubleSpinBox": {
+        "background-color": "transparent",
+        "border": "1px solid #317026",
+        "border-radius": "3px",
+        "padding": "5px"
+    },
+    "QScrollArea": {
+        "background-color": "transparent",
+        "border": "none"
+    },
+    "QGroupBox": {
+        "background-color": "qlineargradient(x1:0.21, y1:0.10, x2:0.79, y2:0.90, stop:0 rgba(28, 57, 25, 0.51), stop:1 rgba(21, 33, 28, 0.51))",
+        "border": "1px solid #317026",
+        "border-radius": "5px",
+        "margin-top": "1.0em"
+    },
+    "QGroupBox::title": {
+        "background-color": "transparent",
+        "subcontrol-position": "top left",
+        "subcontrol-origin": "margin",
+        "padding": "0 10px 0 10px",
+        "margin-top": "-0.5em"
+    },
+    "TitleBar": {
+        "background": "transparent",
+        "border-bottom": "1px solid #317026",
+        "border-bottom-left-radius": "0px",
+        "border-bottom-right-radius": "0px"
+    },
+    "MessageContainer": {
+        "border": "1px solid #317026",
+        "border-radius": "15px"
+    },
+    "WindowContainer": {
+        "border": "1px solid #317026",
+        "border-radius": "15px"
+    },
+    "MainWindowWidget": {
+        "border": "1px solid #317026",
+        "border-radius": "15px"
+    },
+    "SettingsWidget": {
+        "border": "none",
+        "border-radius": "10px"
+    },
+    "ContentWidget": {
+        "background-color": "transparent"
+    },
+    "LabelSliderValue": {
+        "background": "transparent",
+        "border": "1px solid #317026",
+        "border-radius": "3px"
     },
     "HelpWidget": {
         "background": "transparent",
@@ -278,48 +297,11 @@
     "ScriptStepFrame": {
         "border": "1px solid #317026"
     },
-    "QSpinBox": {
-        "background-color": "transparent",
-        "border": "1px solid #317026",
-        "border-radius": "3px",
-        "padding": "5px"
-    },
-    "QDoubleSpinBox": {
-        "background-color": "transparent",
-        "border": "1px solid #317026",
-        "border-radius": "3px",
-        "padding": "5px"
-    },
     "CreateCommandsWidgets": {
         "background-color": "transparent"
     },
     "CreateRunWidgets": {
         "background-color": "transparent"
-    },
-    "TitleBarPanel": {
-        "background-color": "transparent",
-        "border-bottom": "1px solid #317026"
-    },
-    "AudioPlayerWidget": {
-        "background-color": "transparent",
-        "border-top": "1px solid #317026"
-    },
-    "QScrollArea": {
-        "background-color": "transparent",
-        "border": "none"
-    },
-    "QGroupBox": {
-        "background-color": "qlineargradient(x1:0.21, y1:0.10, x2:0.79, y2:0.90, stop:0 rgba(28, 57, 25, 0.51), stop:1 rgba(21, 33, 28, 0.51))",
-        "border": "1px solid #317026",
-        "border-radius": "5px",
-        "margin-top": "1.0em"
-    },
-    "QGroupBox::title": {
-        "background-color": "transparent",
-        "subcontrol-position": "top left",
-        "subcontrol-origin": "margin",
-        "padding": "0 10px 0 10px",
-        "margin-top": "-0.5em"
     },
     "PrimarySVGBtn": {
         "background-color": "transparent",
@@ -408,6 +390,23 @@
         "background": "qlineargradient(x1:0.21, y1:0.10, x2:0.79, y2:0.90, stop:0 rgba(28, 57, 25, 1.0), stop:1 rgba(21, 33, 28, 1.0))",
         "border-radius": "3px"
     },
+    "ToastNotif": {
+        "background": "qlineargradient(x1:0.21, y1:0.10, x2:0.79, y2:0.90, stop:0 rgba(33, 66, 29, 0.94), stop:1 rgba(24, 38, 33, 0.94))",
+        "border-radius": "10px"
+    },
+    "StackedWidgetPage": {
+        "background-color": "rgba(14, 32, 11, 0.59)",
+        "border-radius": "15px"
+    },
+    "StackedWidget": {
+        "background-color": "transparent"
+    },
+    "StackedWidgetContent": {
+        "background-color": "transparent"
+    },
+    "GradientGroup": {
+        "background-color": "transparent"
+    },
     "CustomPage": {
         "background-color": "transparent"
     },
@@ -441,5 +440,39 @@
     },
     "StatsWidget": {
         "background-color": "transparent"
+    },
+    "ToolPanelTitle": {
+        "background-color": "transparent",
+        "border-bottom": "1px solid #317026"
+    },
+    "AudioPlayerWidget": {
+        "background-color": "transparent",
+        "border-top": "1px solid #317026"
+    },
+    "ToolPanel": {
+        "background-color": "qlineargradient(x1:0.21, y1:0.10, x2:0.79, y2:0.90, stop:0 rgba(11, 22, 10, 0.86), stop:1 rgba(8, 13, 11, 0.86))",
+        "border-radius": "10px"
+    },
+    "ToolPanelBtn": {
+        "background-color": "transparent",
+        "border": "none",
+        "border-radius": "5px"
+    },
+    "ToolPanelBtn:hover": {
+        "background": "qlineargradient(x1:0.21, y1:0.10, x2:0.79, y2:0.90, stop:0 rgba(49, 99, 43, 0.78), stop:1 rgba(36, 57, 49, 0.78))"
+    },
+    "ToolPanelTab": {
+        "background": "rgba(50, 50, 50, 150)",
+        "color": "white",
+        "border": "none",
+        "border-radius": "5px",
+        "padding": "5px",
+        "font-size": "15px"
+    },
+    "ToolPanelTab:hover": {
+        "background": "rgba(70, 70, 70, 200)"
+    },
+    "ToolPanelTab:pressed": {
+        "background": "rgba(40, 110, 230, 200)"
     }
 }

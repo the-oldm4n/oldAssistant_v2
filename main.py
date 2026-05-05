@@ -86,7 +86,7 @@ from bin.login_widget import LoginWindow
 from bin.register_module import AuthManager
 from bin.screenshot_tool import SystemScreenshot
 from bin.signals import gui_signals, commands_signal, tool_widget_signal
-from bin.toast_notification import ToastNotification, SimpleNotice, SupplyNotice
+from bin.notification_widget import ToastNotif, SimpleNotif
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from bin.widget_window import SmartWidget
 from bin.commands_manager import main_commands_manager
@@ -101,7 +101,7 @@ from bin.update_dialog import UpdateApp
 
 
 build_ini = get_config_value("app", "build")
-version_file = "3.0.2"
+version_file = "3.0.3"
 update_version(version_file)
 
 
@@ -238,10 +238,7 @@ class Assistant(QMainWindow):
             self.update_user_profile()
         if self.apply_keywords_for_values():
             self.run_assist()
-        
-        # self.update_checker = QTimer()
-        # self.update_checker.timeout.connect(self.check_update_app)
-        # self.update_checker.start(3600000)  # Чек обновлений раз в 60 минут (3600000)
+
         QTimer.singleShot(5000, lambda: self.check_update_app())
 
     def handle_init_result(self, success):
@@ -500,6 +497,7 @@ class Assistant(QMainWindow):
         self.icon_scripts_path = get_path("bin", "icons", "scripts.svg")
         self.resize_path = get_path("bin", "icons", "resize_window.svg")
         self.logo_path = get_path("bin", "icons", "logo-app.svg")
+        self.owlapp_logo_path = get_path("bin", "icons", "logo-owlapp.svg")
     
     def init_ui(self):
         """Инициализация пользовательского интерфейса."""
@@ -516,7 +514,6 @@ class Assistant(QMainWindow):
             self.drag_start_geometry = None
             self._drag_click_offset = None
 
-            # self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
             self.setWindowFlags(
                 Qt.WindowType.FramelessWindowHint |
                 Qt.WindowType.WindowSystemMenuHint |
@@ -628,6 +625,17 @@ class Assistant(QMainWindow):
             spacer_2 = QSpacerItem(5, 1, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
             self.title_bar_layout.addItem(spacer_2)
 
+            self.styles_button = QPushButton()
+            self.styles_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.styles_button.clicked.connect(self.open_color_settings)
+            self.styles_button.setFixedSize(50, 38)
+            self.styles_button.setObjectName("TitleBarBtn")
+            self.style_svg = CustomSvgWidget(self.icon_styles_path, self.styles_button)
+            self.style_svg.setFixedSize(25, 25)
+            self.style_svg.move(12, 7)
+            self.style_svg.setStyleSheet("background: transparent;")
+            self.title_bar_layout.addWidget(self.styles_button)
+
             self.maximize_button = QPushButton()
             self.maximize_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self.maximize_button.clicked.connect(lambda: self.toggle_maximize(True))
@@ -654,7 +662,7 @@ class Assistant(QMainWindow):
             self.content_widget = QWidget()
             self.content_widget.setObjectName("ContentWidget")
             main_layout = QHBoxLayout(self.content_widget)
-            main_layout.setContentsMargins(5, 5, 5, 5)
+            main_layout.setContentsMargins(55, 5, 5, 5)
 
             self.update_garland_state()
 
@@ -747,21 +755,28 @@ class Assistant(QMainWindow):
             self.label_version = VersionLabel(version=self.version)
             self.label_version.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self.label_version.mousePressEvent = self.changelog_window
-
-            self.animated_sidebar = AnimatedSidebar(elements_data=sidebar_elements, max_width=250, main_window=self)
+            
+            self.animated_sidebar = AnimatedSidebar(
+                parent=self.content_widget, 
+                elements_data=sidebar_elements, 
+                max_width=250, 
+                main_window=self, 
+                position="left"
+                )
+            
             self._sidebar_slot_map = {item["key"]: item["slot"] for item in self.buttons_data}
             self.animated_sidebar.element_clicked.connect(self._handle_sidebar_click)
 
             self.animated_sidebar.add_custom_widget(self.open_folder_btn)
             self.animated_sidebar.add_custom_widget(self.update_label)
             self.animated_sidebar.add_custom_widget(self.label_version)
-
+            # self.animated_sidebar.finalize_setup()
             self.help_widget = HelpWidget()
             self.help_widget.hide()
 
-            main_layout.addWidget(self.animated_sidebar, alignment=Qt.AlignmentFlag.AlignLeft)
             main_layout.addWidget(self.content_container)
             main_layout.addWidget(self.help_widget)
+  
 
             root_layout.addWidget(self.title_bar_widget)
             root_layout.addWidget(self.content_widget)
@@ -804,6 +819,16 @@ class Assistant(QMainWindow):
             self.setup_mouse_tracking_for_children(self.central_widget)
         except Exception as e:
             debuglog.error(f"[MAIN] Ошибка при инициализации GUI: {e}")
+
+    def open_color_settings(self):
+        """Открывает диалоговое окно для настройки цветов."""
+        try:
+            color_dialog = ColorSettingsWindow(self)
+            color_dialog.colorChanged.connect(self.apply_styles)
+            color_dialog.show()
+        except Exception as e:
+            debuglog.error(f"[MAIN] Ошибка при открытии окна настроек цветов: {e}")
+            self.show_message(f"Не удалось открыть настройки цветов: {e}", "Ошибка", "error")
             
     def _handle_sidebar_click(self, key: str):
         slot = self._sidebar_slot_map.get(key)
@@ -1472,6 +1497,8 @@ class Assistant(QMainWindow):
         try:
             self.styles = self.style_manager.load_styles()
 
+            if hasattr(self, 'style_svg'):
+                self.style_manager.apply_color_svg(self.style_svg)
             if hasattr(self, 'avatar_svg'):
                 self.style_manager.apply_color_svg(self.avatar_svg)
             if hasattr(self, 'progress_load'):
@@ -1527,22 +1554,22 @@ class Assistant(QMainWindow):
         if menu_style.strip():
             menu.setStyleSheet(menu_style)
 
-    def show_notification(self, message):
+    def show_toast(self, message):
         try:
             is_window_hidden = self.isMinimized() or not self.isVisible()
 
-            toast = ToastNotification(
+            toast = ToastNotif(
                 parent=None if is_window_hidden else self,
                 message=message,
-                timeout=4000
+                timeout=5000
             )
-            toast.show()
+            toast.show_toast()
         except Exception as e:
             debuglog.error(f"[MAIN] Ошибка при показе всплывающего уведомления: {e}")
 
     def show_message(self, text="...", title="Уведомление", message_type="info", buttons=QMessageBox.StandardButton.Ok):
         try:
-            message = SimpleNotice(
+            message = SimpleNotif(
                 parent=self,
                 message=text,
                 title=title,
@@ -1557,7 +1584,6 @@ class Assistant(QMainWindow):
     def show_supply_notice(self, message, is_confirm=False):
         """Вызывается из фонового потока - emits signal"""
         try:
-            # Отправляем сигнал в главный поток Qt
             self.supply_notice_signal.emit(message, is_confirm)
         except Exception as e:
             debuglog.error(f"[MAIN] Ошибка при отправке сигнала уведомления: {e}")
@@ -1569,17 +1595,20 @@ class Assistant(QMainWindow):
                 default_text = ""
             else:
                 default_text = "Распознано: "
-            toast = SupplyNotice(
+            toast = ToastNotif(
                 parent=None,
                 message=f"{default_text}{message}",
                 timeout=5000
             )
-            toast.show()
+            toast.show_toast()
 
         except Exception as e:
             debuglog.error(f"[MAIN] Ошибка при показе всплывающего уведомления: {e}")
 
     def resizeEvent(self, event):
+        if hasattr(self, 'animated_sidebar'):
+            self.animated_sidebar.on_parent_resize()
+
         if hasattr(self, 'snow_on_background') and self.snow_on_background:
             self.snow_on_background.setGeometry(self.central_widget.rect())
             self.snow_on_background._init_snowflakes()
@@ -1763,10 +1792,10 @@ class Assistant(QMainWindow):
         self.update_label.setText("New version")
         if success:
             self.type_version = "exp" if "exp_" in os.path.basename(file_path).lower() else "stable"
-            self.show_notification(f"Доступно обновление (v.{self.latest_version})")
+            self.show_toast(f"Доступно обновление (v.{self.latest_version})")
             self.stop_checking = True
             if skipped:
-                self.show_notification("Подготовка к процедуре обновления...\n Не выключайте приложение")
+                self.show_toast("Подготовка к процедуре обновления...\n Не выключайте приложение")
                 debuglog.info(f"[MAIN][SKIP] Файл уже существует")
                 self.open_window_and_update()
             else:
@@ -1850,7 +1879,7 @@ class Assistant(QMainWindow):
 
             self.commands_manager.update_vaults()  # Синхронизация настроек в менеджере команд
 
-            self.show_notification("Настройки сохранены!")
+            self.show_toast("Настройки сохранены!")
             debuglog.debug("[MAIN] Настройки сохранены.")
         except Exception as e:
             logger.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
@@ -2693,7 +2722,7 @@ class Assistant(QMainWindow):
             logger.error(f"Ошибка в основном цикле ассистента: {e}")
             debuglog.error(f"[MAIN] Ошибка в основном цикле ассистента: {e}")
             debuglog.error(traceback.format_exc())
-            self.show_notification(f"[MAIN] Ошибка в основном цикле ассистента: {e}")
+            self.show_toast(f"[MAIN] Ошибка в основном цикле ассистента: {e}")
 
     # "Основной цикл ассистента(конец)"
     # "--------------------------------------------------------------------------------------------------"
@@ -3264,12 +3293,12 @@ class Assistant(QMainWindow):
             self.check_microphone()
             if self.microphone_available:
                 if not self.is_assistant_running:
-                    self.show_notification(message="Микрофон обнаружен!")
+                    self.show_toast(message="Микрофон обнаружен!")
                     self.run_assist()
                 else:
-                    self.show_notification(message="Микрофон подключен!")
+                    self.show_toast(message="Микрофон подключен!")
             else:
-                self.show_notification(message="Микрофон не найден!")
+                self.show_toast(message="Микрофон не найден!")
         except Exception as e:
             logger.error(f"Ошибка в _check_microphone_wrapper: {e}")
 
@@ -3403,7 +3432,7 @@ class Assistant(QMainWindow):
         elif type_command == "system":
             self.handle_system_command(command, action)
         else:
-            self.show_notification("Тип команды передан некорректно!")
+            self.show_toast("Тип команды передан некорректно!")
 
     def toggle_mute_discord(self):
         toggle = ToggleMuteDiscord()
@@ -3452,7 +3481,7 @@ class Assistant(QMainWindow):
 
         except Exception as e:
             debuglog.error(f"[MAIN] Ошибка при открытии виджета: {str(e)}")
-            self.show_notification(f"Ошибка при открытии виджета: {str(e)}")
+            self.show_toast(f"Ошибка при открытии виджета: {str(e)}")
 
     def _close_smart_widget(self):
         """Полное закрытие виджета с очисткой"""
@@ -3475,7 +3504,7 @@ class Assistant(QMainWindow):
                 self.get_reaction(name="approve_folder")
         except Exception as e:
             self.get_reaction(detail=True, name="error_file")
-            self.show_notification(f"Ошибка при закрытии виджета (close_widget): {e}")
+            self.show_toast(f"Ошибка при закрытии виджета (close_widget): {e}")
             debuglog.error(f"[MAIN] Ошибка при закрытии виджета (close_widget): {e}")
 
     def restore_and_hide(self):
@@ -3583,7 +3612,7 @@ class Assistant(QMainWindow):
             success_msg = f"Программа добавлена в автозапуск"
             logger.info(success_msg)
             debuglog.info(success_msg)
-            self.show_notification("Автозапуск включен")
+            self.show_toast("Автозапуск включен")
 
         except subprocess.CalledProcessError as e:
             error_msg = f"Ошибка при добавлении в автозапуск: {e.stderr}"
@@ -3612,11 +3641,11 @@ class Assistant(QMainWindow):
             )
             success_msg = f"Задача '{task_name}' удалена из автозапуска"
             debuglog.info(success_msg)
-            self.show_notification(message=f"Автозапуск выключен")
+            self.show_toast(message=f"Автозапуск выключен")
         except subprocess.CalledProcessError as e:
             if "не существует" not in e.stderr:
                 error_msg = f"Ошибка при удалении задачи '{task_name}': {e.stderr}"
-                self.show_notification(message=f"{error_msg}")
+                self.show_toast(message=f"{error_msg}")
                 debuglog.error(error_msg)
             else:
                 debuglog.info(f"Задача '{task_name}' не найдена в планировщике")

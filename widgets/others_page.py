@@ -399,7 +399,7 @@ class CheckUpdateWidget(QWidget):
             self.progress.hide()
             self.progress.stopAnimation()
             self.rollback.show()
-            self.main.show_notification(f"Ошибка: {e}")
+            self.main.show_toast(f"Ошибка: {e}")
             debuglog.error(f"Ошибка в методе rollback_stable_version: {e}")
 
     def start_load(self):
