@@ -101,7 +101,6 @@ class ColorSettingsWindow(QMainWindow):
         self.icon_svg_path = os.path.join(ICONS, "svg-icon.svg")
         self.icon_radius_path = os.path.join(ICONS, "radius-icon.svg")
         self.icon_close_path = os.path.join(ICONS, "close.svg")
-        print(self.icon_close_path)
 
     def apply_styles(self):
         """Применяет все стили к окну"""
@@ -1430,6 +1429,21 @@ class ColorSettingsWindow(QMainWindow):
             },
             "GradientGroup": {
                 "background-color": "transparent"
+            },
+            "TabPanel": {
+                "background": "transparent"
+            },
+            "TabBtn": {
+                "background": self.get_pressed_css(for_type='border', darken=200),
+                "border": "none",
+                "border-radius": "0px"
+            },
+            "TabBtn:hover": {
+                "background": self.get_pressed_css(for_type='border', darken=160)
+            },
+            "TabBtn[active='true']": {
+                "background": self.get_pressed_css(for_type='svg', darken=100),
+                "border": self.get_css('border')
             },
         }
     

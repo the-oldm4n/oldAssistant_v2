@@ -13,3 +13,4 @@
 /.idea/
 /voxodium.code-workspace
 /widgets/settings_widgets/__pycache__/
+/widgets/commands_widgets/__pycache__/

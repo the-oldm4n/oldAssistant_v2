@@ -136,7 +136,7 @@ class InitScreen(QWidget):
 
     def on_checks_complete(self, result, error=""):
         if result:
-            QTimer.singleShot(200, lambda: self.finalize_initialization(True))
+            QTimer.singleShot(50, lambda: self.finalize_initialization(True))
         else:
             self.label.setText(f"Ошибка")
             self.show_message(text=f"{error}", title="Ошибка", message_type="error")
@@ -154,26 +154,32 @@ class CheckThread(QThread):
 
     def run(self):
         try:
-            total_steps = 100
-            admin_weight = 30
-            device_weight = 30
-            path_weight = 40
-
             self.progress_update.emit("Проверка прав администратора...", 0)
             if not self.check_admin():
                 self.progress_update.emit("Ошибка: Нет прав администратора!", 0)
                 self.checks_complete.emit(False, "Ошибка: Нет прав администратора!")
                 return
-            for i in range(admin_weight):
-                QThread.msleep(5)  # имитация долгой проверки
-                self.progress_update.emit("Проверка прав администратора...", i + 1)
+            for i in range(1, 31):
+                if i % 2 == 0:
+                    QThread.msleep(5)
+                    self.progress_update.emit("Проверка прав администратора...", i)
 
-            if not self.check_audio_devices(device_weight):
+            if not self.check_audio_devices():
                 return
+            
+            for i in range(31, 60):
+                if i % 2 == 0:
+                    QThread.msleep(5)
+                    self.progress_update.emit("Поиск устройств ввода/вывода...", i)
 
-            if self.check_main_path(get_path(), path_weight):
+            if self.check_main_path(get_path()):
                 self.checks_complete.emit(False, "Ошибка: В пути обнаружена кириллица!")
                 return
+            
+            for i in range(61, 99):
+                if i % 2 == 0:
+                    QThread.msleep(5)
+                    self.progress_update.emit("Проверяю путь до исполняемого файла...", i)
 
             self.progress_update.emit("Запуск...", 100)
             self.checks_complete.emit(True, "")
@@ -189,52 +195,34 @@ class CheckThread(QThread):
         except:
             return False
 
-    def check_main_path(self, path, path_weight):
+    def check_main_path(self, path):
         self.progress_update.emit("Проверяю путь до исполняемого файла...", 61)
-        for i in range(path_weight):
-            QThread.msleep(10)  # имитация долгой проверки
-            self.progress_update.emit("Проверяю путь до исполняемого файла...", i + 61)
         cyrillic_pattern = re.compile(r'[а-яА-ЯёЁ]')
         return bool(cyrillic_pattern.search(path))
 
-    def input_device(self, device_weight):
+    def input_device(self):
         p = pyaudio.PyAudio()
+        try:
+            default_input_device = p.get_default_input_device_info()
+            return True
+        except IOError:
+            self.progress_update.emit("Ошибка: Нет устройств ввода звука.", 31)
+            self.checks_complete.emit(False, "Ошибка: Нет устройств ввода звука")
+            return False
 
-        self.progress_update.emit("Ищу устройства ввода...", 30)
-        weight = int(device_weight/2)
-        for i in range(weight):
-            QThread.msleep(10)  # имитация долгой проверки
-            self.progress_update.emit("Ищу устройства ввода...", i + 30)
-
-            try:
-                default_input_device = p.get_default_input_device_info()
-                return True
-            except IOError:
-                self.progress_update.emit("Ошибка: Нет устройств ввода звука.", 30)
-                self.checks_complete.emit(False, "Ошибка: Нет устройств ввода звука")
-                return False
-
-    def output_device(self, device_weight):
+    def output_device(self):
         p = pyaudio.PyAudio()
-
-        self.progress_update.emit("Ищу устройства вывода...", 45)
-        weight = int(device_weight/2)
-        for i in range(weight):
-            QThread.msleep(10)  # имитация долгой проверки
-            self.progress_update.emit("Ищу устройства вывода...", i + 45)
         try:
             default_output_device = p.get_default_output_device_info()
             return True
         except IOError:
-            self.progress_update.emit("Ошибка: Нет устройств вывода звука.", 45)
+            self.progress_update.emit("Ошибка: Нет устройств вывода звука.", 46)
             self.checks_complete.emit(False, "Ошибка: Нет устройств вывода звука")
             return False
         finally:
             p.terminate()
 
-    def check_audio_devices(self, device_weight):
-        if not self.input_device(device_weight) or not self.output_device(device_weight):
+    def check_audio_devices(self):
+        if not self.input_device() or not self.output_device():
             return False
-
-        self.progress_update.emit("Аудиоустройства проверены.", 60)
         return True

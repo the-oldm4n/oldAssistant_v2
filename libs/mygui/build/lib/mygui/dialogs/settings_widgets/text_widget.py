@@ -57,7 +57,7 @@ class TextWidget(QWidget):
         self.text_edit_preview = QLabel()
         self.text_edit_preview.setFixedSize(30, 30)
         self.text_edit_preview.setStyleSheet("border: 1px solid #ccc; border-radius: 3px;")
-        self.text_edit_preview.mousePressEvent = lambda event: self.parent.choose_text_edit_color()
+        self.text_edit_preview.mousePressEvent = lambda event: self.choose_text_edit_color()
         self.text_edit_preview.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         text_color_layout.addWidget(text_color_label)

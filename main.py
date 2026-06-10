@@ -101,7 +101,7 @@ from bin.update_dialog import UpdateApp
 
 
 build_ini = get_config_value("app", "build")
-version_file = "3.0.3"
+version_file = "3.0.4"
 update_version(version_file)
 
 
@@ -145,7 +145,7 @@ class Assistant(QMainWindow):
         tool_widget_signal.open_main_window.connect(self.open_window_from_tool)
         tool_widget_signal.open_settings.connect(self.open_settings_from_tool)
         tool_widget_signal.trigger_capture_area.connect(self.capture_area)
-        tool_widget_signal.trigger_open_shortcuts.connect(self.open_folder_screenshots)
+        tool_widget_signal.trigger_open_shortcuts.connect(self.open_folder_shortcuts)
         tool_widget_signal.run_command.connect(self.start_default_command)
 
         self.start_ipc_server()
@@ -183,7 +183,7 @@ class Assistant(QMainWindow):
         self.screenshot_tool = SystemScreenshot(save_dir=folder_screenshots)
         self.default_size = 920, 700
         self._is_maximized = False
-        self._default_geometry = QRect(200, 200, 920, 700)
+        self._default_geometry = QRect(300, 200, 920, 700)
         self._normal_geometry = None
         self.update_settings(self.settings_file_path)
         self.install_settings()
@@ -208,9 +208,7 @@ class Assistant(QMainWindow):
         self.resize_animation.setDuration(100)
         self.resize_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.check_or_create_folders()
-        self.init_ui()
-
-        self.preload_utils()
+        
         if is_login_widget:
             self.check_auth(self.auth)
         else:
@@ -223,6 +221,8 @@ class Assistant(QMainWindow):
         self.toggle_update_button()
 
     def check_up(self):
+        self.init_ui()
+        self.preload_utils()
         self.content_container.current_changed.connect(self.on_page_changed)
         self.on_page_changed(0)
         self.check_start_widget()
@@ -568,7 +568,7 @@ class Assistant(QMainWindow):
             self.title_bar_layout.addWidget(self.title_label)
             
             self.progress_load = SVGProgressBar(style="circle", show_text=True, circle_size=30, padding=5)
-            self.progress_load.hide()
+            self.progress_load.show()
             self.title_bar_layout.addWidget(self.progress_load)
             
             self.title_bar_layout.addStretch()
@@ -1156,7 +1156,7 @@ class Assistant(QMainWindow):
     def create_snow(self):
         """Создает снежный эффект (только один раз)"""
         if self.snow_on_background is not None:
-            return  # Уже создан
+            return
         
         self.snow_on_background = SnowOverlay(parent=self.central_widget)
         self.snow_on_background.resize(1000, 1000)
@@ -1170,7 +1170,6 @@ class Assistant(QMainWindow):
         else:
             self.snow_on_background.hide()
 
-    # Упрощенная версия без лишних проверок
     def set_snow_enabled(self, enabled):
         """Включает/выключает снег"""
         self.is_snow = enabled
@@ -1229,7 +1228,6 @@ class Assistant(QMainWindow):
     def set_user_data(self, user_data):
             """Установить данные пользователя (вызывается из InitScreen)"""
             self.user_data = user_data
-            self.update_user_profile(user_data)
             debuglog.info(f"[MAIN] Данные пользователя установлены: {user_data['username']}")
     
     def clear_user_data(self):
@@ -1240,7 +1238,6 @@ class Assistant(QMainWindow):
     def update_user_profile(self, user_data=None):
         """Обновить профиль пользователя (можно вызывать без параметров)"""
         debuglog.info(f"[MAIN] Обновление профиля...")
-        # Используем переданные данные или локальные
         data = user_data or self.user_data
             
         if data and data.get('avatar') is None:
@@ -1295,37 +1292,40 @@ class Assistant(QMainWindow):
         if pixmap.isNull():
             return QPixmap()
 
+        img_ratio = pixmap.width() / pixmap.height()
+        circle_ratio = size / size
+        
+        if img_ratio > circle_ratio:
+            scaled_height = size
+            scaled_width = int(size * img_ratio)
+        else:
+            scaled_width = size
+            scaled_height = int(size / img_ratio)
+        
+        scaled_pixmap = pixmap.scaled(
+            scaled_width, scaled_height,
+            Qt.AspectRatioMode.IgnoreAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
+        )
+
+        x = (size - scaled_width) // 2
+        y = (size - scaled_height) // 2
+        
         rounded = QPixmap(size, size)
         rounded.fill(Qt.transparent)
-
+        
         painter = QPainter(rounded)
         painter.setRenderHints(
             QPainter.RenderHint.Antialiasing |
             QPainter.RenderHint.SmoothPixmapTransform
         )
-
-        if not pixmap.hasAlphaChannel():
-            image = pixmap.toImage()
-            image = image.convertToFormat(QImage.Format_ARGB32_Premultiplied)
-            pixmap = QPixmap.fromImage(image)
-
-        scaled_pixmap = pixmap.scaled(
-            size, size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-
-        x = (size - scaled_pixmap.width()) // 2
-        y = (size - scaled_pixmap.height()) // 2
-
-        # Обрезаем по кругу
+        
         path = QPainterPath()
         path.addEllipse(0, 0, size, size)
         painter.setClipPath(path)
-
         painter.drawPixmap(x, y, scaled_pixmap)
         painter.end()
-
+        
         return rounded
 
     def preload_window(self):
@@ -1497,24 +1497,14 @@ class Assistant(QMainWindow):
         try:
             self.styles = self.style_manager.load_styles()
 
-            if hasattr(self, 'style_svg'):
-                self.style_manager.apply_color_svg(self.style_svg)
-            if hasattr(self, 'avatar_svg'):
-                self.style_manager.apply_color_svg(self.avatar_svg)
+            svg_attrs = ['style_svg', 'avatar_svg', 'svg_image', 'logo_svg', 'update_light_svg', 'clear_logs_svg', 'update_all_preset_svg', 'max_svg']
+
+            for attr in svg_attrs:
+                if hasattr(self, attr):
+                    self.style_manager.apply_color_svg(getattr(self, attr))
+
             if hasattr(self, 'progress_load'):
                 self.style_manager.apply_progressbar(widget=self.progress_load)
-            if hasattr(self, 'svg_image'):
-                self.style_manager.apply_color_svg(self.svg_image)
-            if hasattr(self, 'logo_svg'):
-                self.style_manager.apply_color_svg(self.logo_svg)
-            if hasattr(self, 'update_light_svg'):
-                self.style_manager.apply_color_svg(self.update_light_svg)
-            if hasattr(self, 'clear_logs_svg'):
-                self.style_manager.apply_color_svg(self.clear_logs_svg)
-            if hasattr(self, 'update_all_preset_svg'):
-                self.style_manager.apply_color_svg(self.update_all_preset_svg)  
-            if hasattr(self, 'max_svg'):
-                self.style_manager.apply_color_svg(self.max_svg) 
             if hasattr(self, 'close_svg'):
                 self.style_manager.apply_color_svg(self.close_svg, specified_color="#ff0000")
 
@@ -1841,7 +1831,7 @@ class Assistant(QMainWindow):
             with open(self.settings_file_path, 'r', encoding='utf-8') as file:
                 return json.load(file)
         except (FileNotFoundError, json.JSONDecodeError):
-            return {}  # Если файл не найден или повреждён, возвращаем пустой словарь
+            return {}
 
     def save_settings(self):
         """Сохраняет настройки в файл settings.json."""
@@ -1884,7 +1874,7 @@ class Assistant(QMainWindow):
         except Exception as e:
             logger.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
             debuglog.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
-            raise  # Повторно выбрасываем исключение, если нужно
+            raise
 
     def update_settings(self, settings_file, default_settings=None):
         """
@@ -1965,6 +1955,7 @@ class Assistant(QMainWindow):
     def custom_hide(self):
         self.logs_widget.log_area.start_background_mode()
         self.hide()
+        self.show_toast("Приложение свернуто в трей")
 
     # def changeEvent(self, event):
     #     """Обработка изменения состояния окна."""
@@ -1977,7 +1968,8 @@ class Assistant(QMainWindow):
     def closeEvent(self, event):
         """Обработка закрытия окна"""
         self.save_window_settings()
-        self.logs_widget.log_area.stop_monitoring()
+        if hasattr(self, "logs_widget"):
+            self.logs_widget.log_area.stop_monitoring()
 
         if self.is_assistant_running:
             self.stop_assist()

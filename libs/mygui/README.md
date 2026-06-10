@@ -49,6 +49,12 @@ main_apply_colors.init()
 }
 ```
 
+## Обязательно наличие пути для корректного захвата ресурсов при сборке.
+```
+hookspath=["F:/PyCharmProjects/{your-dir}/venv/Lib/site-packages/mygui/hooks"],
+```
+
+
 ## Создание собственных селекторов
 
 Необходимо создать файл custom_selectors.json и в конфиге mygui_config указать путь к нему перед инициализацией.

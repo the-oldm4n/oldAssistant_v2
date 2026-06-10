@@ -4,8 +4,6 @@ from log_config import debuglog
 
 class ShortcutMonitor(QObject):
     folder_changed = Signal()  # Общий сигнал об изменении в папке
-    file_added = Signal(str)   # Сигнал с путем к добавленному файлу
-    file_removed = Signal(str) # Сигнал с путем к удаленному файлу
     monitoring_changed = Signal(bool)
     
     def __init__(self, watch_folder):
@@ -27,7 +25,7 @@ class ShortcutMonitor(QObject):
             self.watcher.addPath(self.watch_folder)
             self.is_monitoring = True
             self.monitoring_changed.emit(True)
-            debuglog.info(f"Мониторинг включен: {self.watch_folder}")
+            debuglog.info(f"[SHORTCUT-MONITOR] Мониторинг включен: {self.watch_folder}")
     
     def stop_monitoring(self):
         if self.is_monitoring:
@@ -35,7 +33,7 @@ class ShortcutMonitor(QObject):
             self.debounce_timer.stop()
             self.is_monitoring = False
             self.monitoring_changed.emit(False)
-            debuglog.info(f"Мониторинг выключен: {self.watch_folder}")
+            debuglog.info(f"[SHORTCUT-MONITOR] Мониторинг выключен: {self.watch_folder}")
     
     def _get_current_files(self):
         try:
@@ -44,7 +42,7 @@ class ShortcutMonitor(QObject):
                          if os.path.isfile(os.path.join(self.watch_folder, f))]
             return set(files_only)
         except Exception as e:
-            debuglog.error(f"Ошибка чтения папки: {e}")
+            debuglog.error(f"[SHORTCUT-MONITOR] Ошибка чтения папки: {e}")
             return set()
     
     def _on_folder_changed(self, path):
@@ -61,22 +59,20 @@ class ShortcutMonitor(QObject):
             added_files = new_files - self.current_files
             for filename in added_files:
                 filepath = os.path.join(self.watch_folder, filename)
-                self.file_added.emit(filepath)
                 self.folder_changed.emit()
-                debuglog.info(f"Добавлен файл: {filepath}")
+                debuglog.info(f"[SHORTCUT-MONITOR] Добавлен файл: {filepath}")
             
             removed_files = self.current_files - new_files
             for filename in removed_files:
                 filepath = os.path.join(self.watch_folder, filename)
-                self.file_removed.emit(filepath)
                 self.folder_changed.emit()
-                debuglog.info(f"Удален файл: {filepath}")
+                debuglog.info(f"[SHORTCUT-MONITOR] Удален файл: {filepath}")
             
             if added_files or removed_files:
                 self.current_files = new_files
                 
         except Exception as e:
-            debuglog.error(f"Ошибка проверки файлов: {e}")
+            debuglog.error(f"[SHORTCUT-MONITOR] Ошибка проверки файлов: {e}")
     
     def get_current_files(self):
         return [os.path.join(self.watch_folder, f) for f in self.current_files]

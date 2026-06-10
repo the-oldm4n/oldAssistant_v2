@@ -8,9 +8,9 @@ from log_config import debuglog
 
 class BluetoothController:
     def __init__(self):
-        self.is_enabled = False # Не нашел рабочего метода проверки статуса через python
+        self.is_enabled = False
         self._lock = threading.Lock()
-        self._operation_in_progress = False  # Флаг выполнения операции
+        self._operation_in_progress = False
     
     def _run_ps_in_thread(self, command, callback=None):
         """Запустить PowerShell команду в отдельном потоке"""

@@ -522,7 +522,7 @@ class SmartWidget(QWidget):
     def on_capture_area(self):
         tool_widget_signal.trigger_capture_area.emit()
 
-    def on_open_screenshots(self):
+    def on_open_shortcuts(self):
         tool_widget_signal.trigger_open_shortcuts.emit()
 
     def on_run_command(self, name, move, cmd_type):
@@ -618,7 +618,7 @@ class SmartWidget(QWidget):
             'links_check': {
                 'icon': self.shortcut_path,
                 'tooltip': 'Открыть папку с ярлыками',
-                'action': self.on_open_screenshots
+                'action': self.on_open_shortcuts
             },
             'resize_check': {
                 'icon': self.open_main_path,
