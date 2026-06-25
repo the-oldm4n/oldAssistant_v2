@@ -104,7 +104,7 @@ class CreateCommandsWidget(QWidget):
 
     def create_forms(self):
         """Создаем все формы заранее"""
-        self.shortcut_form = AppCommandForm(self.main)
+        self.shortcut_form = AppCommandForm(self.main, self.links_file)
         self.form_container.addWidget(self.shortcut_form)
 
         self.folder_form = FolderCommandForm(self.main)
@@ -165,9 +165,10 @@ class CreateCommandsWidget(QWidget):
         
 
 class AppCommandForm(QWidget):
-    def __init__(self, main, parent=None):
+    def __init__(self, main, links_file, parent=None):
         super().__init__(parent)
         self.main = main
+        self.links_file = links_file
         self.main.commands_manager.search_links()
         self.commands_manager = main_commands_manager
         self.init_ui()

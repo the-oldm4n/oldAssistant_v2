@@ -1,6 +1,4 @@
 """
-Этот модуль представляет собой основной файл для работы ассистента.
-
 Здесь реализованы функции и классы, необходимые для
 запуска и управления ассистентом, включая обработку
 пользовательского ввода и управление интерфейсом.
@@ -19,7 +17,7 @@ import sounddevice as sd
 import subprocess
 from vosk import Model, KaldiRecognizer
 from PySide6.QtGui import QCursor, QIcon, QFont, QDesktopServices, QAction, QPixmap, QPainter, QMouseEvent,\
-    QFontDatabase, QPainterPath, QImage
+    QFontDatabase, QPainterPath
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QMainWindow, QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QApplication, QWidget,\
     QDialog, QSizePolicy, QSystemTrayIcon, QMenu, QMessageBox, QSpacerItem
@@ -29,7 +27,7 @@ from PySide6.QtCore import Signal, QTimer, Qt, QEasingCurve, QPropertyAnimation,
 from bin.config_manager import get_config_value, set_config_value, update_version
 from path_builder import get_app_data_dir, get_path, get_full_filepath
 from log_config import logger, debuglog, get_log_path, get_debuglog_path
-from config import dev_mode, domain, is_fast_start, is_login_widget
+from config import dev_mode, domain, skip_splash_screen, is_login_widget
 
 from bin.exract_resourses import ensure_resources
 if not dev_mode:
@@ -101,7 +99,7 @@ from bin.update_dialog import UpdateApp
 
 
 build_ini = get_config_value("app", "build")
-version_file = "3.0.4"
+version_file = "3.0.5"
 update_version(version_file)
 
 
@@ -285,7 +283,7 @@ class Assistant(QMainWindow):
 
             self.set_user_data(self.auth.user_data)
             
-            if not is_fast_start:
+            if not skip_splash_screen:
                 self.start_splash_screen()
             else:
                 self.check_up()
@@ -312,7 +310,7 @@ class Assistant(QMainWindow):
             
             self.set_user_data(self.auth.user_data)
 
-            if not is_fast_start:
+            if not skip_splash_screen:
                 self.start_splash_screen()
             else:
                 self.check_up()
@@ -534,7 +532,7 @@ class Assistant(QMainWindow):
             )
 
             # Главный контейнер
-            self.central_widget = QWidget()
+            self.central_widget = QWidget(self)
             self.central_widget.setObjectName("MainWindowWidget") 
             self.setCentralWidget(self.central_widget)
             self.central_widget.setMouseTracking(True)
@@ -567,8 +565,7 @@ class Assistant(QMainWindow):
             self.title_label.setStyleSheet("background: transparent; font-size: 24px;")
             self.title_bar_layout.addWidget(self.title_label)
             
-            self.progress_load = SVGProgressBar(style="circle", show_text=True, circle_size=30, padding=5)
-            self.progress_load.show()
+            self.progress_load = SVGProgressBar(style="circle", show_text=False, circle_size=30, padding=5)
             self.title_bar_layout.addWidget(self.progress_load)
             
             self.title_bar_layout.addStretch()

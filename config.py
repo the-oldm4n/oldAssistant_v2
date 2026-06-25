@@ -1,7 +1,7 @@
 dev_mode = False
 dev_server = False
 
-is_fast_start = False
+skip_splash_screen = False
 is_login_widget = True
 
 if dev_server:
