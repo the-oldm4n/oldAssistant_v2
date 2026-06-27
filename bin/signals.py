@@ -45,3 +45,9 @@ class ResizeSignal(QObject):
     is_resizing = Signal()
 
 resize_signal = ResizeSignal()
+
+
+class CensorSignal(QObject):
+    update_count = Signal(str)
+
+censor_signal = CensorSignal()

@@ -83,7 +83,7 @@ from bin.help_widget import HelpWidget
 from bin.login_widget import LoginWindow
 from bin.register_module import AuthManager
 from bin.screenshot_tool import SystemScreenshot
-from bin.signals import gui_signals, commands_signal, tool_widget_signal
+from bin.signals import gui_signals, commands_signal, tool_widget_signal, censor_signal
 from bin.notification_widget import ToastNotif, SimpleNotif
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from bin.widget_window import SmartWidget
@@ -99,7 +99,7 @@ from bin.update_dialog import UpdateApp
 
 
 build_ini = get_config_value("app", "build")
-version_file = "3.0.5"
+version_file = "3.0.6"
 update_version(version_file)
 
 
@@ -1519,7 +1519,7 @@ class Assistant(QMainWindow):
 
             self.setStyleSheet(style_sheet)
             self.apply_menu_styles(self.menu_tray)
-            if hasattr(self, "snow_on_background"):
+            if getattr(self, "snow_on_background", None) is not None:
                 self.snow_on_background.setSnowColor(self.style_manager.get_raw_color(), white_balance=50)
                 
         except Exception as e:
@@ -2075,89 +2075,6 @@ class Assistant(QMainWindow):
 
         except Exception as e:
             debuglog.error(f"[MAIN][assistant.get_reaction] Ошибка: {e}")
-
-    def censor_counter(self):
-        """Добавляет запись о матерном слове в счетчик"""
-        CSV_FILE = censor_file
-        os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
-        
-        today = datetime.now().date()  # Используем date вместо str
-        today_str = today.strftime('%Y-%m-%d')
-        
-        data = []
-        headers = ['date', 'score', 'total_score']
-        file_exists = os.path.exists(CSV_FILE)
-        
-        if file_exists:
-            try:
-                with open(CSV_FILE, mode='r', encoding='utf-8', newline='') as file:
-                    reader = csv.DictReader(file)
-                    
-                    if reader.fieldnames != headers:
-                        debuglog.warning(f"[MAIN] Некорректные заголовки в файле {CSV_FILE}")
-                        file_exists = False
-                    else:
-                        for row in reader:
-                            try:
-                                row_date = row['date'].strip()
-                                score = int(row['score'] or 0)
-                                total_score = int(row['total_score'] or 0)
-                                
-                                data.append({
-                                    'date': row_date,
-                                    'score': score,
-                                    'total_score': total_score
-                                })
-                            except (ValueError, KeyError) as e:
-                                debuglog.warning(f"[MAIN] Пропущена некорректная строка: {row}, ошибка: {e}")
-                                continue
-            except Exception as e:
-                logger.error(f"[MAIN] Ошибка чтения файла {CSV_FILE}: {e}")
-                debuglog.error(f"[MAIN] Ошибка чтения файла {CSV_FILE}: {e}")
-                file_exists = False
-        
-        if not file_exists:
-            data = []
-            with open(CSV_FILE, mode='w', encoding='utf-8', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=headers)
-                writer.writeheader()
-        
-        total_all_time = 0
-        today_found = False
-        
-        for record in data:
-            try:
-                score_val = record['score']
-                total_all_time += score_val
-                
-                if record['date'] == today_str:
-                    today_found = True
-                    record['score'] += 1
-                    record['total_score'] = total_all_time + 1
-            except KeyError:
-                continue
-        
-        # Если запись на сегодня не найдена, добавляем новую
-        if not today_found:
-            total_all_time += 1  # Добавляем новое слово
-            data.append({
-                'date': today_str,
-                'score': 1,
-                'total_score': total_all_time
-            })
-        
-        # Записываем обновленные данные
-        try:
-            with open(CSV_FILE, mode='w', encoding='utf-8', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=headers)
-                writer.writeheader()
-                writer.writerows(data)
-            
-            debuglog.debug(f"[MAIN] Счетчик обновлен. Сегодняшняя запись: {'обновлена' if today_found else 'добавлена'}")
-            
-        except Exception as e:
-            logger.error(f"[MAIN] Ошибка записи в файл {CSV_FILE}: {e}")
-            debuglog.error(f"[MAIN] Ошибка записи в файл {CSV_FILE}: {e}")
             
     def check_keywords_file(self):
         """
@@ -2291,10 +2208,18 @@ class Assistant(QMainWindow):
                     debuglog.info("[MAIN] Сброс флага упоминания имени")
 
                 # Проверка цензуры
-                if any(self.find_closest_command(word, self.censored_list, threshold=80) for word in words):
-                    self.censor_counter()
+                detected_censor = False
+                censored_words = self.find_censored_words(list(words), threshold=80)
+                if censored_words:
+                    detected_censor = True
+                    for word in censored_words:
+                        censor_signal.update_count.emit(word)
+
+                if detected_censor:
                     if self.is_censored:
                         self.get_reaction(name="censored_folder")
+                        detected_censor = False
+                
 
                 # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
                 # ОБРАБОТКА ПОДТВЕРЖДЕНИЯ КОМАНДЫ ("ДА"/"НЕТ")
@@ -3039,6 +2964,67 @@ class Assistant(QMainWindow):
                 combined.append(cmd)
 
         return combined
+    
+    def find_censored_words(self, words, threshold=80):
+        """
+        Находит ВСЕ матерные слова в списке слов
+        """
+        if not words or not self.censored_list:
+            return []
+        
+        phrase = " ".join(words).lower()
+        found_words = []
+
+        for censored in self.censored_list:
+            censored_lower = censored.lower()
+ 
+            if " " in censored_lower:
+                if censored_lower in phrase:
+                    import re
+                    pattern = r'(?<![а-яё])' + re.escape(censored_lower) + r'(?![а-яё])'
+                    if re.search(pattern, phrase):
+                        found_words.append(censored)
+                continue
+
+            for word in words:
+                word_lower = word.lower()
+
+                if word_lower == censored_lower:
+                    if censored not in found_words:
+                        found_words.append(censored)
+                    break
+
+                elif censored_lower in word_lower:
+                    import re
+                    pattern = r'(?<![а-яё])' + re.escape(censored_lower) + r'(?![а-яё])'
+                    if re.search(pattern, word_lower):
+                        if censored not in found_words:
+                            found_words.append(censored)
+                        break
+  
+                else:
+                    score = self._get_similarity_score(word_lower, censored_lower)
+                    if score >= threshold:
+                        if censored not in found_words:
+                            found_words.append(censored)
+                        break
+
+        unique_words = list(dict.fromkeys(found_words))
+
+        filtered_words = []
+        for word in unique_words:
+            is_substring = False
+            for other in unique_words:
+                if word != other and word.lower() in other.lower():
+                    is_substring = True
+                    break
+            if not is_substring:
+                filtered_words.append(word)
+        
+        if filtered_words:
+            debuglog.debug(f"[CENSOR] Найдены матерные слова: {filtered_words}")
+        
+        return filtered_words
 
     def restart_bot(self):
         self.stop_assist(reaction=False)

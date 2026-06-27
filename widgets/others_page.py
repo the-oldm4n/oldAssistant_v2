@@ -1,14 +1,17 @@
+from collections import defaultdict
 import csv
 import os
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget,\
     QMainWindow, QMessageBox, QCheckBox, QTextEdit
+from bin.graph_widget import SimpleGraph
 from bin.stacked_widget import SlidingStackedWidget
 from mygui import CustomSvgWidget, main_apply_colors, SVGProgressBar, color_signal
 from bin.download_thread import DownloadThread
 from bin.lists import setup_custom_font_label
+from bin.signals import censor_signal
 from log_config import logger, debuglog
 from path_builder import get_path, get_app_data_dir
 from config import dev_mode
@@ -126,9 +129,10 @@ class CensorCounterWidget(QWidget):
     """
     Виджет счетчика матерных слов
     """
-
     def __init__(self, main_window, parent=None):
         super().__init__(parent)
+        color_signal.color_changed.connect(self.update_colors)
+        censor_signal.update_count.connect(self.censor_counter)
         self.main = main_window
         self.parent = parent
         self._help_initialized = False
@@ -138,10 +142,13 @@ class CensorCounterWidget(QWidget):
         self.init_ui()
         self.load_data()
         self.setProperty("helpId", "censor_conter_widget")
+        self.calculate_favorite_word()
+        self.update_colors()
 
     def refresh_data(self):
         debuglog.info("Refresh data in censor counter")
         self.load_data()
+        self.calculate_favorite_word()
         
     def showEvent(self, event):
         """При показе панели настраиваем help system"""
@@ -149,6 +156,19 @@ class CensorCounterWidget(QWidget):
         if not self._help_initialized and hasattr(self.main, 'install_event_filter_recursive'):
             self.main.install_event_filter_recursive(self)
             self._help_initialized = True
+
+    def update_colors(self):
+        """Обновляет цвета графика при смене темы"""
+        if hasattr(self, 'graph'):
+            main_color = self.main.style_manager.get_svg_color()
+
+            self.graph.update_colors(
+                line_color=main_color,
+                fill_color_start=main_color,
+                fill_color_end=main_color,
+                point_color=main_color,
+                point_border_color="#FFFFFF"
+            )
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -176,32 +196,51 @@ class CensorCounterWidget(QWidget):
         self.reset_button.clicked.connect(self.reset_censor_counter)
         layout.addWidget(self.reset_button)
 
+        self.graph = SimpleGraph(self)
+        layout.addWidget(self.graph)
+
+        self.favorite_word_label = QLabel("Самое популярное слово: -", self)
+        self.favorite_word_label.setStyleSheet("background: transparent;")
+        layout.addWidget(self.favorite_word_label)
+
+        self.favorite_word_week_label = QLabel("Слово недели: -", self)
+        self.favorite_word_week_label.setStyleSheet("background: transparent;")
+        layout.addWidget(self.favorite_word_week_label)
+
         layout.addStretch()
 
     def load_data(self):
-        """Загружает данные из CSV-файла"""
+        """Загружает данные из CSV-файла с автоматическим обновлением структуры"""
         self.data = []
+        
+        expected_columns = {
+            'date': '',
+            'score': 0,
+            'total_score': 0,
+            'word': None,
+            'word_total_score': 0
+        }
         
         try:
             if not os.path.exists(censor_file):
                 debuglog.warning("Файл censor_counter.csv не найден, создаем новый")
+                self._ensure_correct_structure(expected_columns)
                 self.update_labels()
                 return
             
+            self._ensure_correct_structure(expected_columns)
+            
             with open(censor_file, 'r', encoding='utf-8') as file:
                 reader = csv.DictReader(file)
-                
-                # Проверяем наличие обязательных колонок
-                if not reader.fieldnames or 'date' not in reader.fieldnames:
-                    debuglog.error("Некорректный формат CSV файла")
-                    return
                 
                 for row in reader:
                     try:
                         parsed_row = {
                             'date': self.parse_date(row.get('date', '')),
                             'score': int(row.get('score', 0) or 0),
-                            'total_score': int(row.get('total_score', 0) or 0)
+                            'total_score': int(row.get('total_score', 0) or 0),
+                            'word': str(row.get('word', '') or None),
+                            'word_total_score': int(row.get('word_total_score', 0) or 0)
                         }
                         self.data.append(parsed_row)
                     except (ValueError, TypeError) as e:
@@ -210,11 +249,87 @@ class CensorCounterWidget(QWidget):
                 
             debuglog.debug(f"Загружено {len(self.data)} записей из CSV")
             self.calculate_scores()
+            self.update_graph()
             
         except Exception as e:
             logger.error(f"Ошибка загрузки данных: {str(e)}", exc_info=True)
             debuglog.error(f"Ошибка загрузки данных: {str(e)}", exc_info=True)
             self.update_labels()
+
+    def _ensure_correct_structure(self, expected_columns):
+        """
+        Проверяет и обновляет структуру CSV файла
+        Добавляет недостающие колонки с дефолтными значениями
+        """
+        try:
+            if not os.path.exists(censor_file):
+                os.makedirs(os.path.dirname(censor_file), exist_ok=True)
+                with open(censor_file, 'w', newline='', encoding='utf-8') as file:
+                    writer = csv.writer(file)
+                    writer.writerow(expected_columns.keys())
+                debuglog.info(f"Создан новый CSV файл")
+                return
+
+            with open(censor_file, 'r', encoding='utf-8') as file:
+                reader = csv.DictReader(file)
+                current_headers = reader.fieldnames or []
+                rows = list(reader)
+
+            missing_columns = set(expected_columns.keys()) - set(current_headers)
+            
+            if not missing_columns:
+                return
+            
+            debuglog.warning(f"Добавляем недостающие колонки: {missing_columns}")
+            
+            new_headers = list(current_headers) + list(missing_columns)
+
+            updated_rows = []
+            for row in rows:
+                new_row = {}
+                for header in current_headers:
+                    new_row[header] = row.get(header, '')
+                for col in missing_columns:
+                    default_value = expected_columns[col]
+                    new_row[col] = '' if default_value is None else str(default_value)
+                updated_rows.append(new_row)
+            
+            with open(censor_file, 'w', newline='', encoding='utf-8') as file:
+                writer = csv.DictWriter(file, fieldnames=new_headers)
+                writer.writeheader()
+                writer.writerows(updated_rows)
+            
+            debuglog.info(f"Структура CSV обновлена. Добавлены колонки: {missing_columns}")
+            
+        except Exception as e:
+            debuglog.error(f"Ошибка обновления структуры CSV: {e}")
+
+    def update_graph(self):
+        """Обновляет график данными за неделю"""
+        today = datetime.now().date()
+        labels = []
+        values = []
+        days_ru = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            weekday = day.weekday()
+            labels.append(days_ru[weekday])
+
+            day_total = 0
+            # Если данных нет - day_total так и останется 0
+            if self.data:
+                for row in self.data:
+                    if row['date'] and row['date'] == day:
+                        day_total += row['score']
+            values.append(day_total)
+
+        self.graph.set_data(labels, values)
+
+    def update_stats(self):
+        self.update_graph()
+        self.calculate_scores()
+        self.calculate_favorite_word()
 
     def parse_date(self, date_str):
         """Парсит дату из строки в объект date"""
@@ -307,9 +422,167 @@ class CensorCounterWidget(QWidget):
         self.data = []
         
         self.update_labels(0, 0, 0, 0)
+        self.update_stats()
         
         logger.info("Счетчик успешно сброшен.")
         debuglog.info("Счетчик успешно сброшен.")
+
+    def calculate_favorite_word(self):
+        """Вычисляет самое популярное слово за все время и за неделю"""
+        # Фильтруем данные сразу, убирая None и пустые
+        valid_data = [
+            row for row in self.data 
+            if row.get('word') and row['word'] not in ['unknown', 'None', '']
+        ]
+        
+        if not valid_data:
+            self.favorite_word_label.setText("Самое популярное слово: -")
+            self.favorite_word_week_label.setText("Слово недели: -")
+            return
+        
+        today = date.today()
+        word_stats = defaultdict(int)      # За все время
+        word_stats_week = defaultdict(int)  # За неделю
+        
+        for row in valid_data:
+            word = row['word']
+            row_date = row['date']
+            if not row_date:
+                continue
+            
+            # За все время
+            word_stats[word] += row['word_total_score']
+            
+            # За неделю
+            days_diff = (today - row_date).days
+            if 0 <= days_diff <= 6:
+                word_stats_week[word] += row['score']
+        
+        # Самое популярное слово за все время
+        if word_stats:
+            favorite_word = max(word_stats, key=word_stats.get)
+            self.favorite_word_label.setText(
+                f"Самое популярное слово: '{favorite_word}' ({word_stats[favorite_word]})"
+            )
+        else:
+            self.favorite_word_label.setText("Самое популярное слово: -")
+        
+        # Слово недели
+        if word_stats_week:
+            week_word = max(word_stats_week, key=word_stats_week.get)
+            self.favorite_word_week_label.setText(
+                f"Слово недели: '{week_word}' ({word_stats_week[week_word]})"
+            )
+        else:
+            self.favorite_word_week_label.setText("Слово недели: -")
+
+    def censor_counter(self, detected_word=None):
+        """Добавляет запись о матерном слове в счетчик"""
+        os.makedirs(os.path.dirname(censor_file), exist_ok=True)
+        
+        today = datetime.now().date()
+        today_str = today.strftime('%Y-%m-%d')
+        
+        headers = ['date', 'score', 'total_score', 'word', 'word_total_score']
+        data = []
+        file_exists = os.path.exists(censor_file)
+        
+        if file_exists:
+            try:
+                with open(censor_file, mode='r', encoding='utf-8', newline='') as file:
+                    reader = csv.DictReader(file)
+                    
+                    if not reader.fieldnames or 'word' not in reader.fieldnames:
+                        debuglog.warning(f"[MAIN] Обновление структуры CSV файла {censor_file}")
+                        file_exists = False
+                    else:
+                        for row in reader:
+                            try:
+                                row_date = row['date'].strip()
+                                score = int(row.get('score', 0) or 0)
+                                total_score = int(row.get('total_score', 0) or 0)
+                                word = row.get('word', '').strip()
+                                word_total_score = int(row.get('word_total_score', 0) or 0)
+                                
+                                data.append({
+                                    'date': row_date,
+                                    'score': score,
+                                    'total_score': total_score,
+                                    'word': word,
+                                    'word_total_score': word_total_score
+                                })
+                            except (ValueError, KeyError) as e:
+                                debuglog.warning(f"[MAIN] Пропущена некорректная строка: {row}, ошибка: {e}")
+                                continue
+            except Exception as e:
+                logger.error(f"[MAIN] Ошибка чтения файла {censor_file}: {e}")
+                debuglog.error(f"[MAIN] Ошибка чтения файла {censor_file}: {e}")
+                file_exists = False
+        
+        if not file_exists:
+            data = []
+            with open(censor_file, mode='w', encoding='utf-8', newline='') as file:
+                writer = csv.DictWriter(file, fieldnames=headers)
+                writer.writeheader()
+
+        if not detected_word:
+            detected_word = "unknown"
+
+        detected_word = detected_word.lower().strip()
+
+        if data:
+            current_total = max(r['total_score'] for r in data)
+        else:
+            current_total = 0
+
+        new_total = current_total + 1
+
+        found = False
+        for record in data:
+            if record['date'] == today_str and record['word'] == detected_word:
+                record['score'] += 1
+                record['total_score'] = new_total
+                record['word_total_score'] += 1
+                found = True
+                break
+        
+        if not found:
+            data.append({
+                'date': today_str,
+                'score': 1,
+                'total_score': new_total,
+                'word': detected_word,
+                'word_total_score': 1
+            })
+
+        for record in data:
+            if record['date'] == today_str:
+                record['total_score'] = new_total
+
+        try:
+            with open(censor_file, mode='w', encoding='utf-8', newline='') as file:
+                writer = csv.DictWriter(file, fieldnames=headers)
+                writer.writeheader()
+                writer.writerows(data)
+            
+            debuglog.debug(f"[MAIN] Счетчик обновлен. Слово: {detected_word}, Всего: {new_total}")
+
+            self.data = []
+            for row in data:
+                parsed_row = {
+                    'date': self.parse_date(row['date']),
+                    'score': row['score'],
+                    'total_score': row['total_score'],
+                    'word': row['word'],
+                    'word_total_score': row['word_total_score']
+                }
+                self.data.append(parsed_row)
+
+            self.update_stats()
+            
+        except Exception as e:
+            logger.error(f"[MAIN] Ошибка записи в файл {censor_file}: {e}")
+            debuglog.error(f"[MAIN] Ошибка записи в файл {censor_file}: {e}")
 
 
 class CheckUpdateWidget(QWidget):

@@ -2,7 +2,7 @@ import json
 import os
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, \
-    QDialog, QLabel, QStackedWidget, QSizePolicy, QTextEdit, QApplication
+    QDialog, QLabel, QStackedWidget, QSizePolicy, QTextEdit, QApplication, QSpacerItem
 from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve
 
 from mygui import main_apply_colors, CustomSvgWidget, color_signal
@@ -402,6 +402,18 @@ class SmartWidget(QWidget):
                 self.snow_on_label.hide()
 
     def init_ui(self):
+        self.margin = 4
+        self.drag_pos = None
+        self.dragging = False
+        self.drag_position = None
+        self.drag_direction = None
+        self.initial_geometry = None
+        self.reached_min_size = False
+        self.dragging_maximized = False
+        self.drag_start_pos = None
+        self.drag_start_geometry = None
+        self._drag_click_offset = None
+
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setLayout(QVBoxLayout())
         self.layout().setContentsMargins(0, 0, 0, 0)
@@ -448,8 +460,6 @@ class SmartWidget(QWidget):
         self.audio_widget = self.create_audio_controls()
         self.content_layout.addWidget(self.audio_widget, alignment=Qt.AlignmentFlag.AlignCenter)   
 
-        self.content_layout.addStretch()
-
         # Кнопки
         self.buttons_widget = self.create_main_buttons()
         self.content_layout.addWidget(self.buttons_widget, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -458,11 +468,91 @@ class SmartWidget(QWidget):
         self.tab_widget = self.create_tabs_widget()
         self.content_layout.addWidget(self.tab_widget)
 
+        self.bottom_spacer = QSpacerItem(5, 5, 
+                                     QSizePolicy.Policy.Minimum, 
+                                     QSizePolicy.Policy.Minimum)
+        self.content_layout.addItem(self.bottom_spacer)
+
         self.layout().addWidget(self.main_container)
 
         self.switch_tab(1)
         if not self.is_compact:
             self.switch_tab(1)
+
+        self.minimum_size = self.minimumSizeHint()
+        debuglog.debug(f"[PANEL] Минимальный размер контента: {self.minimum_size.width()}x{self.minimum_size.height()}")   
+    
+    def get_cursor_region(self, pos):
+        """Определяем область курсора для изменения размера"""
+        width = self.width()
+        height = self.height()
+        x, y = pos.x(), pos.y()
+        
+        if x <= self.margin and y <= self.margin:
+            return "top-left"
+        elif x >= width - self.margin and y <= self.margin:
+            return "top-right"
+        elif x <= self.margin and y >= height - self.margin:
+            return "bottom-left"
+        elif x >= width - self.margin and y >= height - self.margin:
+            return "bottom-right"
+        elif x <= self.margin:
+            return "left"
+        elif x >= width - self.margin:
+            return "right"
+        elif y <= self.margin:
+            return "top"
+        elif y >= height - self.margin:
+            return "bottom"
+        else:
+            return "center"
+    
+    def handle_resize(self, global_pos):
+        """Обработка изменения размера с отслеживанием минимального размера"""
+        delta = global_pos - self.drag_position
+        new_geometry = QRect(self.initial_geometry)
+        
+        # Применяем изменения
+        if "left" in self.drag_direction:
+            new_geometry.setLeft(self.initial_geometry.left() + delta.x())
+        
+        if "right" in self.drag_direction:
+            new_geometry.setRight(self.initial_geometry.right() + delta.x())
+        
+        if "top" in self.drag_direction:
+            new_geometry.setTop(self.initial_geometry.top() + delta.y())
+        
+        if "bottom" in self.drag_direction:
+            new_geometry.setBottom(self.initial_geometry.bottom() + delta.y())
+
+        content_min_width = self.minimum_size.width() + 20
+        content_min_height = self.minimum_size.height() + 20
+        
+        # Проверяем ширину
+        if new_geometry.width() < content_min_width:
+            if "left" in self.drag_direction:
+                # Фиксируем левую границу
+                new_geometry.setLeft(new_geometry.right() - content_min_width)
+            elif "right" in self.drag_direction:
+                # Фиксируем правую границу
+                new_geometry.setRight(new_geometry.left() + content_min_width)
+        
+        # Проверяем высоту
+        if new_geometry.height() < content_min_height:
+            if "top" in self.drag_direction:
+                # Фиксируем верхнюю границу
+                new_geometry.setTop(new_geometry.bottom() - content_min_height)
+            elif "bottom" in self.drag_direction:
+                # Фиксируем нижнюю границу
+                new_geometry.setBottom(new_geometry.top() + content_min_height)
+        
+        # Применяем изменения только если геометрия изменилась
+        if new_geometry != self.initial_geometry:
+            self.setGeometry(new_geometry)
+            self._normal_geometry = new_geometry
+        else:
+            # Если геометрия не изменилась, возвращаем начальную позицию
+            self.setGeometry(self.initial_geometry)
 
     def init_delay_timers(self):
         # Таймер для автоскрытия
@@ -481,7 +571,8 @@ class SmartWidget(QWidget):
         # Показываем кнопки если они скрыты (компактный режим)
         if self.is_height_compact:
             self.hide_main_btns()  # Разворачиваем панель
-        
+
+        self.setCursor(Qt.CursorShape.ArrowCursor)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -494,6 +585,8 @@ class SmartWidget(QWidget):
             self.delay > 0):  # Проверяем что задержка > 0
             
             self.hide_timer.start(self.delay)
+
+        self.setCursor(Qt.CursorShape.ArrowCursor)
         
         super().leaveEvent(event)
 
@@ -535,6 +628,12 @@ class SmartWidget(QWidget):
         layout = QHBoxLayout(title_bar)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+
+        def title_enter(event):
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+            QWidget.enterEvent(title_bar, event)
+        
+        title_bar.enterEvent = title_enter
 
         self.clock_widget = QWidget()
         self.clock_widget.setStyleSheet("background: transparent;")
@@ -738,24 +837,7 @@ class SmartWidget(QWidget):
         self.btn_notes = QPushButton("Заметки")
         self.btn_notes.setObjectName("ToolPanelTab")
 
-        # tab_style = """
-        #     QPushButton {
-        #         background: rgba(50, 50, 50, 150);
-        #         color: white;
-        #         border: none;
-        #         border-radius: 5px;
-        #         padding: 5px;
-        #         font-size: 15px;
-        #     }
-        #     QPushButton:hover {
-        #         background: rgba(70, 70, 70, 200);
-        #     }
-        #     QPushButton:pressed {
-        #         background: rgba(40, 110, 230, 200);
-        #     }
-        # """
         for btn in [self.btn_sensors, self.btn_notes]:
-            # btn.setStyleSheet(tab_style)
             btn.setCheckable(True)
             btn.setFixedHeight(25)
             btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -766,6 +848,7 @@ class SmartWidget(QWidget):
         # Контент вкладок
         self.tab_content = QStackedWidget()
         self.tab_content.setStyleSheet("background: transparent; padding: 0 0 20px 0;")
+        self.tab_content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Вкладка датчиков
         self.sensors_tab = SensorTab(
@@ -780,6 +863,7 @@ class SmartWidget(QWidget):
         # Вкладка заметок
         self.notes_tab = QTextEdit("Тут можно писать заметки")
         self.notes_tab.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.notes_tab.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.notes_tab.setStyleSheet("""
             QTextEdit {
                 border: none;
@@ -829,6 +913,17 @@ class SmartWidget(QWidget):
 
     # Методы для перемещения окна
     def mousePressEvent(self, event):
+        if not self.is_compact:
+            if event.button() == Qt.MouseButton.LeftButton:
+                pos = event.position().toPoint()
+                self.drag_direction = self.get_cursor_region(pos)
+                
+                if self.drag_direction != "center":
+                    self.dragging = True
+                    self.drag_position = event.globalPosition().toPoint()
+                    self.initial_geometry = self.geometry()
+                    self.reached_min_size = False
+
         if event.button() == Qt.MouseButton.LeftButton and not getattr(self, 'is_locked', 0):
             self.old_pos = event.globalPos()
             self.is_dragging = False
@@ -840,6 +935,27 @@ class SmartWidget(QWidget):
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        
+        if not self.is_compact:
+            pos = event.position().toPoint()
+            region = self.get_cursor_region(pos)
+            
+            cursor_map = {
+                "top": Qt.CursorShape.SizeVerCursor,
+                "bottom": Qt.CursorShape.SizeVerCursor,
+                "left": Qt.CursorShape.SizeHorCursor,
+                "right": Qt.CursorShape.SizeHorCursor,
+                "top-left": Qt.CursorShape.SizeFDiagCursor,
+                "top-right": Qt.CursorShape.SizeBDiagCursor,
+                "bottom-left": Qt.CursorShape.SizeBDiagCursor,
+                "bottom-right": Qt.CursorShape.SizeFDiagCursor,
+                "center": Qt.CursorShape.ArrowCursor
+            }
+            self.setCursor(cursor_map.get(region, Qt.CursorShape.ArrowCursor))
+            
+            if self.dragging and self.drag_direction != "center":
+                self.handle_resize(event.globalPosition().toPoint())
+
         if event.buttons() & Qt.LeftButton:
             if hasattr(self, 'old_pos') and self.old_pos and not getattr(self, 'is_locked', 0):
                 delta = event.globalPos() - self.old_pos
@@ -858,6 +974,12 @@ class SmartWidget(QWidget):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        self.dragging = False
+        self.drag_direction = None
+        self.initial_geometry = None
+        self.reached_min_size = False
+        self.setCursor(Qt.CursorShape.ArrowCursor)
+        
         if event.button() == Qt.MouseButton.LeftButton:
             self.finish_dragging()
             event.accept()
@@ -1113,11 +1235,9 @@ class SmartWidget(QWidget):
             self.audio_widget.show()
             self.clock_mini.show()
             self.clock_widget.hide()
-
         else:
             self.tab_widget.show()
             self.relayout_buttons(vertical=False)
-
             self.audio_widget.hide()
             self.clock_mini.hide()
             self.clock_widget.show()
@@ -1177,7 +1297,7 @@ class SmartWidget(QWidget):
             self.hide_main_btns()
 
     def hide_main_btns(self):
-        """Переключает компактный режим по высоте (только для скрытия кнопок)"""
+        """Переключает компактный режим по высоте"""
         try:
             self.hide_timer.stop()
 
@@ -1186,44 +1306,70 @@ class SmartWidget(QWidget):
 
             old_geometry = self.geometry()
 
-            if not hasattr(self, 'is_height_compact'):
-                self.is_height_compact = False
+            buttons_height = 0
+            if hasattr(self, 'buttons_widget'):
+                buttons_height = self.buttons_widget.height()
+                if buttons_height == 0:
+                    buttons_height = self.buttons_widget.sizeHint().height()
+                if buttons_height == 0:
+                    buttons_height = 50
 
-            if self.is_height_compact:
-                self.buttons_widget.show()
-            else:
-                self.buttons_widget.hide()
-
-            # Переключаем состояние
             self.is_height_compact = not self.is_height_compact
+            
+            if hasattr(self, 'buttons_widget'):
+                if self.is_height_compact:
+                    self.buttons_widget.hide()
+                else:
+                    self.buttons_widget.show()
 
-            # Обновляем кнопку (блокируя сигналы чтобы не было рекурсии)
             if hasattr(self, 'hide_btns'):
                 self.hide_btns.blockSignals(True)
                 self.hide_btns.setChecked(self.is_height_compact)
                 self.hide_btns.blockSignals(False)
 
-            # Сохраняем правый край и ширину
-            new_width = old_geometry.width()
+            if self.is_compact:
+                self.bottom_spacer.changeSize(5, 5, 
+                                     QSizePolicy.Policy.Minimum, 
+                                     QSizePolicy.Policy.Expanding)
+            else:
+                self.bottom_spacer.changeSize(5, 5, 
+                                     QSizePolicy.Policy.Minimum, 
+                                     QSizePolicy.Policy.Minimum)
+
+            if self.is_compact:
+                if self.is_height_compact:
+                    new_height = old_geometry.height() - buttons_height
+                    min_height = 112
+                    if new_height < min_height:
+                        new_height = min_height
+                else:
+                    new_height = old_geometry.height() + buttons_height
+            else:
+                new_height = old_geometry.height()
+
             new_x = old_geometry.x()
+            new_y = old_geometry.y()
+            
+            if new_height != old_geometry.height():
+                self.animation = QPropertyAnimation(self, b"geometry")
+                self.animation.setDuration(300)
+                self.animation.setStartValue(old_geometry)
+                self.animation.setEndValue(QRect(new_x, new_y, old_geometry.width(), new_height))
+                self.animation.setEasingCurve(QEasingCurve.Type.InBack)
 
-            # Анимация изменения высоты
-            self.animation = QPropertyAnimation(self, b"geometry")
-            self.animation.setDuration(300)
-            self.animation.setStartValue(old_geometry)
-            self.animation.setEndValue(QRect(new_x, old_geometry.y(), new_width, 112))
-            self.animation.setEasingCurve(QEasingCurve.Type.InBack)
+                def on_animation_finished():
+                    self.save_state()
 
-            def on_animation_finished():
+                self.animation.finished.connect(on_animation_finished)
+                self.animation.start()
+            else:
                 self.save_state()
-
-            self.animation.finished.connect(on_animation_finished)
-            self.animation.start()
+            
             if not self.is_height_compact:
                 QTimer.singleShot(1000, self.start_hide_countdown)
 
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в toggle_compact_height_mode: {e}")
+            debuglog.error(f"[PANEL] Ошибка в hide_main_btns: {e}")
 
     def resize_widget(self):
         """Переключает между компактным и нормальным режимом"""

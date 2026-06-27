@@ -113,7 +113,6 @@ class SpeechHookManagerWidget(QWidget):
             with open(self.default_path, 'r', encoding='utf-8') as f:
                 self.default_keywords = json.load(f)
         else:
-            # Если файла нет, создаем из переменных (временное решение)
             self.create_default_file()
             
         # Загружаем пользовательские значения
@@ -126,7 +125,7 @@ class SpeechHookManagerWidget(QWidget):
             self.save_user_keywords()
             
     def create_default_file(self):
-        """Создает дефолтный файл (временно, пока не перенесете переменные)"""
+        """Создает дефолтный файл"""
         self.default_keywords = default_keywords_data
 
         with open(self.default_path, 'w', encoding='utf-8') as f:
