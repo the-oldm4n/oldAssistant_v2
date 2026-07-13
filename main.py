@@ -66,7 +66,7 @@ mygui_config.configure(colors_path=style_path,
                  presets_path=get_path("bin", "color_presets"), 
                  custom_presets_path=get_path("user_data", "presets"),
                  custom_selectors=get_path("bin", "custom_selectors.json"))
-from mygui import main_apply_colors, color_signal, VersionLabel, CustomSvgWidget, \
+from mygui import main_apply_colors, color_signal, sidebar_animated_signal, VersionLabel, CustomSvgWidget, \
     AnimatedSidebar, ColorSettingsWindow, SVGProgressBar
 main_apply_colors.init()
 
@@ -99,7 +99,7 @@ from bin.update_dialog import UpdateApp
 
 
 build_ini = get_config_value("app", "build")
-version_file = "3.0.6"
+version_file = "3.0.7"
 update_version(version_file)
 
 
@@ -162,6 +162,7 @@ class Assistant(QMainWindow):
         self.stop_checking = False
         self.count = 0
         color_signal.color_changed.connect(self.apply_styles)
+        sidebar_animated_signal.update_delay.connect(self.update_sidebar_delay)
         gui_signals.open_widget_signal.connect(self.open_widget)
         gui_signals.close_widget_signal.connect(self.close_widget)
         self.supply_notice_signal.connect(self._handle_supply_notice)
@@ -462,6 +463,10 @@ class Assistant(QMainWindow):
         self.input_device_name = self.settings.get("input_device_name", None)
         self.is_snow = self.settings.get("is_snow", False)
         self.is_garland = self.settings.get("is_garland", False)
+        self.sidebar_delay = self.settings.get("sidebar_delay", 300)
+
+        if mygui_config:
+            mygui_config.update('sidebar_delay', self.sidebar_delay)
 
     def install_icons(self):
         self.icon_main_path = get_path("bin", "icons", "nine_dots.svg")
@@ -863,13 +868,6 @@ class Assistant(QMainWindow):
         for child in widget.findChildren(QWidget):
             child.setMouseTracking(True)
             
-    # def setup_mouse_tracking_for_children(self, widget):
-    #     """Рекурсивно устанавливает mouse tracking для всех дочерних виджетов"""
-    #     widget.setMouseTracking(True)
-    #     for child in widget.findChildren(QWidget):
-    #         child.setMouseTracking(True)
-    #         self.setup_mouse_tracking_for_children(child)
-            
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
             pos = event.position().toPoint()
@@ -977,6 +975,9 @@ class Assistant(QMainWindow):
             
         if hasattr(self, 'garland_decorator') and self.garland_decorator:
             self.garland_decorator.update_size(self.width())
+
+        if sidebar_animated_signal:
+            sidebar_animated_signal.update_overlay.emit()
                    
     def install_event_filter_recursive(self, widget):
         """Рекурсивно устанавливает event filter для виджета и всех его детей"""
@@ -1176,6 +1177,11 @@ class Assistant(QMainWindow):
                 self.snow_on_background.show()
             else:
                 self.snow_on_background.hide()
+
+    def update_sidebar_delay(self, delay):
+        if isinstance(delay, int):
+            self.sidebar_delay = delay
+            self.save_settings(notif=False)
 
     # def hide_layout(self, layout):
     #     """Скрывает все виджеты в layout"""
@@ -1830,7 +1836,7 @@ class Assistant(QMainWindow):
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
-    def save_settings(self):
+    def save_settings(self, notif=True):
         """Сохраняет настройки в файл settings.json."""
         settings_data = {
             "voice": self.speaker,
@@ -1849,7 +1855,8 @@ class Assistant(QMainWindow):
             "input_device_id": self.input_device_id,
             "input_device_name": self.input_device_name,
             "is_snow": self.is_snow,
-            "is_garland": self.is_garland
+            "is_garland": self.is_garland,
+            "sidebar_delay": self.sidebar_delay
         }
         try:
             os.makedirs(os.path.dirname(self.settings_file_path), exist_ok=True)
@@ -1865,8 +1872,8 @@ class Assistant(QMainWindow):
             set_config_value("app", "build", f"{value}")
 
             self.commands_manager.update_vaults()  # Синхронизация настроек в менеджере команд
-
-            self.show_toast("Настройки сохранены!")
+            if notif:
+                self.show_toast("Настройки сохранены!")
             debuglog.debug("[MAIN] Настройки сохранены.")
         except Exception as e:
             logger.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
@@ -1896,10 +1903,10 @@ class Assistant(QMainWindow):
                 "input_device_id": None,
                 "input_device_name": None,
                 "is_snow": True,
-                "is_garland": True
+                "is_garland": True,
+                "sidebar_delay": 300
             }
 
-        # Загружаем текущие настройки
         if os.path.exists(settings_file):
             with open(settings_file, "r", encoding="utf-8") as file:
                 try:
@@ -1909,14 +1916,12 @@ class Assistant(QMainWindow):
         else:
             settings = {}
 
-        # Обновляем настройки, если ключи отсутствуют
         updated = False
         for key, value in default_settings.items():
             if key not in settings:
                 settings[key] = value
                 updated = True
 
-        # Сохраняем обновленные настройки, если они изменились
         if updated:
             with open(settings_file, "w", encoding="utf-8") as file:
                 json.dump(settings, file, ensure_ascii=False, indent=4)

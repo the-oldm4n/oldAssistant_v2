@@ -1,11 +1,11 @@
 {
     "window_position": {
-        "x": 2431,
-        "y": 502
+        "x": 2378,
+        "y": 368
     },
     "window_size": {
-        "width": 91,
-        "height": 115
+        "width": 87,
+        "height": 121
     },
     "delay": 1.0,
     "is_autohide": true,
@@ -22,9 +22,9 @@
         "links_check": true,
         "resize_check": true,
         "custom_xuingc99": true,
-        "custom_v7znfge9": false
+        "custom_v7znfge9": true
     },
-    "font_family": "michroma",
+    "font_family": "bruno_ace",
     "default_buttons": {
         "turnoff_check": {
             "tooltip": "\u0412\u044b\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435 \u043a\u043e\u043c\u043f\u044c\u044e\u0442\u0435\u0440\u0430",

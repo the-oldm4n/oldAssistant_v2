@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mygui
-Version: 1.0.9
+Version: 1.0.10
 Summary: Библиотека кастомных виджетов на PySide6
 Author: Andrey
 Requires-Python: >=3.9

@@ -13,6 +13,9 @@ class SidebarAnimatedSignal(QObject):
     """Сигналы для анимации боковой панели"""
     is_animating = Signal(bool)
     request_unfreeze = Signal()
+    update_delay = Signal(int)
+    update_overlay = Signal()
+
 
 # Глобальные экземпляры сигналов
 color_signal = ColorSignal()

@@ -18,6 +18,7 @@ class MyGUIConfig:
             self._custom_presets_path = None
             self._icons_path = None
             self._custom_selectors = None
+            self._sidebar_delay = 300
             self._initialized = True
     
     def configure(
@@ -26,7 +27,8 @@ class MyGUIConfig:
         presets_path: Optional[str] = None,
         custom_presets_path: Optional[str] = None,
         icons_path: Optional[str] = None,
-        custom_selectors: Optional[str] = None
+        custom_selectors: Optional[str] = None,
+        sidebar_delay: Optional[int] = 300,
     ):
         """Однократная настройка библиотеки"""
         if colors_path is not None:
@@ -43,6 +45,33 @@ class MyGUIConfig:
 
         if custom_selectors is not None:
             self._custom_selectors = custom_selectors
+
+        if sidebar_delay is not None:
+            self._sidebar_delay = sidebar_delay
+
+    def update(self, property_name: str, value):
+        """Обновление любого свойства конфига с валидацией"""
+        allowed_properties = {
+            '_colors_path': str,
+            '_presets_path': (str, type(None)),
+            '_custom_presets_path': (str, type(None)),
+            '_icons_path': (str, type(None)),
+            '_custom_selectors': (str, type(None)),
+            '_sidebar_delay': int,
+        }
+
+        internal_name = f"_{property_name}"
+
+        if internal_name not in allowed_properties:
+            raise AttributeError(f"Property '{property_name}' does not exist")
+
+        expected_types = allowed_properties[internal_name]
+        if not isinstance(value, expected_types):
+            raise TypeError(
+                f"Property '{property_name}' expects {expected_types}, got {type(value)}"
+            )
+
+        setattr(self, internal_name, value)
     
     @property
     def colors_path(self) -> str:
@@ -67,6 +96,10 @@ class MyGUIConfig:
     @property
     def custom_selectors(self) -> Optional[str]:
         return self._custom_selectors
+    
+    @property
+    def sidebar_delay(self) -> Optional[int]:
+        return self._sidebar_delay
 
 
 mygui_config = MyGUIConfig()

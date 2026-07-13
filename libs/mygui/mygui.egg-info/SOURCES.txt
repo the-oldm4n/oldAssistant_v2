@@ -21,6 +21,7 @@ mygui/dialogs/settings_widgets/all_styles_widget.py
 mygui/dialogs/settings_widgets/background_widget.py
 mygui/dialogs/settings_widgets/border_widget.py
 mygui/dialogs/settings_widgets/buttons_widget.py
+mygui/dialogs/settings_widgets/other_settings_widget.py
 mygui/dialogs/settings_widgets/radius_widget.py
 mygui/dialogs/settings_widgets/svg_widget.py
 mygui/dialogs/settings_widgets/text_widget.py
@@ -35,6 +36,7 @@ mygui/resources/icons/border-icon.svg
 mygui/resources/icons/btn-icon.svg
 mygui/resources/icons/close.svg
 mygui/resources/icons/radius-icon.svg
+mygui/resources/icons/settings-icon.svg
 mygui/resources/icons/styles-icon.svg
 mygui/resources/icons/svg-icon.svg
 mygui/resources/icons/text-icon.svg

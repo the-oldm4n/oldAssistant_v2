@@ -3,7 +3,7 @@ from mygui import main_apply_colors
 from mygui import CustomSvgWidget
 from log_config import logger
 from path_builder import get_path
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt, QRect
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt, QRect, QEvent
 from PySide6.QtWidgets import (QLabel, QGraphicsColorizeEffect, QHBoxLayout, QWidget, QVBoxLayout,
                                QDialog, QMessageBox, QPushButton)
 
@@ -38,10 +38,15 @@ class ToastNotif(QWidget):
         self.geo_anim = QPropertyAnimation(self, b"geometry")
         self.geo_anim.setDuration(400)
         self.geo_anim.setEasingCurve(QEasingCurve.Type.OutBack)
+        self.geo_anim.finished.connect(self._on_animation_finished)
 
         self.timer = QTimer()
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(self.hide_animated)
+
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def init_ui(self):
         layout = QVBoxLayout(self)
@@ -64,16 +69,25 @@ class ToastNotif(QWidget):
         self.color_svg = QGraphicsColorizeEffect()
         self.svg_image.setGraphicsEffect(self.color_svg)
         content_layout.addWidget(self.svg_image, alignment=Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignRight)
-        
-        # Текст
-        self.message = QLabel(self.message)
-        self.message.setWordWrap(True)
-        self.message.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.message.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        content_layout.addWidget(self.message, stretch=1)
+
+        self.message_content = QLabel(self.message)
+        self.message_content.setWordWrap(True)
+        self.message_content.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.message_content.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        content_layout.addWidget(self.message_content, stretch=1)
         
         container_layout.addWidget(content)
         layout.addWidget(container)
+
+        for child in self.findChildren(QWidget):
+            child.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        """Фильтр событий для перехвата кликов на дочерних виджетах"""
+        if event.type() == QEvent.Type.MouseButtonDblClick:
+            self.mouseDoubleClickEvent(event)
+            return True
+        return super().eventFilter(obj, event)
 
     def apply_styles(self):
         try:
@@ -140,10 +154,30 @@ class ToastNotif(QWidget):
         current_geo = self.geometry()
         end_geo = QRect(end_x, end_y, self.width(), self.height())
         
+        try:
+            self.geo_anim.finished.disconnect(self._on_animation_finished)
+        except:
+            pass
+        
         self.geo_anim.setStartValue(current_geo)
         self.geo_anim.setEndValue(end_geo)
-
+        
+        self.geo_anim.finished.connect(self._on_hide_animation_finished)
         self.geo_anim.start()
+
+    def _on_hide_animation_finished(self):
+        """Обработчик завершения анимации скрытия"""
+        try:
+            self.geo_anim.finished.disconnect(self._on_hide_animation_finished)
+        except:
+            pass
+
+        self.hide()
+        self.geo_anim.finished.connect(self._on_animation_finished)
+        self.deleteLater()
+        
+        if ToastNotif._active_toast is self:
+            ToastNotif._active_toast = None
 
     def close_immediately(self):
         """Полное закрытие"""     
@@ -159,6 +193,13 @@ class ToastNotif(QWidget):
 
         if self.timer.isActive():
             self.timer.stop()
+
+    def _on_animation_finished(self):
+        """Обработчик завершения анимации"""
+        if not self.isVisible():
+            self.deleteLater()
+            if ToastNotif._active_toast is self:
+                ToastNotif._active_toast = None
 
 
 class SimpleNotif():

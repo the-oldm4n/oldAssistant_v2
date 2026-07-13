@@ -304,6 +304,10 @@ class AuthManager:
             if response.status_code == 200:
                 data = response.json()
                 if data.get('success'):
+                    new_token = data.get('new-token', None)
+                    if new_token:
+                        self.token = new_token
+                        self._save_auth_data()
                     self.user_data = data['user']
                     debuglog.info(f"[AUTH] Обновлены данные пользователя: {self.user_data['username']}")
                     return True, "Токен валиден"

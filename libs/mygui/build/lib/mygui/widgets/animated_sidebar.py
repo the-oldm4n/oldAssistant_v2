@@ -9,6 +9,7 @@ from PySide6.QtGui import QColor, QCursor, QBrush, QPainter, QPainterPath, QRadi
 from mygui.core.apply_color import main_apply_colors
 from mygui.core.signals import color_signal, sidebar_animated_signal
 from mygui.widgets.custom_svg import CustomSvgWidget
+from mygui.config import mygui_config
 
 
 class AnimatedSidebar(QWidget):
@@ -18,6 +19,7 @@ class AnimatedSidebar(QWidget):
                  main_window=None, is_animating=True, position="left"):
         super().__init__(parent)
         color_signal.color_changed.connect(self.set_color)
+        sidebar_animated_signal.update_overlay.connect(self.get_dim_overlay)
         self.min_width = min_width
         self.max_width = max_width
         self.position = position
@@ -82,6 +84,7 @@ class AnimatedSidebar(QWidget):
         self.create_elements()
 
     def get_dim_overlay(self):
+        self.raise_()
         if self.is_expanded:
             self.dim_overlay.setGeometry(1, 1, self.parent().width() - 2, self.parent().height() - 2)
             self.dim_overlay.show()
@@ -196,17 +199,22 @@ class AnimatedSidebar(QWidget):
         parent = self.parent()
         if not parent:
             return
+        
+        try:
+            self.geo_anim.finished.disconnect()
+        except:
+            pass
+
         group = QParallelAnimationGroup(self)
         # Снимаем ограничения
         self.setMinimumWidth(0)
         self.setMaximumWidth(16777215)  # QWIDGETSIZE_MAX
-        
+
         new_height = parent.height() - 20
         if self.position == "left":
             end_geo = QRect(1, 0, self.max_width, new_height)
         else:
             end_geo = QRect(parent.width() - self.max_width - 1, 0, self.max_width, new_height)
-        
         self.geo_anim.stop()
         self.geo_anim.setStartValue(self.geometry())
         self.geo_anim.setEndValue(end_geo)
@@ -251,6 +259,12 @@ class AnimatedSidebar(QWidget):
         parent = self.parent()
         if not parent:
             return
+        
+        try:
+            self.geo_anim.finished.disconnect()
+        except:
+            pass
+
         group = QParallelAnimationGroup(self)
         # Снимаем ограничения
         self.setMinimumWidth(0)
@@ -295,7 +309,7 @@ class AnimatedSidebar(QWidget):
     
     def enterEvent(self, event):
         self.collapse_timer.stop()
-        self.expand_timer.start(50)
+        self.expand_timer.start(mygui_config.sidebar_delay)
         super().enterEvent(event)
     
     def leaveEvent(self, event):

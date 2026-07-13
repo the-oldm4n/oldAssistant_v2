@@ -251,6 +251,10 @@ class SmartWidget(QWidget):
         self.timer_clock.timeout.connect(self.update_time)
         self.timer_clock.start(1000)
 
+        self.enter_delay_timer = QTimer()
+        self.enter_delay_timer.setSingleShot(True)
+        self.enter_delay_timer.timeout.connect(self._on_enter_delay_finished)
+
         # Менеджер состояния
         self.state_manager = WindowStateManager()
         saved_state = self.state_manager.apply_state(self)
@@ -566,11 +570,9 @@ class SmartWidget(QWidget):
     def enterEvent(self, event):
         """Курсор вошел в область виджета"""
         self.mouse_over_widget = True
-        self.hide_timer.stop()  # Останавливаем отсчет
-        
-        # Показываем кнопки если они скрыты (компактный режим)
-        if self.is_height_compact:
-            self.hide_main_btns()  # Разворачиваем панель
+        self.hide_timer.stop()
+
+        self.enter_delay_timer.start(250)
 
         self.setCursor(Qt.CursorShape.ArrowCursor)
         super().enterEvent(event)
@@ -578,6 +580,8 @@ class SmartWidget(QWidget):
     def leaveEvent(self, event):
         """Курсор вышел из области виджета"""
         self.mouse_over_widget = False
+
+        self.enter_delay_timer.stop()
         
         # Запускаем таймер автоскрытия если включено
         if (self.is_autohide and 
@@ -589,6 +593,12 @@ class SmartWidget(QWidget):
         self.setCursor(Qt.CursorShape.ArrowCursor)
         
         super().leaveEvent(event)
+
+    def _on_enter_delay_finished(self):
+        """Вызывается когда задержка при наведении прошла"""
+        if self.mouse_over_widget:
+            if self.is_height_compact:
+                self.hide_main_btns()
 
     def update_delay(self):
         state = self.state_manager.load_state()
@@ -1302,20 +1312,51 @@ class SmartWidget(QWidget):
             self.hide_timer.stop()
 
             if self.animation and self.animation.state() == QPropertyAnimation.State.Running:
+                self.setGeometry(self.animation.endValue())
                 self.animation.stop()
 
-            old_geometry = self.geometry()
+            current_geo = self.geometry()
+            current_height = current_geo.height()
 
             buttons_height = 0
             if hasattr(self, 'buttons_widget'):
-                buttons_height = self.buttons_widget.height()
-                if buttons_height == 0:
-                    buttons_height = self.buttons_widget.sizeHint().height()
-                if buttons_height == 0:
-                    buttons_height = 50
+                if self.buttons_widget.isVisible():
+                    buttons_height = self.buttons_widget.height()
+                    if buttons_height == 0:
+                        buttons_height = self.buttons_widget.sizeHint().height()
+                    if buttons_height == 0:
+                        buttons_height = 50
+
+            other_widgets_height = 0
+            for i in range(self.content_layout.count()):
+                item = self.content_layout.itemAt(i)
+                
+                if item.widget() == self.buttons_widget:
+                    continue
+                
+                if item.widget() and item.widget().isVisible():
+                    h = item.widget().height()
+                    if h == 0:
+                        h = item.widget().sizeHint().height()
+                    other_widgets_height += h
+                
+                if item.spacerItem():
+                    spacer = item.spacerItem()
+                    other_widgets_height += spacer.sizeHint().height()
+
+            margins = self.content_layout.contentsMargins()
+            other_widgets_height += margins.top() + margins.bottom()
+
+            min_height = max(other_widgets_height, 121)
+
+            if self.is_height_compact:
+                target_height = current_height + buttons_height
+            else:
+                target_height = min_height
+
 
             self.is_height_compact = not self.is_height_compact
-            
+
             if hasattr(self, 'buttons_widget'):
                 if self.is_height_compact:
                     self.buttons_widget.hide()
@@ -1327,44 +1368,36 @@ class SmartWidget(QWidget):
                 self.hide_btns.setChecked(self.is_height_compact)
                 self.hide_btns.blockSignals(False)
 
-            if self.is_compact:
-                self.bottom_spacer.changeSize(5, 5, 
-                                     QSizePolicy.Policy.Minimum, 
-                                     QSizePolicy.Policy.Expanding)
-            else:
-                self.bottom_spacer.changeSize(5, 5, 
-                                     QSizePolicy.Policy.Minimum, 
-                                     QSizePolicy.Policy.Minimum)
-
-            if self.is_compact:
-                if self.is_height_compact:
-                    new_height = old_geometry.height() - buttons_height
-                    min_height = 112
-                    if new_height < min_height:
-                        new_height = min_height
+            if hasattr(self, 'bottom_spacer'):
+                if self.is_compact and self.is_height_compact:
+                    self.bottom_spacer.changeSize(5, 5, 
+                        QSizePolicy.Policy.Minimum, 
+                        QSizePolicy.Policy.Expanding)
                 else:
-                    new_height = old_geometry.height() + buttons_height
-            else:
-                new_height = old_geometry.height()
+                    self.bottom_spacer.changeSize(5, 5, 
+                        QSizePolicy.Policy.Minimum, 
+                        QSizePolicy.Policy.Minimum)
 
-            new_x = old_geometry.x()
-            new_y = old_geometry.y()
-            
-            if new_height != old_geometry.height():
-                self.animation = QPropertyAnimation(self, b"geometry")
-                self.animation.setDuration(300)
-                self.animation.setStartValue(old_geometry)
-                self.animation.setEndValue(QRect(new_x, new_y, old_geometry.width(), new_height))
-                self.animation.setEasingCurve(QEasingCurve.Type.InBack)
+            target_geo = QRect(
+                current_geo.x(),
+                current_geo.y(),
+                current_geo.width(),
+                target_height
+            )
 
-                def on_animation_finished():
-                    self.save_state()
+            self.animation = QPropertyAnimation(self, b"geometry")
+            self.animation.setDuration(300)
+            self.animation.setStartValue(current_geo)
+            self.animation.setEndValue(target_geo)
+            self.animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
 
-                self.animation.finished.connect(on_animation_finished)
-                self.animation.start()
-            else:
+            def on_finished():
+                self.setGeometry(target_geo)
                 self.save_state()
-            
+
+            self.animation.finished.connect(on_finished)
+            self.animation.start()
+
             if not self.is_height_compact:
                 QTimer.singleShot(1000, self.start_hide_countdown)
 

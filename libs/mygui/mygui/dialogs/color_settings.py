@@ -14,6 +14,7 @@ from mygui.dialogs.settings_widgets.all_styles_widget import AllStylesWidget
 from mygui.dialogs.settings_widgets.background_widget import BackgroundWidget
 from mygui.dialogs.settings_widgets.border_widget import BorderWidget
 from mygui.dialogs.settings_widgets.buttons_widget import ButtonsWidget
+from mygui.dialogs.settings_widgets.other_settings_widget import OtherSettingsWidget
 from mygui.dialogs.settings_widgets.radius_widget import RadiusWidget
 from mygui.dialogs.settings_widgets.svg_widget import SvgWidget
 from mygui.dialogs.settings_widgets.text_widget import TextWidget
@@ -100,6 +101,7 @@ class ColorSettingsWindow(QMainWindow):
         self.icon_buttons_path = os.path.join(ICONS, "btn-icon.svg")
         self.icon_svg_path = os.path.join(ICONS, "svg-icon.svg")
         self.icon_radius_path = os.path.join(ICONS, "radius-icon.svg")
+        self.icon_settings_path = os.path.join(ICONS, "settings-icon.svg")
         self.icon_close_path = os.path.join(ICONS, "close.svg")
 
     def apply_styles(self):
@@ -203,6 +205,7 @@ class ColorSettingsWindow(QMainWindow):
         self.svg_widget = SvgWidget(self)
         self.border_widget = BorderWidget(self)
         self.radius_widget = RadiusWidget(self)
+        self.other_settings = OtherSettingsWidget(self)
         
         self.content_container.add_page(self.all_styles_widget)
         self.content_container.add_page(self.background_widget)
@@ -211,8 +214,8 @@ class ColorSettingsWindow(QMainWindow):
         self.content_container.add_page(self.svg_widget)
         self.content_container.add_page(self.border_widget)
         self.content_container.add_page(self.radius_widget)
+        self.content_container.add_page(self.other_settings)
         
-
         buttons_data = [
             {
                 "key": "all_styles",
@@ -269,6 +272,14 @@ class ColorSettingsWindow(QMainWindow):
                 "tooltip": "Радиус скругления",
                 "index": 6,
                 "widget": self.radius_widget
+            },
+            {
+                "key": "other",
+                "text": "Прочее",
+                "icon_path": self.icon_settings_path,
+                "tooltip": "Прочие настройки",
+                "index": 7,
+                "widget": self.other_settings
             }
         ]
         
