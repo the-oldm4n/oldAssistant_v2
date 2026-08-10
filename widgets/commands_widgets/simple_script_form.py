@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWi
 from PySide6.QtCore import Signal, QTimer, Qt, QRegularExpression
 from bin.commands_manager import main_commands_manager
 from mygui import CustomSvgWidget, main_apply_colors
-from bin.lists import setup_custom_font_label
+from bin.utils import setup_custom_font_label
 from bin.signals import commands_signal
 from log_config import debuglog
 from path_builder import get_path

@@ -1,6 +1,6 @@
 import json
 import os
-from bin.lists import setup_custom_font_label
+from bin.utils import setup_custom_font_label
 from bin.speak_functions import thread_react
 from log_config import logger, debuglog
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget, QLineEdit, QComboBox, QSlider, QFileDialog
@@ -216,8 +216,8 @@ class SettingsWidget(QWidget):
             "is_censored": True,
             "volume_assist": 0.15,
             "run_updater": True,
-            "minimize_to_tray": False,
-            "is_start_win": True,
+            "is_min_tray": False,
+            "autostart_app": False,
             "is_widget": True,
             "is_keep_watch": False,
             "input_device_id": None,

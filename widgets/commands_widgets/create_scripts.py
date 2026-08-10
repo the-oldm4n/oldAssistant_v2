@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 import uuid
 import time
 import subprocess
-from bin.stacked_widget import SlidingStackedWidget
+from bin.base_modules.stacked_widget import SlidingStackedWidget
 from widgets.commands_widgets.simple_script_form import SimpleScriptForm
 import win32com.client
 from PySide6.QtGui import QFont, QRegularExpressionValidator
@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWi
 from PySide6.QtCore import Signal, QTimer, Qt, QStringListModel, QRegularExpression
 from bin.commands_manager import main_commands_manager
 from mygui import CustomSvgWidget, main_apply_colors, color_signal
-from bin.lists import setup_custom_font_label
+from bin.utils import setup_custom_font_label
 from bin.shortcut_monitor import ShortcutMonitor
 from bin.signals import commands_signal
 from log_config import debuglog

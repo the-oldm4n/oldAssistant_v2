@@ -3,14 +3,12 @@ version_file = 'F:/PyCharmProjects/voxodium/update_app/version.txt'
 
 block_cipher = None
 
-# Главные файлы проекта (сборка в один файл)
 main_script = 'update_app/update.py'
 additional_files = [
-    ('F:/PyCharmProjects/voxodium/update_app/for_gui', 'for_gui'),
-    ('F:/PyCharmProjects/voxodium/update_app/icons', 'icons'),
-    ('F:/PyCharmProjects/voxodium/update_app/check_and_download.py', '.'),
-    ('F:/PyCharmProjects/voxodium/update_app/color.json', '.'),
+    ('F:/PyCharmProjects/voxodium/update_app/bin', 'bin'),
+    ('F:/PyCharmProjects/voxodium/update_app/colors.json', '.'),
     ('F:/PyCharmProjects/voxodium/update_app/config.py', '.'),
+    ('F:/PyCharmProjects/voxodium/update_app/log_config.py', '.'),
     ('F:/PyCharmProjects/voxodium/update_app/icon.ico', '.'),
     ('F:/PyCharmProjects/voxodium/update_app/utils.py', '.'),
     ('F:/PyCharmProjects/voxodium/update_app/version.txt', '.'),

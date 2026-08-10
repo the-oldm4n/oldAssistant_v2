@@ -1,6 +1,7 @@
 import json
 import os
-from bin.lists import default_keywords_data, setup_custom_font_label
+from bin.lists import default_keywords_data
+from bin.utils import setup_custom_font_label
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget,\
     QDialog, QMenu, QMessageBox, QLineEdit, QComboBox, QListWidget, QScrollArea, QFrame, QListWidgetItem
 from PySide6.QtCore import Qt

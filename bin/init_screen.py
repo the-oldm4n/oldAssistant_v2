@@ -5,7 +5,7 @@ import pyaudio
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QApplication, QWidget,\
     QDialog, QGraphicsColorizeEffect, QSizePolicy, QMessageBox
 from PySide6.QtCore import Signal, QTimer, Qt, QThread
-from bin.notification_widget import SimpleNotif
+from bin.base_modules.toast_notification import SimpleNotif
 from mygui import main_apply_colors, CustomSvgWidget, SVGProgressBar
 from path_builder import get_app_data_dir, get_path
 from log_config import debuglog

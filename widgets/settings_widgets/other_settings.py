@@ -2,7 +2,7 @@ import os
 import sounddevice as sd
 import winshell
 from mygui import  CustomToggle
-from bin.lists import setup_custom_font_label
+from bin.utils import setup_custom_font_label
 from path_builder import get_full_filepath
 from log_config import  debuglog
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget, QComboBox
@@ -63,8 +63,8 @@ class OtherSettingsWidget(QWidget):
 
             self.start_win_check = CustomToggle("Запуск с Windows")
             self.start_win_check.setStyleSheet("background: transparent;")
-            self.start_win_check.setChecked(self.main.is_start_win)
-            self.start_win_check.stateChanged.connect(self.main.is_start_win_win)
+            self.start_win_check.setChecked(self.main.autostart_app)
+            self.start_win_check.stateChanged.connect(self.main.autostart_manager.toggle_autostart_win)
             self.start_win_check.setProperty("helpId", "start_win_check")
             layout.addWidget(self.start_win_check)
 

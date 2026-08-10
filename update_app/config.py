@@ -1,5 +1,10 @@
+# -----------------------------------------
+    # CHECK VALUES APP_NAME AND OTHER, ICON.ICO AND LOGO-APP.SVG
+# -----------------------------------------
+
 import configparser
 import os
+import socket
 import sys
 from pathlib import Path
 import requests
@@ -10,11 +15,35 @@ app_name = "Voxodium"
 base_name = "Voxodium.exe"
 update_name = "Voxodium-new.exe"
 user_agent = "VOXODIUM"
+prefix_url = "voxodium"
+session_app_id = "voxodium_updater"
 
-sub_path = "voxodium"
+_domain_cache = None
 
-domain = "https://owl-app.ru"
-# domain = "http://127.0.0.1:5000"
+def is_local_server_running(host='127.0.0.1', port=5000, timeout=0.3):
+    """Проверяет, открыт ли порт на локалке"""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except (socket.timeout, ConnectionRefusedError, OSError):
+        return False
+
+def get_domain():
+    global _domain_cache
+    if _domain_cache:
+        return _domain_cache
+    
+    local_url = "http://127.0.0.1:5000"
+    main_url = "https://owl-app.ru"
+    
+    if is_local_server_running():
+        _domain_cache = local_url
+    else:
+        _domain_cache = main_url
+    
+    return _domain_cache
+
+domain = get_domain()
 
 def get_directory():
     """Автоматически определяет корневую директорию для всех режимов"""

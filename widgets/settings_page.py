@@ -1,5 +1,5 @@
 import os
-from bin.stacked_widget import SlidingStackedWidget
+from bin.base_modules.stacked_widget import SlidingStackedWidget
 from mygui import CustomSvgWidget, color_signal
 from path_builder import get_path, get_app_data_dir
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QHBoxLayout, QWidget

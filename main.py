@@ -6,30 +6,29 @@
 import csv
 import jellyfish
 import numpy as np
-import requests
+from bin.base_modules.autostart_crossplatform import AutostartManager
+from bin.base_modules.check_auth_manager import CheckAuthManager
+from bin.base_modules.resize_manager import ResizeManager
+from bin.base_modules.update_manager import UpdateManager
 import sys
 import time
 import traceback
-from packaging import version
 import psutil
 import threading
 import sounddevice as sd
-import subprocess
 from vosk import Model, KaldiRecognizer
-from PySide6.QtGui import QCursor, QIcon, QFont, QDesktopServices, QAction, QPixmap, QPainter, QMouseEvent,\
-    QFontDatabase, QPainterPath
+from PySide6.QtGui import QCursor, QIcon, QFont, QAction, QFontDatabase
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QMainWindow, QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QApplication, QWidget,\
     QDialog, QSizePolicy, QSystemTrayIcon, QMenu, QMessageBox, QSpacerItem
-from PySide6.QtCore import Signal, QTimer, Qt, QEasingCurve, QPropertyAnimation, QRect, QEvent, QUrl, QPoint, Slot,\
-    QThreadPool
+from PySide6.QtCore import Signal, QTimer, Qt, QEvent
 
-from bin.config_manager import get_config_value, set_config_value, update_version
-from path_builder import get_app_data_dir, get_path, get_full_filepath
+from bin.base_modules.config_manager import get_config_value, set_config_value, update_version
+from path_builder import get_app_data_dir, get_path
 from log_config import logger, debuglog, get_log_path, get_debuglog_path
-from config import dev_mode, domain, skip_splash_screen, is_login_widget
+from config import dev_mode, domain, is_login_widget, skip_splash_screen
 
-from bin.exract_resourses import ensure_resources
+from bin.base_modules.exract_resourses import ensure_resources
 if not dev_mode:
     ensure_resources()
 
@@ -75,39 +74,39 @@ from widgets.others_page import OthersPage
 from widgets.settings_page import SettingsPage
 from widgets.commands_page import CommandsPage
 from bin.bluetooth_controller import bluetooth_controller
-from bin.changelog_window import ChangelogWindow
-from bin.check_update import load_changelog, VersionCheckThread
-from bin.download_thread import DownloadThread
+from bin.base_modules.changelog_window import ChangelogWindow
+
 from bin.frosted_widget import GarlandDecorator, SnowOverlay
 from bin.help_widget import HelpWidget
-from bin.login_widget import LoginWindow
-from bin.register_module import AuthManager
+from bin.base_modules.register_module import AuthManager
 from bin.screenshot_tool import SystemScreenshot
 from bin.signals import gui_signals, commands_signal, tool_widget_signal, censor_signal
-from bin.notification_widget import ToastNotif, SimpleNotif
+from bin.base_modules.toast_notification import ToastNotif, SimpleNotif
 from bin.toggle_mute_discord import ToggleMuteDiscord
 from bin.widget_window import SmartWidget
 from bin.commands_manager import main_commands_manager
 from bin.function_list_main import *
 from bin.audio_control import controller
 from bin.speak_functions import thread_play_sound, thread_react_detail, thread_react, react
-from bin.lists import get_audio_paths, commands_list, default_keywords_data, setup_global_font
+from bin.lists import get_audio_paths, commands_list, default_keywords_data
+from bin.utils import setup_global_font
 from bin.init_screen import InitScreen
-from bin.session_manager import UserSessionManager
-from bin.stacked_widget import SlidingStackedWidget
-from bin.update_dialog import UpdateApp
+from bin.base_modules.stacked_widget import SlidingStackedWidget
+from bin.base_modules.update_dialog import UpdateApp
 
 
 build_ini = get_config_value("app", "build")
-version_file = "3.0.7"
-update_version(version_file)
+current_version = "3.1.0"
+update_version(current_version)
+
+socket_name = "voxodium_app"
 
 
 def activate_existing_window():
     """Пытается отправить команду существующему приложению"""
     try:
         socket = QLocalSocket()
-        socket.connectToServer("voxodium_app")
+        socket.connectToServer(socket_name)
 
         if socket.waitForConnected(2000):
             from PySide6.QtCore import QThread
@@ -135,7 +134,7 @@ class Assistant(QMainWindow):
 Основной класс содержащий GUI и скрипт обработки команд
     """
     save_settings_signal = Signal()
-    update_checked = Signal(bool, str)
+    
     supply_notice_signal = Signal(str, bool)
     def __init__(self):
         super().__init__()
@@ -145,9 +144,15 @@ class Assistant(QMainWindow):
         tool_widget_signal.trigger_capture_area.connect(self.capture_area)
         tool_widget_signal.trigger_open_shortcuts.connect(self.open_folder_shortcuts)
         tool_widget_signal.run_command.connect(self.start_default_command)
+        color_signal.color_changed.connect(self.apply_styles)
+        sidebar_animated_signal.update_delay.connect(self.update_sidebar_delay)
+        gui_signals.open_widget_signal.connect(self.open_widget)
+        gui_signals.close_widget_signal.connect(self.close_widget)
+        self.supply_notice_signal.connect(self._handle_supply_notice)
+        commands_signal.commands_reloaded.connect(self.reload_commands)
 
         self.start_ipc_server()
-        self.version = self.get_version()
+
         self.latest_version = None
         self.current_ver = None
         self.beta_version = False
@@ -158,92 +163,98 @@ class Assistant(QMainWindow):
         self.widget_window = None
         self.snow_on_background = None
         self.garland_decorator = None
-        self.is_manual_check = False
-        self.stop_checking = False
-        self.count = 0
-        color_signal.color_changed.connect(self.apply_styles)
-        sidebar_animated_signal.update_delay.connect(self.update_sidebar_delay)
-        gui_signals.open_widget_signal.connect(self.open_widget)
-        gui_signals.close_widget_signal.connect(self.close_widget)
-        self.supply_notice_signal.connect(self._handle_supply_notice)
-        commands_signal.commands_reloaded.connect(self.reload_commands)
-        self.update_checked.connect(self.handle_update_status)
+        self.process_names = process_names
+        self.ohm_path = ohm_path
+        self.audio_stream = None
+        self.last_audio_time = None  # Время последнего НЕтихого пакета
+        self.type_version = "stable"
+
         self.main_folder_path = get_app_data_dir()
         self.log_file_path = get_log_path()
         self.debuglog_file_path = get_debuglog_path()
-        self.install_icons()
         self.changelog_file_path = changelog
-        self.process_names = process_names
-        self.ohm_path = ohm_path
+
+        self.resize_manager = ResizeManager(winsize_file=winsize_file, main_window=self)
+        # Обязательное переопределение ивентов
+        self.mousePressEvent = self.resize_manager.mousePressEvent
+        self.mouseMoveEvent = self.resize_manager.mouseMoveEvent
+        self.mouseReleaseEvent = self.resize_manager.mouseReleaseEvent
+        self.enterEvent = self.resize_manager.enterEvent
+        self.leaveEvent = self.resize_manager.leaveEvent
+
+        self.update_manager = UpdateManager(download_dir=download_dir, main_window=self)
+        
+        self.install_icons()
+
         self.style_manager = main_apply_colors
-        self.color_path = self.style_manager.color_path
-        self.styles = self.style_manager.load_styles()
         self.settings_file_path = settings_file
         self.screenshot_tool = SystemScreenshot(save_dir=folder_screenshots)
-        self.default_size = 920, 700
-        self._is_maximized = False
-        self._default_geometry = QRect(300, 200, 920, 700)
-        self._normal_geometry = None
         self.update_settings(self.settings_file_path)
         self.install_settings()
         self.commands_manager = main_commands_manager
-        self.audio_stream = None
-        self.last_audio_time = None  # Время последнего НЕтихого пакета
+        
         self.silence_timer = QTimer()  # Таймер для проверки тишины
         self.silence_timer.timeout.connect(self.check_silence_timeout)
         self.silence_timer.start(5000)
         self.bluetooth = bluetooth_controller
         self.save_settings_signal.connect(self.restart_bot) # сигнал эмитится при выборе другого устройства ввода
-        self.type_version = "stable"
+        
         self.commands = self.commands_manager.commands
         self.audio_paths = get_audio_paths(self.speaker)
         self.default_commands = commands_list
-        
-        self.session_manager = UserSessionManager()
+
         self.auth = AuthManager(domain)
         self.user_data = self.auth.user_data
 
-        self.resize_animation = QPropertyAnimation(self, b"geometry")
-        self.resize_animation.setDuration(100)
-        self.resize_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.check_auth_manager = CheckAuthManager(auth_manager=self.auth, main_window=self)
+
+        self.autostart_manager = AutostartManager(main_window=self)
+
         self.check_or_create_folders()
         
         if is_login_widget:
-            self.check_auth(self.auth)
+            self.check_auth_manager.check_auth(self.auth)
         else:
             self.check_up()
 
-    def preload_utils(self):
-        self.update_style_list() # Внутри вызывается apply_styles
-        self.check_autostart()
-        self.check_keywords_file()
-        self.toggle_update_button()
-
     def check_up(self):
+        if not skip_splash_screen:
+            self.start_splash_screen()
+        else:
+            self.post_check_up()
+
+    def post_check_up(self):
         self.init_ui()
         self.preload_utils()
         self.content_container.current_changed.connect(self.on_page_changed)
         self.on_page_changed(0)
         self.check_start_widget()
-        self.load_window_settings()
-        # Прятать ли программу в трей
+        self.resize_manager.load_window_settings()
+
         if self.is_min_tray:
-            # Показ окна при первом запуске(для отладки)
             if self.first_run:
                 self.preload_window()
         else:
             self.showNormal()
+
         if self.user_data:
-            self.update_user_profile()
+            self.check_auth_manager.update_user_profile()
+
         if self.apply_keywords_for_values():
             self.run_assist()
 
-        QTimer.singleShot(5000, lambda: self.check_update_app())
+        QTimer.singleShot(5000, self.update_manager.check_update_app)
+
+    def preload_utils(self):
+        self.update_style_list() # Внутри вызывается apply_styles
+        self.autostart_manager.check_autostart()
+        self.check_keywords_file()
+        self.toggle_update_button()
 
     def handle_init_result(self, success):
         """Обработчик результата инициализации"""
         if success:
-            self.check_up()
+            self.post_check_up()
 
     def start_splash_screen(self):
         try:
@@ -259,192 +270,108 @@ class Assistant(QMainWindow):
         # change_color.update_all_styles()
         self.apply_styles()
 
-    def open_login(self, message=""):
+    def load_settings(self):
+        """Загружает настройки из settings.json."""
         try:
-            self.login_window = LoginWindow(auth=self.auth, message=message)
-            self.login_window.setWindowModality(Qt.WindowModality.ApplicationModal)
-            self.login_window.show()
-            
-            self.login_window.login_successful.connect(self.on_login_success)
-            self.login_window.login_cancelled.connect(self.on_login_cancelled)
-            
-        except Exception as e:
-            logger.error(f"[MAIN] Ошибка при запуске окна авторизации: {e}")
+            with open(self.settings_file_path, 'r', encoding='utf-8') as file:
+                return json.load(file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return {}
 
-    def on_login_success(self):
-        """Обработка успешного логина"""
-        try:
-            if self.auth.is_guest():
-                self.session_manager.set_local_session()
-            elif self.auth.user_data:
-                username = self.auth.user_data['username']
-                self.session_manager.set_user_session(username)
-            else:
-                raise RuntimeError("Неизвестное состояние авторизации")
-
-            self.set_user_data(self.auth.user_data)
-            
-            if not skip_splash_screen:
-                self.start_splash_screen()
-            else:
-                self.check_up()
-        except ValueError as e:
-            self.show_message(str(e), "Ошибка", "error")
-            self.open_login()
-
-    def on_login_cancelled(self):
-        """Обработка отмены логина"""
-        debuglog.info("[MAIN] Логин отменен")
-        self.cleanup_before_exit()
-        
-    def check_auth(self, auth):
-        self.auth = auth
-
-        status, message = self.auth.is_authenticated()
-        if status:
-            if self.auth.is_guest():
-                debuglog.info("[MAIN] Автоматический вход: Гость")
-                self.session_manager.set_local_session()
-            else:
-                debuglog.info(f"[MAIN] Автоматический вход: {self.auth.user_data['username']}")
-                self.session_manager.set_user_session(self.auth.user_data['username'])
-            
-            self.set_user_data(self.auth.user_data)
-
-            if not skip_splash_screen:
-                self.start_splash_screen()
-            else:
-                self.check_up()
-        else:
-           self.open_login(message)
-
-    def get_version(self):
-        vers_on_ini = get_config_value("app", "version")
-
-        if not vers_on_ini or vers_on_ini != version_file:
-            set_config_value("app", "version", f"{version_file}")
-            return version_file
-        return version_file
-
-    def get_cursor_region(self, pos):
-        """Определяем область курсора для изменения размера"""
-        width = self.width()
-        height = self.height()
-        x, y = pos.x(), pos.y()
-
-        if self._is_maximized:
-            return "center"
-        
-        if x <= self.margin and y <= self.margin:
-            return "top-left"
-        elif x >= width - self.margin and y <= self.margin:
-            return "top-right"
-        elif x <= self.margin and y >= height - self.margin:
-            return "bottom-left"
-        elif x >= width - self.margin and y >= height - self.margin:
-            return "bottom-right"
-        elif x <= self.margin:
-            return "left"
-        elif x >= width - self.margin:
-            return "right"
-        elif y <= self.margin:
-            return "top"
-        elif y >= height - self.margin:
-            return "bottom"
-        else:
-            return "center"
-
-    def title_bar_mouse_press(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            global_pos = event.globalPosition().toPoint()
-            window_pos = self.mapFromGlobal(global_pos)
-            region = self.get_cursor_region(window_pos)
-
-            if self._is_maximized and region == "center":
-                self.dragging_maximized = True
-                self.drag_start_pos = global_pos
-                self.drag_start_geometry = self.geometry()
-                self._drag_click_offset = None
-                event.accept()
-                return
-
-            if region in ["top", "top-left", "top-right", "left", "right"]:
-                self.drag_direction = region
-                self.dragging = True
-                self.drag_position = global_pos
-                self.initial_geometry = self.geometry()
-            elif region == "center":
-                self.drag_pos = global_pos - self.frameGeometry().topLeft()
-            event.accept()
-
-    def title_bar_mouse_move(self, event):
-        global_pos = event.globalPosition().toPoint()
-        window_pos = self.mapFromGlobal(global_pos)
-        region = self.get_cursor_region(window_pos)
-
-        if hasattr(self, 'dragging_maximized') and self.dragging_maximized:
-            if event.buttons() == Qt.MouseButton.LeftButton:
-                if self._drag_click_offset is None:
-                    rel_x = (self.drag_start_pos.x() - self.drag_start_geometry.x()) / self.drag_start_geometry.width()
-                    rel_y = (self.drag_start_pos.y() - self.drag_start_geometry.y()) / self.drag_start_geometry.height()
-                    self._drag_click_offset = (rel_x, rel_y)
-
-                self.toggle_maximize(animate=False)
-                
-                if not self._is_maximized:
-                    current_geo = self.geometry()
-
-                    new_x = global_pos.x() - int(current_geo.width() * self._drag_click_offset[0])
-                    new_y = global_pos.y() - int(current_geo.height() * self._drag_click_offset[1])
-                    
-                    self.move(new_x, new_y)
-   
-                    self.drag_pos = global_pos - self.frameGeometry().topLeft()
-                    self.dragging_maximized = False
-                    self._drag_click_offset = None
-            return
-
-        cursor_map = {
-            "top": Qt.CursorShape.SizeVerCursor,
-            "bottom": Qt.CursorShape.SizeVerCursor,
-            "left": Qt.CursorShape.SizeHorCursor,
-            "right": Qt.CursorShape.SizeHorCursor,
-            "top-left": Qt.CursorShape.SizeFDiagCursor,
-            "top-right": Qt.CursorShape.SizeBDiagCursor,
-            "bottom-left": Qt.CursorShape.SizeBDiagCursor,
-            "bottom-right": Qt.CursorShape.SizeFDiagCursor,
-            "center": Qt.CursorShape.ArrowCursor
+    def save_settings(self, notif=True):
+        """Сохраняет настройки в файл settings.json."""
+        settings_data = {
+            "voice": self.speaker,
+            "assistant_name": self.assistant_name,
+            "assist_name2": self.assist_name2,
+            "assist_name3": self.assist_name3,
+            "steam_path": self.steam_path,
+            "is_censored": self.is_censored,
+            "volume_assist": self.volume_assist,
+            "run_updater": self.run_updater,
+            "is_corrected_command": self.is_corrected_command,
+            "autostart_app": self.autostart_app,
+            "is_min_tray": self.is_min_tray,
+            "is_widget": self.is_widget,
+            "is_keep_watch": self.is_keep_watch,
+            "input_device_id": self.input_device_id,
+            "input_device_name": self.input_device_name,
+            "is_snow": self.is_snow,
+            "is_garland": self.is_garland,
+            "sidebar_delay": self.sidebar_delay
         }
-        self.setCursor(cursor_map.get(region, Qt.CursorShape.ArrowCursor))
+        try:
+            os.makedirs(os.path.dirname(self.settings_file_path), exist_ok=True)
 
-        if self.dragging and self.drag_direction in ["top", "top-left", "top-right", "left", "right"]:
-            self.handle_resize(global_pos)
-            event.accept()
-        elif self.drag_pos and event.buttons() == Qt.MouseButton.LeftButton:
-            new_pos = global_pos - self.drag_pos
-            self.move(new_pos)
-            event.accept()
+            # Сохраняем настройки в файл
+            with open(self.settings_file_path, 'w', encoding='utf-8') as file:
+                json.dump(settings_data, file, ensure_ascii=False, indent=4)
 
-    def title_bar_mouse_release(self, event):
-        """Обработка отпускания кнопки мыши"""
-        self.drag_pos = None
-        self.dragging = False
-        self.drag_direction = None
-        self.initial_geometry = None
-        self.reached_min_size = False
-        self.dragging_maximized = False
-        self.drag_start_pos = None
-        self.drag_start_geometry = None
-        self._drag_click_offset = None
-        self.setCursor(Qt.CursorShape.ArrowCursor)
-        event.accept()
+            if self.run_updater:
+                value = "prod"
+            else:
+                value = "dev"
+            set_config_value("app", "build", f"{value}")
 
-    def title_bar_double_click(self, event):
-        """Двойной клик по заголовку — развернуть/восстановить"""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.toggle_maximize()
+            self.commands_manager.update_vaults()  # Синхронизация настроек в менеджере команд
+            if notif:
+                self.show_toast("Настройки сохранены!")
+            debuglog.debug("[MAIN] Настройки сохранены.")
+        except Exception as e:
+            logger.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
+            debuglog.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
+            raise
+
+    def update_settings(self, settings_file, default_settings=None):
+        """
+        Проверяет файл настроек на наличие ключей из default_settings.
+        Если ключ отсутствует, добавляет его со значением по умолчанию.
+        """
+        if default_settings is None:
+            default_settings = {
+                "voice": "johnny",
+                "assistant_name": "джон",
+                "assist_name2": "джон",
+                "assist_name3": "джон",
+                "steam_path": "",
+                "is_censored": True,
+                "volume_assist": 0.15,
+                "run_updater": True,
+                "is_corrected_command": False,
+                "autostart_app": False,
+                "is_min_tray": False,
+                "is_widget": True,
+                "is_keep_watch": False,
+                "input_device_id": None,
+                "input_device_name": None,
+                "is_snow": True,
+                "is_garland": True,
+                "sidebar_delay": 300
+            }
+
+        if os.path.exists(settings_file):
+            with open(settings_file, "r", encoding="utf-8") as file:
+                try:
+                    settings = json.load(file)
+                except json.JSONDecodeError:
+                    settings = {}
+        else:
+            settings = {}
+
+        updated = False
+        for key, value in default_settings.items():
+            if key not in settings:
+                settings[key] = value
+                updated = True
+
+        if updated:
+            with open(settings_file, "w", encoding="utf-8") as file:
+                json.dump(settings, file, ensure_ascii=False, indent=4)
+
+        return settings
 
     def install_settings(self):
+        self.version = self.update_manager.get_version(version=current_version)
         self.settings = self.load_settings()
         self.assistant_name = self.settings.get('assistant_name', "джон")
         self.assist_name2 = self.settings.get('assist_name2', "джон")
@@ -455,8 +382,8 @@ class Assistant(QMainWindow):
         self.is_censored = self.settings.get('is_censored', False)
         self.run_updater = self.settings.get("run_updater", True)
         self.is_corrected_command = self.settings.get("is_corrected_command", False)
-        self.is_min_tray = self.settings.get("minimize_to_tray", False)
-        self.is_start_win = self.settings.get("is_start_win", False)
+        self.autostart_app = self.settings.get("autostart_app", False)
+        self.is_min_tray = self.settings.get("is_min_tray", False)
         self.is_widget = self.settings.get("is_widget", True)
         self.is_keep_watch = self.settings.get("is_keep_watch", False)
         self.input_device_id = self.settings.get("input_device_id", None)
@@ -501,22 +428,11 @@ class Assistant(QMainWindow):
         self.resize_path = get_path("bin", "icons", "resize_window.svg")
         self.logo_path = get_path("bin", "icons", "logo-app.svg")
         self.owlapp_logo_path = get_path("bin", "icons", "logo-owlapp.svg")
+        self.icon_min_path = get_path("bin", "icons", "minimize.svg")
     
     def init_ui(self):
         """Инициализация пользовательского интерфейса."""
         try:
-            self.margin = 7
-            self.drag_pos = None
-            self.dragging = False
-            self.drag_position = None
-            self.drag_direction = None
-            self.initial_geometry = None
-            self.reached_min_size = False
-            self.dragging_maximized = False
-            self.drag_start_pos = None
-            self.drag_start_geometry = None
-            self._drag_click_offset = None
-
             self.setWindowFlags(
                 Qt.WindowType.FramelessWindowHint |
                 Qt.WindowType.WindowSystemMenuHint |
@@ -528,7 +444,7 @@ class Assistant(QMainWindow):
             self.setWindowTitle("VOXODIUM")
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
             self.setMouseTracking(True)
-            self.resize(*self.default_size)
+            self.resize(*self.resize_manager.default_size)
 
             screen_geometry = self.screen().availableGeometry()
             self.move(
@@ -556,10 +472,10 @@ class Assistant(QMainWindow):
             self.title_bar_layout = QHBoxLayout(self.title_bar_widget)
             self.title_bar_layout.setContentsMargins(10, 0, 0, 0)
 
-            self.title_bar_widget.mousePressEvent = self.title_bar_mouse_press
-            self.title_bar_widget.mouseMoveEvent = self.title_bar_mouse_move
-            self.title_bar_widget.mouseReleaseEvent = self.title_bar_mouse_release
-            self.title_bar_widget.mouseDoubleClickEvent = self.title_bar_double_click
+            self.title_bar_widget.mousePressEvent = self.resize_manager.title_bar_mouse_press
+            self.title_bar_widget.mouseMoveEvent = self.resize_manager.title_bar_mouse_move
+            self.title_bar_widget.mouseReleaseEvent = self.resize_manager.title_bar_mouse_release
+            self.title_bar_widget.mouseDoubleClickEvent = self.resize_manager.title_bar_double_click
 
             self.logo_svg = CustomSvgWidget(self.logo_path)
             self.logo_svg.setFixedSize(30, 30)
@@ -580,7 +496,7 @@ class Assistant(QMainWindow):
             self.user_profile_widget.setObjectName("UserProfileWidget")
             self.user_profile_widget.setFixedSize(34, 34)
             self.user_profile_widget.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.user_profile_widget.mousePressEvent = self.on_profile_click
+            self.user_profile_widget.mousePressEvent = self.check_auth_manager.on_profile_click
             self.user_profile_layout = QHBoxLayout(self.user_profile_widget)
             self.user_profile_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -598,7 +514,7 @@ class Assistant(QMainWindow):
             self.update_btn = QPushButton()
             self.update_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
             self.update_btn.setFixedSize(30, 30)
-            self.update_btn.clicked.connect(self.open_update_app)
+            self.update_btn.clicked.connect(self.update_manager.open_update_app)
             self.update_btn.hide()
             self.update_svg = CustomSvgWidget(self.icon_update, self.update_btn)
             self.update_svg.setFixedSize(24, 24)
@@ -638,9 +554,20 @@ class Assistant(QMainWindow):
             self.style_svg.setStyleSheet("background: transparent;")
             self.title_bar_layout.addWidget(self.styles_button)
 
+            self.min_button = QPushButton()
+            self.min_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            self.min_button.clicked.connect(self.showMinimized)
+            self.min_button.setFixedSize(50, 38)
+            self.min_button.setObjectName("TitleBarBtn")
+            self.min_svg = CustomSvgWidget(self.icon_min_path, self.min_button)
+            self.min_svg.setFixedSize(25, 25)
+            self.min_svg.move(12, 7)
+            self.min_svg.setStyleSheet("background: transparent;")
+            self.title_bar_layout.addWidget(self.min_button)
+
             self.maximize_button = QPushButton()
             self.maximize_button.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            self.maximize_button.clicked.connect(lambda: self.toggle_maximize(True))
+            self.maximize_button.clicked.connect(lambda: self.resize_manager.toggle_maximize(True))
             self.maximize_button.setFixedSize(50, 38)
             self.maximize_button.setObjectName("TitleBarBtn")
             self.max_svg = CustomSvgWidget(self.resize_path, self.maximize_button)
@@ -752,7 +679,7 @@ class Assistant(QMainWindow):
             self.update_label.setToolTip("Проверить обновления")
             self.update_label.setObjectName("UpdateLabel")
             self.update_label.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-            self.update_label.mousePressEvent = self.update_answer
+            self.update_label.mousePressEvent = self.update_manager.update_answer
 
             self.label_version = VersionLabel(version=self.version)
             self.label_version.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
@@ -867,118 +794,7 @@ class Assistant(QMainWindow):
         widget.setMouseTracking(True)
         for child in widget.findChildren(QWidget):
             child.setMouseTracking(True)
-            
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.MouseButton.LeftButton:
-            pos = event.position().toPoint()
-            self.drag_direction = self.get_cursor_region(pos)
 
-            if self._is_maximized:
-                self.drag_direction = "center"
-            
-            if self.drag_direction != "center":
-                self.dragging = True
-                self.drag_position = event.globalPosition().toPoint()
-                self.initial_geometry = self.geometry()
-                self.reached_min_size = False
-                
-    def mouseMoveEvent(self, event: QMouseEvent):
-        if self._is_maximized:
-            # Если окно развёрнуто — не показываем курсоры ресайза
-            self.setCursor(Qt.CursorShape.ArrowCursor)
-            return
-        
-        pos = event.position().toPoint()
-        region = self.get_cursor_region(pos)
-        
-        cursor_map = {
-            "top": Qt.CursorShape.SizeVerCursor,
-            "bottom": Qt.CursorShape.SizeVerCursor,
-            "left": Qt.CursorShape.SizeHorCursor,
-            "right": Qt.CursorShape.SizeHorCursor,
-            "top-left": Qt.CursorShape.SizeFDiagCursor,
-            "top-right": Qt.CursorShape.SizeBDiagCursor,
-            "bottom-left": Qt.CursorShape.SizeBDiagCursor,
-            "bottom-right": Qt.CursorShape.SizeFDiagCursor,
-            "center": Qt.CursorShape.ArrowCursor
-        }
-        self.setCursor(cursor_map.get(region, Qt.CursorShape.ArrowCursor))
-        
-        if self.dragging and self.drag_direction != "center":
-            self.handle_resize(event.globalPosition().toPoint())
-
-    def enterEvent(self, event):
-        """При входе в окно устанавливаем правильный курсор"""
-        self.setCursor(Qt.CursorShape.ArrowCursor)
-
-    def leaveEvent(self, event):
-        """При выходе из окна сбрасываем курсор"""
-        self.setCursor(Qt.CursorShape.ArrowCursor)
-    
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        self.dragging = False
-        self.drag_direction = None
-        self.initial_geometry = None
-        self.reached_min_size = False
-        self.setCursor(Qt.CursorShape.ArrowCursor)
-    
-    def handle_resize(self, global_pos):
-        """Обработка изменения размера с отслеживанием минимального размера"""
-        if self._is_maximized:
-            return
-        
-        delta = global_pos - self.drag_position
-        new_geometry = QRect(self.initial_geometry)
-
-        old_geometry = QRect(new_geometry)
-        
-        # Применяем изменения
-        if "left" in self.drag_direction:
-            new_geometry.setLeft(self.initial_geometry.left() + delta.x())
-        
-        if "right" in self.drag_direction:
-            new_geometry.setRight(self.initial_geometry.right() + delta.x())
-        
-        if "top" in self.drag_direction:
-            new_geometry.setTop(self.initial_geometry.top() + delta.y())
-        
-        if "bottom" in self.drag_direction:
-            new_geometry.setBottom(self.initial_geometry.bottom() + delta.y())
-
-        content_min_width = self.minimum_size.width() + 20  # + отступы
-        content_min_height = self.minimum_size.height() + 20
-        
-        will_shrink = (new_geometry.width() < old_geometry.width() or 
-                      new_geometry.height() < old_geometry.height())
-        
-        reached_min_width = new_geometry.width() <= content_min_width
-        reached_min_height = new_geometry.height() <= content_min_height
-        
-        # Если пытаемся уменьшить, но достигли минимального размера - блокируем
-        if will_shrink and (reached_min_width or reached_min_height):
-            # Не применяем изменения - оставляем старый размер
-            self.reached_min_size = True
-            return
-
-        # Если изменения допустимы - применяем
-        self.setGeometry(new_geometry)
-        self._normal_geometry = new_geometry
-        self.reached_min_size = False
-        
-        if new_geometry.width() > 200 and new_geometry.height() > 200:
-            self.setGeometry(new_geometry)
-
-        if hasattr(self, 'snow_on_background') and self.snow_on_background:
-            self.snow_on_background.setGeometry(self.central_widget.rect())
-            self.snow_on_background._init_snowflakes()
-            self.snow_on_background.update()
-            
-        if hasattr(self, 'garland_decorator') and self.garland_decorator:
-            self.garland_decorator.update_size(self.width())
-
-        if sidebar_animated_signal:
-            sidebar_animated_signal.update_overlay.emit()
-                   
     def install_event_filter_recursive(self, widget):
         """Рекурсивно устанавливает event filter для виджета и всех его детей"""
         if not widget:
@@ -1023,84 +839,7 @@ class Assistant(QMainWindow):
         
         return label
         
-    def start_ipc_server(self):
-        """Настраивает IPC сервер используя Qt (без потоков)"""
-        self.ipc_server = QLocalServer()
-        self.ipc_server.newConnection.connect(self.handle_ipc_connection)
-        
-        # Удаляем старый сервер если есть (на случай краша)
-        QLocalServer.removeServer("voxodium_app")
-        
-        # Запускаем сервер
-        if not self.ipc_server.listen("voxodium_app"):
-            debuglog.error(f"[MAIN] IPC server error: {self.ipc_server.errorString()}")
-        else:
-            debuglog.info("[MAIN] IPC server started")
-
-    def handle_ipc_connection(self):
-        """Обрабатывает входящие соединения"""
-        socket = self.ipc_server.nextPendingConnection()
-        debuglog.info(f"[MAIN] New connection: {socket}")
-        
-        if socket:
-            # Многократные попытки чтения
-            for attempt in range(5):
-                if socket.waitForReadyRead(100):  # Короткие интервалы
-                    if socket.bytesAvailable() > 0:
-                        data = socket.readAll().data()
-                        debuglog.info(f"[MAIN] IPC data received (attempt {attempt+1}): {data}")
-                        if data == b'show_window':
-                            debuglog.info("[MAIN] Activating window...")
-                            self.force_show_window()
-                        break
-                else:
-                    debuglog.warning(f"[MAIN] Attempt {attempt+1}: No data yet")
-            
-            socket.disconnectFromServer()
-            socket.deleteLater()
-            debuglog.info("[MAIN] Connection closed")
-            
-    def read_ipc_data(self, socket):
-        """Читает данные из IPC соединения"""
-        try:
-            if socket.bytesAvailable() > 0:
-                data = socket.readAll().data()
-                debuglog.debug(f"[MAIN] IPC data received: {data}")
-                if data == b'show_window':
-                    self.force_show_window()
-            
-            # Всегда закрываем соединение после чтения
-            socket.disconnectFromServer()
-            socket.deleteLater()
-            
-        except Exception as e:
-            debuglog.error(f"[MAIN] Error reading IPC data: {e}")
-        
-    def force_show_window(self):
-        """Принудительное открытие окна из любого состояния"""
-        debuglog.debug(f"[MAIN] force_show_window called. isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}, isHidden: {self.isHidden()}")
-        
-        # Всегда показываем окно
-        self.show()
-        self.showNormal()
-        
-        # Активация и фокус
-        self.activateWindow()
-        self.raise_()
-        self.setFocus()
-        
-        # Центрирование
-        screen_geometry = self.screen().availableGeometry()
-        self.move(
-            (screen_geometry.width() - self.width()) // 2,
-            (screen_geometry.height() - self.height()) // 2
-        )
-
-        self.update()
-        self.repaint()
-        self.logs_widget.log_area.start_active_mode()
-        
-        debuglog.debug(f"[MAIN] After force_show: isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}")
+    
         
     def update_garland_state(self):
         if self.is_garland:
@@ -1183,154 +922,6 @@ class Assistant(QMainWindow):
             self.sidebar_delay = delay
             self.save_settings(notif=False)
 
-    # def hide_layout(self, layout):
-    #     """Скрывает все виджеты в layout"""
-    #     for i in range(layout.count()):
-    #         item = layout.itemAt(i)
-    #         if item.widget():
-    #             item.widget().hide()
-
-    # def show_layout(self, layout):
-    #     """Показывает все виджеты в layout"""
-    #     for i in range(layout.count()):
-    #         item = layout.itemAt(i)
-    #         if item.widget():
-    #             item.widget().show()
-                
-    def open_user_profile(self):
-        username = self.user_data["username"]
-        QDesktopServices.openUrl(QUrl(f"{domain}/user/{username}"))
-    
-    def logout_user(self):
-        """Выход с возвратом к LoginWindow"""
-        debuglog.info("[MAIN] Выход из системы...")
-        
-        # Очищаем данные
-        self.user_data = None
-        self.auth.logout()
-
-        self.restart_application()
-
-    def restart_application(self):
-        """Перезапуск приложения"""
-        self.restart_dialog = UpdateApp(self)
-        self.restart_dialog.restart_app()
-         
-    def on_profile_click(self, event):
-        """Обработчик клика по профилю"""
-        menu = QMenu(self)
-
-        menu.addAction("Профиль", self.open_user_profile)
-        menu.addAction("Выйти", self.logout_user)
-        
-        # Показываем меню под виджетом профиля
-        menu.exec(self.user_profile_widget.mapToGlobal(
-            QPoint(0, self.user_profile_widget.height())
-        ))
-               
-    def set_user_data(self, user_data):
-            """Установить данные пользователя (вызывается из InitScreen)"""
-            self.user_data = user_data
-            debuglog.info(f"[MAIN] Данные пользователя установлены: {user_data['username']}")
-    
-    def clear_user_data(self):
-        """Очистить данные пользователя"""
-        self.user_data = None
-        self.set_default_avatar_svg()
-                
-    def update_user_profile(self, user_data=None):
-        """Обновить профиль пользователя (можно вызывать без параметров)"""
-        debuglog.info(f"[MAIN] Обновление профиля...")
-        data = user_data or self.user_data
-            
-        if data and data.get('avatar') is None:
-            return self.set_default_avatar_svg()
-        
-        if data and 'avatar' in data:
-            self.load_user_avatar(data['avatar'])
-        else:
-            self.set_default_avatar_svg()
-
-    def set_default_avatar_svg(self):
-        """Установить SVG аватарку по умолчанию"""
-        if hasattr(self, 'avatar_svg'):
-            self.avatar_svg.show()
-            self.style_manager.apply_color_svg(self.avatar_svg)
-
-    def load_user_avatar(self, avatar_path):
-        """Загрузить пользовательскую аватарку"""
-        try:
-            avatar_url = f"{self.auth.base_url}/static/{avatar_path}"
-            response = requests.get(avatar_url, timeout=10, verify=False)
-            
-            if response.status_code == 200:
-                if hasattr(self, 'avatar_svg'):
-                    self.avatar_svg.hide()
-
-                if not hasattr(self, 'avatar_pixmap_label'):
-                    self.avatar_pixmap_label = QLabel()
-                    self.avatar_pixmap_label.setFixedSize(30, 30)
-                    self.avatar_pixmap_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-                    self.avatar_pixmap_label.setStyleSheet("background: transparent;")
-                    self.avatar_pixmap_label.setAlignment(Qt.AlignCenter)
-                    avatar_index = self.user_profile_layout.indexOf(self.avatar_svg)
-                    self.user_profile_layout.insertWidget(avatar_index, self.avatar_pixmap_label)
-                else:
-                    self.avatar_pixmap_label.show()
-
-                pixmap = QPixmap()
-                pixmap.loadFromData(response.content)
-                rounded_pixmap = self.create_rounded_pixmap(pixmap, 30)
-                self.avatar_pixmap_label.setPixmap(rounded_pixmap)
-                
-            else:
-                debuglog.error(f"[MAIN] Ошибка загрузки аватара: {response.status_code}")
-                self.set_default_avatar_svg()
-                
-        except Exception as e:
-            debuglog.error(f"[MAIN] Ошибка загрузки аватара: {e}")
-            self.set_default_avatar_svg()
-
-    def create_rounded_pixmap(self, pixmap, size):
-        if pixmap.isNull():
-            return QPixmap()
-
-        img_ratio = pixmap.width() / pixmap.height()
-        circle_ratio = size / size
-        
-        if img_ratio > circle_ratio:
-            scaled_height = size
-            scaled_width = int(size * img_ratio)
-        else:
-            scaled_width = size
-            scaled_height = int(size / img_ratio)
-        
-        scaled_pixmap = pixmap.scaled(
-            scaled_width, scaled_height,
-            Qt.AspectRatioMode.IgnoreAspectRatio,
-            Qt.TransformationMode.SmoothTransformation
-        )
-
-        x = (size - scaled_width) // 2
-        y = (size - scaled_height) // 2
-        
-        rounded = QPixmap(size, size)
-        rounded.fill(Qt.transparent)
-        
-        painter = QPainter(rounded)
-        painter.setRenderHints(
-            QPainter.RenderHint.Antialiasing |
-            QPainter.RenderHint.SmoothPixmapTransform
-        )
-        
-        path = QPainterPath()
-        path.addEllipse(0, 0, size, size)
-        painter.setClipPath(path)
-        painter.drawPixmap(x, y, scaled_pixmap)
-        painter.end()
-        
-        return rounded
-
     def preload_window(self):
         """Предварительная загрузка окна"""
         # Показываем в невидимой области
@@ -1346,148 +937,6 @@ class Assistant(QMainWindow):
         QTimer.singleShot(100, lambda: [self.hide(), self.center_window()])
         self.first_run = False
 
-    def save_window_settings(self):
-        """Сохранить размер и положение окна"""
-        try:
-            if not self._normal_geometry:
-                if self._is_maximized:
-                    self._normal_geometry = self._default_geometry
-                else:
-                    self._normal_geometry = self.geometry()
-
-            if isinstance(self._normal_geometry, QRect):
-                geom = [
-                    self._normal_geometry.x(),
-                    self._normal_geometry.y(),
-                    self._normal_geometry.width(),
-                    self._normal_geometry.height()
-                ]
-            else:
-                geom = self._normal_geometry
-
-            settings = {
-                'geometry': geom,
-                'state': {
-                    '_is_maximized': self._is_maximized
-                }
-            }
-
-            with open(winsize_file, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, indent=2)
-
-        except Exception as e:
-            logger.error(f"[WINDOW] Ошибка сохранения настроек: {e}")
-    
-    def load_window_settings(self):
-        """Загрузить сохраненные размеры окна"""
-        try:
-            if not os.path.exists(winsize_file):
-                with open(winsize_file, 'w', encoding='utf-8') as f:
-                    json.dump({}, f)
-                return {}
-
-            with open(winsize_file, 'r', encoding='utf-8') as f:
-                settings = json.load(f)
-
-            debuglog.info("[MAIN] Размеры окна загружены")
-
-            if 'state' in settings:
-                if settings['state'].get('is_maximized'):
-                    self._is_maximized = True
-                    self.showMaximized()
-                else:
-                    g = settings["geometry"]
-                    if isinstance(g, (list, tuple)) and len(g) == 4:
-                        rect = QRect(g[0], g[1], g[2], g[3])
-                        self.setGeometry(rect)
-
-        except Exception as e:
-            logger.error(f"[WINDOW] Ошибка загрузки настроек: {e}")
-
-    def showMaximized(self):
-        """Кастомное максимизирование для безрамного окна"""
-        super().showMaximized()
-
-        screen = QApplication.primaryScreen()
-        available_geometry = screen.availableGeometry()
-
-        self.setGeometry(available_geometry)
-
-        self.setContentsMargins(0, 0, 0, 0)
-
-    def show_normal_window(self):
-        self.setGeometry(self._default_geometry)
-
-    def toggle_maximize(self, animate=True):
-        """Переключение максимизации с опциональной анимацией"""
-        self.resize_animation.stop()
-        
-        if self._is_maximized:
-            if self._normal_geometry:
-                target_geo = self._normal_geometry
-            else:
-                target_geo = self._default_geometry
-            
-            start_geo = self.geometry()
-            
-            self._is_maximized = False
-            
-            if animate:
-                self.resize_animation.setStartValue(start_geo)
-                self.resize_animation.setEndValue(target_geo)
-                self.resize_animation.start()
-                
-                def on_animation_finished():
-                    self.central_widget.setObjectName("MainWindowWidget")
-                    self.close_button.setObjectName("TitleBarCloseBtn")
-                    self.title_bar_widget.setObjectName("TitleBarV2")
-                    self.apply_styles()
-                
-                self.resize_animation.finished.connect(on_animation_finished)
-                self.resize_animation.finished.connect(lambda: self.resize_animation.finished.disconnect())
-            else:
-                self.setGeometry(target_geo)
-                self.central_widget.setObjectName("MainWindowWidget")
-                self.close_button.setObjectName("TitleBarCloseBtn")
-                self.title_bar_widget.setObjectName("TitleBarV2")
-                self.apply_styles()
-            
-        else:
-            self._normal_geometry = self.geometry()
-            screen = QApplication.primaryScreen()
-            target_geo = screen.availableGeometry()
-            
-            start_geo = self.geometry()
-            self._is_maximized = True
-            
-            if animate:
-                self.resize_animation.setStartValue(start_geo)
-                self.resize_animation.setEndValue(target_geo)
-                self.resize_animation.start()
-                
-                def on_animation_finished():
-                    self.central_widget.setObjectName("FullWindowMode")
-                    self.close_button.setObjectName("FullWindowMode_CloseBtn")
-                    self.title_bar_widget.setObjectName("FullWindowMode_TitleBar")
-                    self.apply_styles()
-
-                    if hasattr(self, 'snow_on_background') and self.snow_on_background:
-                        self.snow_on_background.setGeometry(self.central_widget.rect())
-                        self.snow_on_background._init_snowflakes()
-                        self.snow_on_background.update()
-                        
-                    if hasattr(self, 'garland_decorator') and self.garland_decorator:
-                        self.garland_decorator.update_size(self.width())
-                
-                self.resize_animation.finished.connect(on_animation_finished)
-                self.resize_animation.finished.connect(lambda: self.resize_animation.finished.disconnect())
-            else:
-                self.setGeometry(target_geo)
-                self.central_widget.setObjectName("FullWindowMode")
-                self.close_button.setObjectName("FullWindowMode_CloseBtn")
-                self.title_bar_widget.setObjectName("FullWindowMode_TitleBar")
-                self.apply_styles()
-
     def center_window(self):
         """Центрирование окна"""
         frame_geo = self.frameGeometry()
@@ -1500,7 +949,8 @@ class Assistant(QMainWindow):
         try:
             self.styles = self.style_manager.load_styles()
 
-            svg_attrs = ['style_svg', 'avatar_svg', 'svg_image', 'logo_svg', 'update_light_svg', 'clear_logs_svg', 'update_all_preset_svg', 'max_svg']
+            svg_attrs = ['style_svg', 'avatar_svg', 'svg_image', 'logo_svg', 'update_light_svg', 
+                         'clear_logs_svg', 'update_all_preset_svg', 'max_svg', 'min_svg']
 
             for attr in svg_attrs:
                 if hasattr(self, attr):
@@ -1623,38 +1073,6 @@ class Assistant(QMainWindow):
         else:
             super().keyPressEvent(event)
 
-    def open_update_app(self):
-        """Запускает скрипт для установки обновления"""
-        try:
-            self.update_app(type_version=self.type_version)
-        except Exception as e:
-            debuglog.error(f"[MAIN] Ошибка при запуске программы обновления: {e}")
-
-    #  тут исправлена логика обработки ручной проверки
-    @Slot()
-    def update_answer(self, event):
-        """Реакция бота на отсутствие обновления"""
-        try:
-            self.is_manual_check = True  # Устанавливаем флаг ручной проверки
-            self.check_update_app()
-        except Exception as e:
-            debuglog.error(f"[MAIN] Ошибка при запуске программы обновления: {e}")
-
-    def handle_update_status(self, is_success, status_text):
-        """Обрабатывает результат проверки обновлений"""
-        if not self.is_manual_check:  # Пропускаем реакцию для автоматических проверок
-            return
-
-        # Реагируем только если это ручная проверка
-        if status_text == "Stable":
-            self.get_reaction(detail=True, name="update_button")
-        elif status_text == "New version":
-            pass
-        elif not is_success:
-            self.get_reaction(detail=True, name="error_file")
-
-        self.is_manual_check = False
-
     def toggle_update_button(self):
         """
         Метод для отображения или скрытия кнопки "Установить обновление"
@@ -1664,150 +1082,6 @@ class Assistant(QMainWindow):
             self.style_manager.apply_color_svg(self.update_svg, strength=0.90, specified_color="#44D14F")
         else:
             self.update_btn.hide()
-            
-    def update_complete(self):
-        from send2trash import send2trash
-        
-        download_dir = get_path("update")
-        temp_dir = get_path("update_pack")
-        backup_dir = get_path("old_files_backup")
-        
-        current_version = self.get_version()
-        batch_dir = get_path("update", f"{current_version}_temp")
-
-        # Удаление в корзину папки update_pack
-        if os.path.exists(temp_dir):
-            try:
-                send2trash(temp_dir)
-                debuglog.info(f"[MAIN] Папка update_pack отправлена в корзину: {temp_dir}")
-            except Exception as e:
-                debuglog.error(f"[MAIN] Не удалось удалить {temp_dir}: {e}")
-
-        # Удаление в корзину папки бэкапа
-        if os.path.exists(backup_dir):
-            try:
-                send2trash(backup_dir)
-                debuglog.info(f"[MAIN] Папка бэкапа отправлена в корзину: {backup_dir}")
-            except Exception as e:
-                debuglog.error(f"[MAIN] Не удалось удалить {backup_dir}: {e}")
-                
-        # Удаление в корзину batch_dir
-        if os.path.exists(batch_dir):
-            try:
-                send2trash(batch_dir)
-                debuglog.info(f"[MAIN] Папка batch_dir отправлена в корзину: {batch_dir}")
-            except Exception as e:
-                debuglog.error(f"[MAIN] Не удалось удалить {batch_dir}: {e}")
-
-        # Удаление .zip файлов в корзину
-        if os.path.exists(download_dir):
-            for old_file in os.listdir(download_dir):
-                old_path = os.path.join(download_dir, old_file)
-                if os.path.isfile(old_path) and old_file.endswith('.zip'):
-                    try:
-                        send2trash(old_path)
-                        debuglog.info(f"[MAIN] Файл отправлен в корзину: {old_path}")
-                    except Exception as e:
-                        debuglog.error(f"[MAIN] Не удалось удалить {old_path}: {e}")
-
-    def animation_start_load(self):
-        self.progress_load.show()
-        self.progress_load.startAnimation()
-
-    def animation_stop_load(self):
-        self.progress_load.hide()
-        self.progress_load.stopAnimation()
-
-    def check_update_app(self):
-        """Проверяет обновления"""
-        if self.stop_checking:
-            return
-        try:
-            self.animation_start_load()
-            self.toggle_update_button()
-            self.update_label.setText("Searching...")
-
-            task = VersionCheckThread()
-            task.signals.version_checked.connect(self.handle_version_check)
-            task.signals.check_failed.connect(self.handle_check_failed)
-
-            QThreadPool.globalInstance().start(task)
-
-        except Exception as e:
-            self.animation_stop_load()
-            debuglog.error(f"[MAIN] Неожиданная ошибка: {str(e)}", exc_info=True)
-            self.update_label.setText("Failed update")
-            QTimer.singleShot(2000, self.check_update_app)
-
-    def handle_version_check(self, stable_version, exp_version):
-        # Обработка полученных версий
-        new_version = exp_version if self.beta_version else stable_version
-        self.latest_version = version.parse(new_version)
-        self.current_ver = version.parse(self.version)
-
-        type_version = "exp" if self.beta_version else "stable"
-
-        load_changelog(self.changelog_file_path)
-
-        if self.latest_version > self.current_ver:
-            self.start_full_download()
-        else:
-            self.animation_stop_load()
-            self.update_label.setText("Stable")
-            self.toggle_update_button()
-            self.update_checked.emit(True, "Stable")
-            self.stop_checking = False
-            QTimer.singleShot(4000, lambda: self.update_complete())
-
-
-    def start_full_download(self):
-        """Запуск загрузки полной версии"""
-        self.update_label.setText("Loading...")
-        type_version = "exp" if self.beta_version else "stable"
-        self.download_thread = DownloadThread(type_version)
-        self.download_thread.download_complete.connect(self.handle_download_complete)
-        self.download_thread.finished.connect(self.animation_stop_load)
-        self.download_thread.start()
-        self.toggle_update_button()
-
-    def handle_check_failed(self):
-        self.count += 1
-        self.animation_stop_load()
-        self.update_label.show()
-        self.update_label.setText("Failed connection")
-        if self.count == 3:
-            self.update_label.setText("Server error")  
-        if self.count <= 2: # 3 попытки на запрос версии в случае неудачи
-            QTimer.singleShot(2000, self.check_update_app)
-    
-    def handle_download_complete(self, file_path, success=True, skipped=False, error=None, batch=False):
-        self.animation_stop_load()
-        self.update_label.setText("New version")
-        if success:
-            self.type_version = "exp" if "exp_" in os.path.basename(file_path).lower() else "stable"
-            self.show_toast(f"Доступно обновление (v.{self.latest_version})")
-            self.stop_checking = True
-            if skipped:
-                self.show_toast("Подготовка к процедуре обновления...\n Не выключайте приложение")
-                debuglog.info(f"[MAIN][SKIP] Файл уже существует")
-                self.open_window_and_update()
-            else:
-                debuglog.info(f"[MAIN][OK] Новый файл загружен")
-        else:
-            debuglog.error(f"[MAIN] Не удалось скачать: {error}")
-        
-        self.toggle_update_button()
-
-    def open_window_and_update(self):
-        """Обработка действия, если апдейт уже был скачан (активация окна)"""
-        if not self.isVisible():
-            self.show()
-        if self.isMinimized():
-            self.showNormal()
-        self.raise_()
-        self.activateWindow()
-        QApplication.processEvents()
-        QTimer.singleShot(500, lambda: self.update_app(type_version=self.type_version))
 
     def check_or_create_folders(self):
         links_path = folder_links
@@ -1827,106 +1101,6 @@ class Assistant(QMainWindow):
     def reload_commands(self):
         """Централизованное сохранение команд"""
         self.commands = self.commands_manager.commands
-
-    def load_settings(self):
-        """Загружает настройки из settings.json."""
-        try:
-            with open(self.settings_file_path, 'r', encoding='utf-8') as file:
-                return json.load(file)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
-
-    def save_settings(self, notif=True):
-        """Сохраняет настройки в файл settings.json."""
-        settings_data = {
-            "voice": self.speaker,
-            "assistant_name": self.assistant_name,
-            "assist_name2": self.assist_name2,
-            "assist_name3": self.assist_name3,
-            "steam_path": self.steam_path,
-            "is_censored": self.is_censored,
-            "volume_assist": self.volume_assist,
-            "run_updater": self.run_updater,
-            "is_corrected_command": self.is_corrected_command,
-            "minimize_to_tray": self.is_min_tray,
-            "is_start_win": self.is_start_win,
-            "is_widget": self.is_widget,
-            "is_keep_watch": self.is_keep_watch,
-            "input_device_id": self.input_device_id,
-            "input_device_name": self.input_device_name,
-            "is_snow": self.is_snow,
-            "is_garland": self.is_garland,
-            "sidebar_delay": self.sidebar_delay
-        }
-        try:
-            os.makedirs(os.path.dirname(self.settings_file_path), exist_ok=True)
-
-            # Сохраняем настройки в файл
-            with open(self.settings_file_path, 'w', encoding='utf-8') as file:
-                json.dump(settings_data, file, ensure_ascii=False, indent=4)
-
-            if self.run_updater:
-                value = "prod"
-            else:
-                value = "dev"
-            set_config_value("app", "build", f"{value}")
-
-            self.commands_manager.update_vaults()  # Синхронизация настроек в менеджере команд
-            if notif:
-                self.show_toast("Настройки сохранены!")
-            debuglog.debug("[MAIN] Настройки сохранены.")
-        except Exception as e:
-            logger.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
-            debuglog.error(f"[MAIN] Ошибка при сохранении настроек: {e}")
-            raise
-
-    def update_settings(self, settings_file, default_settings=None):
-        """
-        Проверяет файл настроек на наличие ключей из default_settings.
-        Если ключ отсутствует, добавляет его со значением по умолчанию.
-        """
-        if default_settings is None:
-            default_settings = {
-                "voice": "johnny",
-                "assistant_name": "джон",
-                "assist_name2": "джон",
-                "assist_name3": "джон",
-                "steam_path": "",
-                "is_censored": True,
-                "volume_assist": 0.15,
-                "run_updater": True,
-                "is_corrected_command": False,
-                "minimize_to_tray": True,
-                "is_start_win": True,
-                "is_widget": True,
-                "is_keep_watch": False,
-                "input_device_id": None,
-                "input_device_name": None,
-                "is_snow": True,
-                "is_garland": True,
-                "sidebar_delay": 300
-            }
-
-        if os.path.exists(settings_file):
-            with open(settings_file, "r", encoding="utf-8") as file:
-                try:
-                    settings = json.load(file)
-                except json.JSONDecodeError:
-                    settings = {}
-        else:
-            settings = {}
-
-        updated = False
-        for key, value in default_settings.items():
-            if key not in settings:
-                settings[key] = value
-                updated = True
-
-        if updated:
-            with open(settings_file, "w", encoding="utf-8") as file:
-                json.dump(settings, file, ensure_ascii=False, indent=4)
-
-        return settings
 
     def on_tray_icon_activated(self, reason):
         """Обработка активации иконки в трее."""
@@ -1969,7 +1143,7 @@ class Assistant(QMainWindow):
 
     def closeEvent(self, event):
         """Обработка закрытия окна"""
-        self.save_window_settings()
+        self.resize_manager.save_window_settings()
         if hasattr(self, "logs_widget"):
             self.logs_widget.log_area.stop_monitoring()
 
@@ -3545,116 +2719,6 @@ class Assistant(QMainWindow):
         if self.is_widget:
             self.open_widget(is_auto_start=True)
 
-    def is_start_win_win(self):
-        """Переключает состояние и меняет цвет иконки"""
-        self.is_start_win = not self.is_start_win
-
-        if self.is_start_win:
-            self.add_to_autostart()
-        else:
-            self.remove_from_autostart()
-
-    def add_to_autostart(self):
-        """Добавление программы в автозапуск через планировщик задач"""
-        task_name = "Voxodium"
-        target_path = get_full_filepath()
-
-        debuglog.debug(f"Путь для планировщика: {target_path}")
-
-        # Проверка наличия файла
-        if not os.path.isfile(target_path):
-            error_msg = f"Ошибка: Файл '{target_path}' не найден."
-            logger.error(error_msg)
-            debuglog.error(error_msg)
-            return
-
-        # Команда для создания задачи в планировщике
-        command = [
-            'schtasks',
-            '/create',
-            '/tn', task_name,
-            '/tr', f'"{target_path}"',
-            '/sc', 'onlogon',
-            '/rl', 'highest',
-            '/f'
-        ]
-
-        try:
-            result = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                text=True,
-                encoding='cp866'
-            )
-
-            success_msg = f"Программа добавлена в автозапуск"
-            logger.info(success_msg)
-            debuglog.info(success_msg)
-            self.show_toast("Автозапуск включен")
-
-        except subprocess.CalledProcessError as e:
-            error_msg = f"Ошибка при добавлении в автозапуск: {e.stderr}"
-            logger.error(error_msg)
-            debuglog.error(error_msg)
-
-    def remove_from_autostart(self):
-        """Удаление программы из автозапуска через планировщик задач"""
-        task_name = "Voxodium"
-
-        command = [
-            'schtasks',
-            '/delete',
-            '/tn', task_name,
-            '/f'
-        ]
-
-        try:
-            result = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                text=True,
-                encoding='cp866'
-            )
-            success_msg = f"Задача '{task_name}' удалена из автозапуска"
-            debuglog.info(success_msg)
-            self.show_toast(message=f"Автозапуск выключен")
-        except subprocess.CalledProcessError as e:
-            if "не существует" not in e.stderr:
-                error_msg = f"Ошибка при удалении задачи '{task_name}': {e.stderr}"
-                self.show_toast(message=f"{error_msg}")
-                debuglog.error(error_msg)
-            else:
-                debuglog.info(f"Задача '{task_name}' не найдена в планировщике")
-
-    def check_autostart(self):
-        """Проверка, добавлена ли программа в автозапуск"""
-        task_name = "Voxodium"
-
-        command = ['schtasks', '/query', '/tn', task_name]
-
-        try:
-            result = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                text=True,
-                encoding='cp866'
-            )
-            debuglog.info(f"Найдена задача автозапуска: '{task_name}'")
-            self.is_start_win = True
-        except subprocess.CalledProcessError as e:
-            if "не существует" not in e.stderr:
-                error_msg = f"Автозапуск '{task_name}': {e.stderr}"
-                logger.error(error_msg)
-                debuglog.error(error_msg)
-            self.is_start_win = False
-            debuglog.info(f"Задачи '{task_name}' не существует")
-
     def capture_area(self):
         try:
             self.screenshot_tool.capture_area()
@@ -3690,6 +2754,85 @@ class Assistant(QMainWindow):
         except Exception as e:
             debuglog.error(f"[PANEL][open_window_from_tool] Ошибка при открытии основного окна через виджет {e}")
 
+    def start_ipc_server(self):
+        """Настраивает IPC сервер используя Qt (без потоков)"""
+        self.ipc_server = QLocalServer()
+        self.ipc_server.newConnection.connect(self.handle_ipc_connection)
+        
+        # Удаляем старый сервер если есть (на случай краша)
+        QLocalServer.removeServer(socket_name)
+        
+        # Запускаем сервер
+        if not self.ipc_server.listen(socket_name):
+            debuglog.error(f"[MAIN] IPC server error: {self.ipc_server.errorString()}")
+        else:
+            debuglog.info("[MAIN] IPC server started")
+
+    def handle_ipc_connection(self):
+        """Обрабатывает входящие соединения"""
+        socket = self.ipc_server.nextPendingConnection()
+        debuglog.info(f"[MAIN] New connection: {socket}")
+        
+        if socket:
+            # Многократные попытки чтения
+            for attempt in range(5):
+                if socket.waitForReadyRead(100):  # Короткие интервалы
+                    if socket.bytesAvailable() > 0:
+                        data = socket.readAll().data()
+                        debuglog.info(f"[MAIN] IPC data received (attempt {attempt+1}): {data}")
+                        if data == b'show_window':
+                            debuglog.info("[MAIN] Activating window...")
+                            self.force_show_window()
+                        break
+                else:
+                    debuglog.warning(f"[MAIN] Attempt {attempt+1}: No data yet")
+            
+            socket.disconnectFromServer()
+            socket.deleteLater()
+            debuglog.info("[MAIN] Connection closed")
+            
+    def read_ipc_data(self, socket):
+        """Читает данные из IPC соединения"""
+        try:
+            if socket.bytesAvailable() > 0:
+                data = socket.readAll().data()
+                debuglog.debug(f"[MAIN] IPC data received: {data}")
+                if data == b'show_window':
+                    self.force_show_window()
+            
+            # Всегда закрываем соединение после чтения
+            socket.disconnectFromServer()
+            socket.deleteLater()
+            
+        except Exception as e:
+            debuglog.error(f"[MAIN] Error reading IPC data: {e}")
+        
+    def force_show_window(self):
+        """Принудительное открытие окна из любого состояния"""
+        debuglog.debug(f"[MAIN] force_show_window called. isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}, isHidden: {self.isHidden()}")
+        
+        # Всегда показываем окно
+        self.show()
+        self.showNormal()
+        
+        # Активация и фокус
+        self.activateWindow()
+        self.raise_()
+        self.setFocus()
+        
+        # Центрирование
+        screen_geometry = self.screen().availableGeometry()
+        self.move(
+            (screen_geometry.width() - self.width()) // 2,
+            (screen_geometry.height() - self.height()) // 2
+        )
+
+        self.update()
+        self.repaint()
+        self.logs_widget.log_area.start_active_mode()
+        
+        debuglog.debug(f"[MAIN] After force_show: isVisible: {self.isVisible()}, isMinimized: {self.isMinimized()}")
+
 
 def should_launch_updater():
     """Определяет нужно ли запускать updater"""
@@ -3713,20 +2856,22 @@ def should_launch_updater():
 
 if __name__ == '__main__':
     try:
-        # Запускаем updater если нужно
-        if should_launch_updater():
-            updater_path = get_path("Update.exe")
-            if os.path.exists(updater_path):
-                subprocess.Popen([updater_path])
-                sys.exit(0)  # Закрываем основную программу
+        # # Запускаем updater если нужно
+        # if should_launch_updater():
+        #     updater_path = get_path("updater.exe")
+        #     if os.path.exists(updater_path):
+        #         subprocess.Popen([updater_path])
+        #         sys.exit(0)  # Закрываем основную программу
 
-        # Продолжаем обычный запуск
-        if len(sys.argv) > 1 and sys.argv[1] == "--updated":
-            logger.info("Запуск после обновления")
-        else:
-            if activate_existing_window():
-                sys.exit(0)
+        # # Продолжаем обычный запуск
+        # if len(sys.argv) > 1 and sys.argv[1] == "--updated":
+        #     logger.info("Запуск после обновления")
+        # else:
+        #     if activate_existing_window():
+        #         sys.exit(0)
 
+        if activate_existing_window():
+            sys.exit(0)
 
         app = QApplication([])
         app.setWindowIcon(QIcon(get_path('icon.ico')))

@@ -3,7 +3,7 @@ import os
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget,\
     QDialog, QMessageBox, QLineEdit, QListWidget, QDialogButtonBox
 from PySide6.QtCore import Qt
-from bin.lists import setup_custom_font_label
+from bin.utils import setup_custom_font_label
 
 
 class ProcessLinksWidget(QWidget):

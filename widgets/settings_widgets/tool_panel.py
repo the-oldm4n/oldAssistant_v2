@@ -3,7 +3,8 @@ import os
 import secrets
 import string
 from mygui import main_apply_colors, CustomSvgWidget, CustomToggle
-from bin.lists import fonts_list, setup_custom_font_label
+from bin.lists import fonts_list
+from bin.utils import setup_custom_font_label
 from bin.shortcut_monitor import ShortcutMonitor
 from bin.signals import widget_btns_signal
 from bin.widget_window import WindowStateManager

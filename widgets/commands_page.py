@@ -1,5 +1,5 @@
 import os
-from bin.stacked_widget import SlidingStackedWidget
+from bin.base_modules.stacked_widget import SlidingStackedWidget
 from widgets.commands_widgets.commands_list import CommandsWidget
 from widgets.commands_widgets.create_commands import CreateCommandsWidget
 from widgets.commands_widgets.create_scripts import CreateScriptsWidget

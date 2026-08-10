@@ -1,0 +1,18 @@
+{
+    "TitleBarCloseBtnV3": {
+        "background-color": "transparent",
+        "border": "1px solid transparent",
+        "border-radius": "20px"
+    },
+    "TitleBarCloseBtnV3:hover": {
+        "background-color": "#E76565"
+    },
+    "TitleBarUpdater": {
+        "background-color": "transparent"
+    },
+    "UpdaterWidget": {
+        "background": "get_css('background', is_main_border=True)",
+        "border-radius": "15px"
+    }
+
+}

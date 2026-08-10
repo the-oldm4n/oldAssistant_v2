@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWi
     QLineEdit, QStackedWidget, QFileDialog, QComboBox, QCompleter
 from PySide6.QtCore import Qt, QStringListModel
 from bin.commands_manager import main_commands_manager
-from bin.lists import setup_custom_font_label
+from bin.utils import setup_custom_font_label
 from bin.shortcut_monitor import ShortcutMonitor
 from bin.signals import commands_signal
 from log_config import debuglog

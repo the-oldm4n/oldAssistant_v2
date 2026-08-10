@@ -7,10 +7,10 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget,\
     QMainWindow, QMessageBox, QCheckBox, QTextEdit
 from bin.graph_widget import SimpleGraph
-from bin.stacked_widget import SlidingStackedWidget
+from bin.base_modules.stacked_widget import SlidingStackedWidget
 from mygui import CustomSvgWidget, main_apply_colors, SVGProgressBar, color_signal
-from bin.download_thread import DownloadThread
-from bin.lists import setup_custom_font_label
+from bin.base_modules.download_thread import DownloadThread
+from bin.utils import setup_custom_font_label
 from bin.signals import censor_signal
 from log_config import logger, debuglog
 from path_builder import get_path, get_app_data_dir
@@ -618,7 +618,7 @@ class CheckUpdateWidget(QWidget):
         layout.addWidget(self.title, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self.check_button = QPushButton("Проверить обновления")
-        self.check_button.clicked.connect(self.main.check_update_app)
+        self.check_button.clicked.connect(self.main.update_manager.check_update_app)
         self.check_button.setProperty("helpId", "check_button_update")
         layout.addWidget(self.check_button)
 

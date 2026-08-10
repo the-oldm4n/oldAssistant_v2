@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWi
     QDialog, QMenu, QLineEdit, QListWidget, QListWidgetItem
 from PySide6.QtCore import Qt
 from bin.commands_manager import main_commands_manager
-from bin.lists import setup_custom_font_label
+from bin.utils import setup_custom_font_label
 from bin.signals import commands_signal
 
 

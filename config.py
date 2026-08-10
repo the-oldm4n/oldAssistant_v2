@@ -12,5 +12,5 @@ else:
 app_name = "Voxodium"
 base_name = "Voxodium.exe"
 update_name = "Voxodium-new.exe"
-
-path_name = "voxodium"
+user_agent = 'VOXODIUM'
+prefix_url = 'voxodium'

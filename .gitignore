@@ -14,3 +14,7 @@
 /voxodium.code-workspace
 /widgets/settings_widgets/__pycache__/
 /widgets/commands_widgets/__pycache__/
+/auth_config.json
+bin/base_modules/__pycache__/
+update_app/bin/__pycache__/
+user_data/censor_counter.csv

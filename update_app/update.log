@@ -1,0 +1,13 @@
+[INFO] 2026-08-10 16:15:09 | [UPDATER][init] current_version 5.3.3
+[INFO] 2026-08-10 16:15:09 | [UPDATER][init] main_exe_path None
+[ERROR] 2026-08-10 16:15:09 | [UPDATER][main] Error expected str, bytes or os.PathLike object, not NoneType
+[INFO] 2026-08-10 16:15:34 | [UPDATER][init] current_version 5.3.3
+[INFO] 2026-08-10 16:15:34 | [UPDATER][init] main_exe_path f:/pycharmprojects/voxodium
+[INFO] 2026-08-10 16:15:42 | [UPDATER][on_version_checked] Текущая версия - 5.3.3
+[INFO] 2026-08-10 16:15:42 | [UPDATER][on_version_checked] Найденная версия - '3.0.7'
+[ERROR] 2026-08-10 16:15:43 | [UPDATER][run_main_app] Error: [WinError 5] Отказано в доступе
+[INFO] 2026-08-10 16:15:51 | [UPDATER][init] current_version 5.3.3
+[INFO] 2026-08-10 16:15:51 | [UPDATER][init] main_exe_path f:/pycharmprojects/voxodium
+[INFO] 2026-08-10 16:15:52 | [UPDATER][on_version_checked] Текущая версия - 5.3.3
+[INFO] 2026-08-10 16:15:52 | [UPDATER][on_version_checked] Найденная версия - '3.0.7'
+[ERROR] 2026-08-10 16:15:52 | [UPDATER][run_main_app] Error: [WinError 5] Отказано в доступе
