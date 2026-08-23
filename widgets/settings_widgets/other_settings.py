@@ -4,7 +4,7 @@ import winshell
 from mygui import  CustomToggle
 from bin.utils import setup_custom_font_label
 from path_builder import get_full_filepath
-from log_config import  debuglog
+from log_config import  logger
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget, QComboBox
 from PySide6.QtCore import Qt
 from config import app_name
@@ -54,12 +54,12 @@ class OtherSettingsWidget(QWidget):
             self.correct_command_check.setProperty("helpId", "correct_command_check")
             layout.addWidget(self.correct_command_check)
 
-            self.update_check = CustomToggle("Запуск утилиты обновления \n перед стартом программы")
-            self.update_check.setStyleSheet("background: transparent;")
-            self.update_check.setChecked(self.main.run_updater)
-            self.update_check.stateChanged.connect(self.toggle_update)
-            self.update_check.setProperty("helpId", "update_check")
-            layout.addWidget(self.update_check)
+            # self.update_check = CustomToggle("Запуск утилиты обновления \n перед стартом программы")
+            # self.update_check.setStyleSheet("background: transparent;")
+            # self.update_check.setChecked(self.main.run_updater)
+            # self.update_check.stateChanged.connect(self.toggle_update)
+            # self.update_check.setProperty("helpId", "update_check")
+            # layout.addWidget(self.update_check)
 
             self.start_win_check = CustomToggle("Запуск с Windows")
             self.start_win_check.setStyleSheet("background: transparent;")
@@ -145,9 +145,9 @@ class OtherSettingsWidget(QWidget):
         self.main.is_censored = self.censor_check.isChecked()
         self.main.save_settings()
 
-    def toggle_update(self):
-        self.main.run_updater = self.update_check.isChecked()
-        self.main.save_settings()
+    # def toggle_update(self):
+    #     self.main.run_updater = self.update_check.isChecked()
+    #     self.main.save_settings()
         
     def toggle_correct_command(self):
         self.main.is_corrected_command = self.correct_command_check.isChecked()
@@ -192,9 +192,9 @@ class OtherSettingsWidget(QWidget):
                     shortcut.description = f"Ярлык для {app_name}"
                     shortcut.icon_location = (executable_path, 0)
                 shortcuts_created = True
-                debuglog.info(f"[SETTINGS-WIDGET] Ярлык создан на рабочем столе: {desktop_shortcut}")
+                logger.info(f"[SETTINGS-WIDGET] Ярлык создан на рабочем столе: {desktop_shortcut}")
             else:
-                debuglog.error(f"[SETTINGS-WIDGET] Ярлык на рабочем столе уже существует: {desktop_shortcut}")
+                logger.error(f"[SETTINGS-WIDGET] Ярлык на рабочем столе уже существует: {desktop_shortcut}")
 
         except Exception as e:
             self.main.show_toast(f"Ошибка создания ярлыка на рабочем столе: {e}")
@@ -216,9 +216,9 @@ class OtherSettingsWidget(QWidget):
                     shortcut.description = f"Ярлык для {app_name}"
                     shortcut.icon_location = (executable_path, 0)
                 shortcuts_created = True
-                debuglog.info(f"[SETTINGS-WIDGET] Ярлык создан в меню 'Пуск': {startup_shortcut}")
+                logger.info(f"[SETTINGS-WIDGET] Ярлык создан в меню 'Пуск': {startup_shortcut}")
             else:
-                debuglog.error(f"[SETTINGS-WIDGET] Ярлык в меню 'Пуск' уже существует: {startup_shortcut}")
+                logger.error(f"[SETTINGS-WIDGET] Ярлык в меню 'Пуск' уже существует: {startup_shortcut}")
 
         except Exception as e:
             self.main.show_toast(f"Ошибка создания ярлыка в меню 'Пуск': {e}")
@@ -247,7 +247,7 @@ class OtherSettingsWidget(QWidget):
         except Exception as e:
             self.device_list.addItem("Нет активных микрофонов")
             self.main.show_toast(f"Ошибка при получении данных аудиоустройств: {str(e)}")
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка при получении данных аудиоустройств: {str(e)}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка при получении данных аудиоустройств: {str(e)}")
 
     def get_input_devices(self):
         devices = sd.query_devices()
@@ -301,7 +301,7 @@ class OtherSettingsWidget(QWidget):
 
             return active_mics
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка в проверке активных микрофонов: {str(e)}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка в проверке активных микрофонов: {str(e)}")
             return []
 
     def on_microphone_selected(self):
@@ -319,11 +319,11 @@ class OtherSettingsWidget(QWidget):
             self.main.save_settings()
             self.main.save_settings_signal.emit()
 
-            debuglog.info(f"[SETTINGS-WIDGET] Выбрано устройство: '{device_name}' (ID={device_id})")
+            logger.info(f"[SETTINGS-WIDGET] Выбрано устройство: '{device_name}' (ID={device_id})")
 
     def hide_method(self):
         """Закрывает панель настроек через главный класс"""
         if hasattr(self.main, 'hide_widget'):
             self.main.hide_widget()
         else:
-            debuglog.error("[SETTINGS-WIDGET] Метод close_settings не найден в main")     
+            logger.error("[SETTINGS-WIDGET] Метод close_settings не найден в main")     

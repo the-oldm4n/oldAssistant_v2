@@ -1,19 +1,12 @@
-import os
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QLineEdit
 from PySide6.QtCore import Signal, QTimer, Qt
 from PySide6.QtGui import QCursor
 from mygui import CustomSvgWidget
 from bin.base_modules.register_module import AuthManager
-from path_builder import get_path, get_app_data_dir
+from path_builder import get_path
 from log_config import logger
 from mygui import main_apply_colors
-from config import dev_mode, domain
-
-
-if dev_mode:
-    file_styles = get_path("user_data", "color.json")
-else:
-    file_styles = os.path.join(get_app_data_dir(), "user_data", "color.json")
+from config import domain
 
 
 class LoginWindow(QWidget):
@@ -201,8 +194,7 @@ class LoginWindow(QWidget):
                 background: rgba(255, 255, 255, 0.2);
             }
         """)
-        
-        # Скрываем 2FA поля изначально
+
         self.hide_2fa_fields()
         
         content_layout.addWidget(self.label_2fa)
@@ -211,14 +203,13 @@ class LoginWindow(QWidget):
         
         content_layout.addSpacing(20)
         
-        # Кнопки
         self.submit_btn = QPushButton("Создать аккаунт")
         self.submit_btn.clicked.connect(self.handle_submit)
         
         self.cancel_btn = QPushButton("Отмена")
         self.cancel_btn.clicked.connect(self.cancel_login)
         
-        self.back_btn = QPushButton("Назад")  # ← Новая кнопка "Назад" для 2FA
+        self.back_btn = QPushButton("Назад")
         self.back_btn.clicked.connect(self.back_to_login)
         self.back_btn.hide()
 
@@ -227,7 +218,6 @@ class LoginWindow(QWidget):
             self.local_launch_btn.clicked.connect(self.login_as_guest)
             self.local_launch_btn.hide()
         
-        # Layout для кнопок
         buttons_layout = QHBoxLayout()
         buttons_layout.addWidget(self.cancel_btn)
         buttons_layout.addWidget(self.submit_btn)
@@ -238,8 +228,7 @@ class LoginWindow(QWidget):
             content_layout.addWidget(self.local_launch_btn)
 
         content_layout.addStretch()
-        
-        # Текст-ссылка для переключения между режимами
+
         self.switch_mode_label = QLabel(
             "<style>"
             "a { color: #1E88E5; text-decoration: none; }"
@@ -280,33 +269,28 @@ class LoginWindow(QWidget):
         window_stack_layout.addWidget(self.title_bar_widget)
         window_stack_layout.addLayout(content_layout)
 
-        # Добавляем основной виджет в главный layout
         main_layout.addWidget(self.main_widget, 1)
         
     def login_as_guest(self):
         """Вход в режиме гостя"""
         logger.info("Вход как гость")
 
-        # Создаем гостевые данные
         guest_data = {
             'id': -1,
             'username': 'local_storage',
             'display_name': 'Username',
             'email_verified': False,
-            'avatar': None
+            'avatar': None,
+            'is_guest': True
         }
-        
-        # Устанавливаем гостевой режим в AuthManager
+
         self.auth.user_data = guest_data
-        self.auth.token = None  # Нет токена для гостя
-        
-        # Сохраняем информацию о гостевом режиме
+        self.auth.token = None
+
         self.auth._save_auth_data()
-        
-        # Показываем сообщение
+
         self.show_message("Локальный запуск", "info")
-        
-        # Закрываем окно и отправляем сигнал
+
         QTimer.singleShot(1000, self.finish_guest_login)
         
     def hide_2fa_fields(self):
@@ -482,8 +466,7 @@ class LoginWindow(QWidget):
 
             if hasattr(self, 'local_launch_btn'):
                 self.local_launch_btn.hide()
-        
-        # Очищаем поля при переключении
+
         self.clear_fields()
 
     def clear_fields(self):

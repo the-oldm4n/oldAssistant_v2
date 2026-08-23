@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime
 from bin.lists import get_audio_paths
-from log_config import logger, debuglog
+from log_config import assist_log, logger
 import subprocess
 import webbrowser
 from bin.speak_functions import thread_react_detail, thread_react, react_detail
@@ -25,9 +25,9 @@ def load_settings():
                 settings = json.load(f)
                 return settings
         except json.JSONDecodeError:
-            debuglog.error(f"Ошибка: файл {settings_file} содержит некорректный JSON.")
+            logger.error(f"Ошибка: файл {settings_file} содержит некорректный JSON.")
     else:
-        debuglog.error(f"Файл настроек {settings_file} не найден.")
+        logger.error(f"Файл настроек {settings_file} не найден.")
 
 def get_current_speaker():
     settings = load_settings()
@@ -56,7 +56,7 @@ def search_yandex(command, name=None, name_2=None, name_3=None):
 
     query = ' '.join(words)
     url = f"https://www.ya.ru/search?text={query}"
-    debuglog.info(f"Поиск по значению: {query}")
+    logger.info(f"Поиск по значению: {query}")
     webbrowser.open(url)
 
 def shutdown_windows(react=True):
@@ -83,7 +83,7 @@ def open_volume_mixer(react=True):
     """ Открывает микшер виндовс """
     try:
         subprocess.Popen(["sndvol.exe", "/R"])
-        debuglog.info("Микшер громкости открыт")
+        logger.info("Микшер громкости открыт")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -93,8 +93,8 @@ def open_volume_mixer(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка при открытии микшера громкости: {e}", exc_info=True)
         logger.error(f"Ошибка при открытии микшера громкости: {e}", exc_info=True)
-        debuglog.error(f"Ошибка при открытии микшера громкости: {e}", exc_info=True)
 
 def close_volume_mixer(react=True):
     """ Открывает микшер виндовс """
@@ -105,8 +105,8 @@ def close_volume_mixer(react=True):
                                 text=True,
                                 encoding='cp866',
                                 check=True)
-        debuglog.info("Микшер громкости закрыт")
-        debuglog.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
+        logger.info("Микшер громкости закрыт")
+        logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -116,13 +116,13 @@ def close_volume_mixer(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка при закрытии микшера громкости: {e}", exc_info=True)
         logger.error(f"Ошибка при закрытии микшера громкости: {e}", exc_info=True)
-        debuglog.error(f"Ошибка при закрытии микшера громкости: {e}", exc_info=True)
 def open_calc(react=True):
     """ Открывает калькулятор """
     try:
         subprocess.Popen(["calc.exe", "/R"])
-        debuglog.info("Калькулятор открыт")
+        logger.info("Калькулятор открыт")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -132,8 +132,8 @@ def open_calc(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка при открытии калькулятора {e}", exc_info=True)
         logger.error(f"Ошибка при открытии калькулятора {e}", exc_info=True)
-        debuglog.error(f"Ошибка при открытии калькулятора {e}", exc_info=True)
 
 def close_calc(react=True):
     """ Закрывает калькулятор """
@@ -144,8 +144,8 @@ def close_calc(react=True):
                                 text=True,
                                 encoding='cp866',
                                 check=True)
-        debuglog.info(f"Процесс успешно завершен.")
-        debuglog.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
+        logger.info(f"Процесс успешно завершен.")
+        logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -155,14 +155,14 @@ def close_calc(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка: {e}")
         logger.error(f"Ошибка: {e}")
-        debuglog.error(f"Ошибка: {e}")
 
 def open_paint(react=True):
     """ Открывает paint """
     try:
         subprocess.Popen("mspaint.exe")
-        debuglog.info("Paint открыт")
+        logger.info("Paint открыт")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -172,8 +172,8 @@ def open_paint(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка при открытии paint {e}", exc_info=True)
         logger.error(f"Ошибка при открытии paint {e}", exc_info=True)
-        debuglog.error(f"Ошибка при открытии paint {e}", exc_info=True)
 
 def close_paint(react=True):
     """ Закрывает paint """
@@ -184,8 +184,8 @@ def close_paint(react=True):
                                 text=True,
                                 encoding='cp866',
                                 check=True)
-        debuglog.info(f"Пейнт закрыт.")
-        debuglog.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
+        logger.info(f"Пейнт закрыт.")
+        logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -195,8 +195,8 @@ def close_paint(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка: {e}")
         logger.error(f"Ошибка: {e}")
-        debuglog.error(f"Ошибка: {e}")
 
 def open_path(react=True):
     try:
@@ -210,8 +210,8 @@ def open_path(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка {e}", exc_info=True)
         logger.error(f"Ошибка {e}", exc_info=True)
-        debuglog.error(f"Ошибка {e}", exc_info=True)
 
 def greeting():
     current_hour = datetime.now().hour
@@ -230,7 +230,7 @@ def open_taskmgr(react=True):
     """ Открывает Диспетчер задач """
     try:
         subprocess.Popen("taskmgr.exe")
-        debuglog.info("Диспетчер задач открыт")
+        logger.info("Диспетчер задач открыт")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -240,8 +240,8 @@ def open_taskmgr(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка: {e}", exc_info=True)
         logger.error(f"Ошибка: {e}", exc_info=True)
-        debuglog.error(f"Ошибка: {e}", exc_info=True)
 
 def close_taskmgr(react=True):
     """ Закрывает Диспетчер задач """
@@ -252,8 +252,8 @@ def close_taskmgr(react=True):
                                 text=True,
                                 encoding='cp866',
                                 check=True)
-        debuglog.info(f"Диспетчер задач закрыт")
-        debuglog.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
+        logger.info(f"Диспетчер задач закрыт")
+        logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -263,15 +263,15 @@ def close_taskmgr(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка: {e}")
         logger.error(f"Ошибка: {e}")
-        debuglog.error(f"Ошибка: {e}")
 
 def open_recycle_bin(react=True):
     """Открывает корзину"""
     try:
         # Используем explorer для открытия корзины
         subprocess.Popen('explorer.exe shell:RecycleBinFolder')
-        debuglog.info("Корзина открыта")
+        logger.info("Корзина открыта")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -281,8 +281,8 @@ def open_recycle_bin(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка при открытии корзины: {e}", exc_info=True)
         logger.error(f"Ошибка при открытии корзины: {e}", exc_info=True)
-        debuglog.error(f"Ошибка при открытии корзины: {e}", exc_info=True)
 
 def close_recycle_bin(react=True):
     """Закрывает все окна корзины"""
@@ -294,8 +294,8 @@ def close_recycle_bin(react=True):
                                 text=True,
                                 encoding='cp866',
                                 check=True)
-        debuglog.info("Корзина закрыта")
-        debuglog.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
+        logger.info("Корзина закрыта")
+        logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -305,8 +305,8 @@ def close_recycle_bin(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка при закрытии корзины: {e}")
         logger.error(f"Ошибка при закрытии корзины: {e}")
-        debuglog.error(f"Ошибка при закрытии корзины: {e}")
 
 def open_appdata(react=True):
     """Открывает папку %appdata% (AppData/Roaming)"""
@@ -317,7 +317,7 @@ def open_appdata(react=True):
         # Открываем в проводнике
         subprocess.Popen(f'explorer "{appdata_path}"')
 
-        debuglog.info("Папка %appdata% открыта")
+        logger.info("Папка %appdata% открыта")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -327,8 +327,8 @@ def open_appdata(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка при открытии %appdata%: {e}", exc_info=True)
         logger.error(f"Ошибка при открытии %appdata%: {e}", exc_info=True)
-        debuglog.error(f"Ошибка при открытии %appdata%: {e}", exc_info=True)
 
 
 def close_appdata(react=True):
@@ -344,8 +344,8 @@ def close_appdata(react=True):
                                     encoding='cp866',
                                     check=True)
 
-            debuglog.info("Папка %appdata% закрыта")
-            debuglog.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
+            logger.info("Папка %appdata% закрыта")
+            logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
         if react:
             speaker = get_current_speaker()
             audio_paths = get_audio_paths(speaker)
@@ -355,5 +355,5 @@ def close_appdata(react=True):
         audio_paths = get_audio_paths(speaker)
         error_file = audio_paths.get('error_file')
         thread_react_detail(error_file)
+        assist_log.error(f"Ошибка при закрытии %appdata%: {e}")
         logger.error(f"Ошибка при закрытии %appdata%: {e}")
-        debuglog.error(f"Ошибка при закрытии %appdata%: {e}")

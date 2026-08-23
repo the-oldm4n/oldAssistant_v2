@@ -27,9 +27,9 @@ class ResizeManager(QObject):
         self.drag_start_geometry = None
         self._drag_click_offset = None
 
-        self.default_size = 920, 700
         self._is_maximized = False
-        self._default_geometry = QRect(300, 200, 920, 700)
+        self.default_size = 1100, 800
+        self._default_geometry = QRect(200, 200, 1100, 800)
         self._normal_geometry = None
 
         self.resize_animation = QPropertyAnimation(self.main, b"geometry")
@@ -79,17 +79,26 @@ class ResizeManager(QObject):
             with open(self.winsize_file, 'r', encoding='utf-8') as f:
                 settings = json.load(f)
 
-            logger.info("[RESIZE MANAGER] Размеры окна загружены")
+            g = settings["geometry"]
+            if isinstance(g, (list, tuple)) and len(g) == 4:
+                rect = QRect(g[0], g[1], g[2], g[3])
+            self._normal_geometry = rect
 
             if 'state' in settings:
-                if settings['state'].get('is_maximized'):
-                    self._is_maximized = True
+                self._is_maximized = settings['state'].get('_is_maximized')
+
+                if self._is_maximized:
                     self.showMaximized()
                 else:
-                    g = settings["geometry"]
-                    if isinstance(g, (list, tuple)) and len(g) == 4:
-                        rect = QRect(g[0], g[1], g[2], g[3])
-                        self.main.setGeometry(rect)
+                    self.main.setGeometry(self._normal_geometry)
+
+                    screen_geometry = self.main.screen().availableGeometry()
+                    self.main.move(
+                        (screen_geometry.width() - self.main.width()) // 2,
+                        (screen_geometry.height() - self.main.height()) // 2
+                    )
+
+            logger.info("[RESIZE MANAGER] Размеры окна загружены")
 
         except Exception as e:
             logger.error(f"[RESIZE MANAGER][load_window_settings] Error: {e}")
@@ -312,27 +321,23 @@ class ResizeManager(QObject):
         if new_geometry.width() > 200 and new_geometry.height() > 200:
             self.main.setGeometry(new_geometry)
 
-        if hasattr(self, 'snow_on_background') and self.snow_on_background:
-            self.snow_on_background.setGeometry(self.central_widget.rect())
-            self.snow_on_background._init_snowflakes()
-            self.snow_on_background.update()
-            
-        if hasattr(self, 'garland_decorator') and self.garland_decorator:
-            self.garland_decorator.update_size(self.width())
-
         if sidebar_animated_signal:
             sidebar_animated_signal.update_overlay.emit()
 
     def showMaximized(self):
         """Кастомное максимизирование для безрамного окна"""
-        super().showMaximized()
-
         screen = QApplication.primaryScreen()
         available_geometry = screen.availableGeometry()
 
-        self.setGeometry(available_geometry)
+        self.main.setGeometry(available_geometry)
+        self.main.setContentsMargins(0, 0, 0, 0)
 
-        self.setContentsMargins(0, 0, 0, 0)
+        self.main.central_widget.setObjectName("FullWindowMode")
+        self.main.close_button.setObjectName("FullWindowMode_CloseBtn")
+        self.main.title_bar_widget.setObjectName("FullWindowMode_TitleBar")
+        self.main.apply_styles()
+
+        super().showMaximized()
 
     def show_normal_window(self):
         self.setGeometry(self._default_geometry)

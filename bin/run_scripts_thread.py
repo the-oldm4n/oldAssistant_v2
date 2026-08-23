@@ -1,6 +1,6 @@
 from PySide6.QtCore import QThread, Signal
 import time
-from log_config import debuglog
+from log_config import logger
 
 
 class ScriptExecutionThread(QThread):
@@ -27,7 +27,7 @@ class ScriptExecutionThread(QThread):
     def run(self):
         """Основной метод потока"""
         try:
-            debuglog.info(f"[SCRIPT THREAD] Начало выполнения скрипта: {self.script_key}")
+            logger.info(f"[SCRIPT THREAD] Начало выполнения скрипта: {self.script_key}")
             
             if self.script_key not in self.commands_manager.commands:
                 self.script_error.emit(f"Скрипт '{self.script_key}' не найден")
@@ -42,12 +42,12 @@ class ScriptExecutionThread(QThread):
             actions = script_data.get('actions', [])
             total_steps = len(actions)
             
-            debuglog.info(f"[SCRIPT THREAD] Загружено {total_steps} шагов")
+            logger.info(f"[SCRIPT THREAD] Загружено {total_steps} шагов")
             
             for step_idx, action_item in enumerate(actions, 1):
                 # Проверяем запрос на остановку
                 if self._stop_requested:
-                    debuglog.info(f"[SCRIPT THREAD] Остановка запрошена на шаге {step_idx}")
+                    logger.info(f"[SCRIPT THREAD] Остановка запрошена на шаге {step_idx}")
                     break
                     
                 # Обрабатываем паузу
@@ -56,12 +56,12 @@ class ScriptExecutionThread(QThread):
                     
                 # Сигнализируем о начале шага
                 self.step_started.emit(step_idx, total_steps)
-                debuglog.info(f"[SCRIPT THREAD] Шаг {step_idx}/{total_steps}: {action_item}")
+                logger.info(f"[SCRIPT THREAD] Шаг {step_idx}/{total_steps}: {action_item}")
                 
                 # Задержка перед выполнением шага
                 delay = action_item.get('delay', 0)
                 if delay > 0:
-                    debuglog.info(f"[SCRIPT THREAD] Задержка {delay} секунд")
+                    logger.info(f"[SCRIPT THREAD] Задержка {delay} секунд")
                     
                     # Разбиваем задержку для возможности прерывания
                     elapsed = 0
@@ -84,16 +84,16 @@ class ScriptExecutionThread(QThread):
                 self.step_completed.emit(step_idx, total_steps, success)
                 
                 if not success:
-                    debuglog.error(f"[SCRIPT THREAD] Шаг {step_idx} завершился с ошибкой")
+                    logger.error(f"[SCRIPT THREAD] Шаг {step_idx} завершился с ошибкой")
             
             # Сигнализируем о завершении
             completed = not self._stop_requested
-            debuglog.info(f"[SCRIPT THREAD] Сценарий завершен. Успешно: {completed}")
+            logger.info(f"[SCRIPT THREAD] Сценарий завершен. Успешно: {completed}")
             self.script_finished.emit(completed)
             
         except Exception as e:
             error_msg = f"Ошибка выполнения скрипта: {str(e)}"
-            debuglog.error(f"[SCRIPT THREAD] {error_msg}")
+            logger.error(f"[SCRIPT THREAD] {error_msg}")
             self.script_error.emit(error_msg)
             self.script_finished.emit(False)
     
@@ -104,13 +104,13 @@ class ScriptExecutionThread(QThread):
             args = action_item.get('args', '')
             
             if not command_key:
-                debuglog.info(f"[SCRIPT THREAD] Шаг {step_idx}: нет ключа команды")
+                logger.info(f"[SCRIPT THREAD] Шаг {step_idx}: нет ключа команды")
                 return False
             
             all_commands = {**self.commands_manager.default_commands, **self.commands_manager.commands}
                 
             if command_key not in all_commands:
-                debuglog.info(f"[SCRIPT THREAD] Шаг {step_idx}: команда '{command_key}' не найдена")
+                logger.info(f"[SCRIPT THREAD] Шаг {step_idx}: команда '{command_key}' не найдена")
                 return False
                 
             command_data = all_commands[command_key]
@@ -124,7 +124,7 @@ class ScriptExecutionThread(QThread):
                 value = command_data
                 cmd_type = self.commands_manager._detect_type(value)
 
-            debuglog.info(f"[SCRIPT THREAD] Выполняю: {cmd_type} -> {value}")
+            logger.info(f"[SCRIPT THREAD] Выполняю: {cmd_type} -> {value}")
             
             # ВЫПОЛНЯЕМ КОМАНДУ ЧЕРЕЗ СИГНАЛ (в основном потоке)
             self.execute_command.emit(cmd_type, value, self.action, move, args)
@@ -132,7 +132,7 @@ class ScriptExecutionThread(QThread):
             return True
             
         except Exception as e:
-            debuglog.error(f"[SCRIPT THREAD] Ошибка выполнения шага {step_idx}: {e}")
+            logger.error(f"[SCRIPT THREAD] Ошибка выполнения шага {step_idx}: {e}")
             return False
     
     def stop(self):

@@ -18,7 +18,7 @@ from mygui import CustomSvgWidget, main_apply_colors, color_signal
 from bin.utils import setup_custom_font_label
 from bin.shortcut_monitor import ShortcutMonitor
 from bin.signals import commands_signal
-from log_config import debuglog
+from log_config import logger
 from path_builder import get_path, get_app_data_dir
 from config import dev_mode
 
@@ -253,7 +253,7 @@ class TaskSchedulerWidget(QWidget):
                     json.dump({}, f)
                 return {}
         except Exception as e:
-            debuglog.error(f"Ошибка загрузки файла ярлыков: {e}")
+            logger.error(f"Ошибка загрузки файла ярлыков: {e}")
             return {}
     
     def populate_shortcuts(self):
@@ -286,7 +286,7 @@ class TaskSchedulerWidget(QWidget):
                 'description': shortcut.Description
             }
         except Exception as e:
-            debuglog.error(f"Ошибка чтения ярлыка {lnk_path}: {e}")
+            logger.error(f"Ошибка чтения ярлыка {lnk_path}: {e}")
             return None
     
     def test_shortcut(self):
@@ -361,7 +361,7 @@ class TaskSchedulerWidget(QWidget):
         description = self.description_edit.text().strip()
 
         if self.check_task_exists(task_name):
-            debuglog.info(f"Задача найдена")
+            logger.info(f"Задача найдена")
             self.show_status(f"Найдена задача с выбранным именем. Измените название задачи.", color="red")
             return
         
@@ -467,26 +467,26 @@ class TaskSchedulerWidget(QWidget):
                 TASK_LOGON_INTERACTIVE_TOKEN   # Тип входа
             )
             
-            debuglog.info(f"Задача '{task_name}' зарегистрирована")
+            logger.info(f"Задача '{task_name}' зарегистрирована")
             
             # Проверяем, что задача действительно создана
             try:
                 check_task = root_folder.GetTask(task_name)
                 if check_task:
-                    debuglog.info(f"Задача '{task_name}' успешно проверена в планировщике")
+                    logger.info(f"Задача '{task_name}' успешно проверена в планировщике")
                     pythoncom.CoUninitialize()
                     return True
                 else:
-                    debuglog.error(f"Задача '{task_name}' не найдена после создания")
+                    logger.error(f"Задача '{task_name}' не найдена после создания")
                     pythoncom.CoUninitialize()
                     return False
                     
             except Exception as verify_error:
-                debuglog.error(f"Ошибка проверки задачи: {verify_error}")
+                logger.error(f"Ошибка проверки задачи: {verify_error}")
                 
                 # Пробуем альтернативный способ проверки
                 if self.check_task_exists(task_name):
-                    debuglog.info(f"Задача найдена альтернативным способом")
+                    logger.info(f"Задача найдена альтернативным способом")
                     pythoncom.CoUninitialize()
                     return True
                 
@@ -494,7 +494,7 @@ class TaskSchedulerWidget(QWidget):
                 return False
                 
         except Exception as e:
-            debuglog.error(f"Ошибка создания задачи: {e}")
+            logger.error(f"Ошибка создания задачи: {e}")
 
             try:
                 pythoncom.CoUninitialize()
@@ -559,18 +559,18 @@ class TaskSchedulerWidget(QWidget):
             task_path = f"C:\\Windows\\System32\\Tasks\\{task_name}"
             
             if os.path.exists(task_path):
-                debuglog.info(f"Файл задачи найден: {task_path}")
+                logger.info(f"Файл задачи найден: {task_path}")
                 return True
             
             # Альтернативный путь
             alt_path = f"C:\\Windows\\Tasks\\{task_name}"
             if os.path.exists(alt_path):
-                debuglog.info(f"Файл задачи найден: {alt_path}")
+                logger.info(f"Файл задачи найден: {alt_path}")
                 return True
                 
-            debuglog.info(f"Файл задачи не найден: {task_name}")
+            logger.info(f"Файл задачи не найден: {task_name}")
             return False
             
         except Exception as e:
-            debuglog.error(f"Ошибка проверки файла: {e}")
+            logger.error(f"Ошибка проверки файла: {e}")
             return False

@@ -6,7 +6,7 @@ import pythoncom
 import subprocess
 import os
 from mygui import CustomSvgWidget, main_apply_colors, color_signal
-from log_config import debuglog
+from log_config import logger
 
 class SensorWorker(QThread):
     """Поток для получения данных сенсоров"""
@@ -76,7 +76,7 @@ class SensorWorker(QThread):
             return data
             
         except Exception as e:
-            debuglog.error(f"[SENSOR] Fetch error: {e}")
+            logger.error(f"[SENSOR] Fetch error: {e}")
             return None
     
     def _get_cpu_data(self, temp, load, power, clock):
@@ -158,36 +158,36 @@ class SensorTab(QWidget):
 
     def start_monitoring(self):
         """Запустить мониторинг (вызывать когда зашли на вкладку)"""
-        debuglog.info(f"[SENSOR_OHM] Запущен мониторинг")
+        logger.info(f"[SENSOR_OHM] Запущен мониторинг")
         if not hasattr(self, '_ohm_started') or not self._ohm_started:
             self._init_ohm()
             self._ohm_started = True
     
     def stop_monitoring(self):
         """Остановить мониторинг (БЛОКИРУЮЩИЙ метод)"""
-        debuglog.info(f"[SENSOR_OHM] Останавливаем мониторинг...")
+        logger.info(f"[SENSOR_OHM] Останавливаем мониторинг...")
 
         self._cleaning_up = True
 
         if self.sensor_worker:
-            debuglog.debug("[SENSOR] Останавливаем worker thread...")
+            logger.debug("[SENSOR] Останавливаем worker thread...")
             self.sensor_worker.stop()
             
             if self.sensor_worker.isRunning():
                 self.sensor_worker.wait(2000)
                 if self.sensor_worker.isRunning():
-                    debuglog.warning("[SENSOR] Принудительное завершение потока")
+                    logger.warning("[SENSOR] Принудительное завершение потока")
                     self.sensor_worker.terminate()
                     self.sensor_worker.wait(500)
             
             self.sensor_worker = None
-            debuglog.debug("[SENSOR] Worker thread остановлен")
+            logger.debug("[SENSOR] Worker thread остановлен")
 
         if hasattr(self, '_ohm_started') and self._ohm_started:
             self._close_ohm()
             self._ohm_started = False
         
-        debuglog.info(f"[SENSOR_OHM] Мониторинг остановлен")
+        logger.info(f"[SENSOR_OHM] Мониторинг остановлен")
     
     def _close_ohm(self):
         """Закрыть OHM"""
@@ -199,7 +199,7 @@ class SensorTab(QWidget):
                 timeout=2  # Таймаут 2 секунды
             )
         except subprocess.TimeoutExpired:
-            debuglog.warning("[SENSOR] OHM не закрылся вовремя")
+            logger.warning("[SENSOR] OHM не закрылся вовремя")
         except:
             pass
     
@@ -352,7 +352,7 @@ class SensorTab(QWidget):
         """Инициализация OpenHardwareMonitor"""
         try:
             if not os.path.exists(self.ohm_path):
-                debuglog.error(f"[SENSOR] OHM not found: {self.ohm_path}")
+                logger.error(f"[SENSOR] OHM not found: {self.ohm_path}")
                 return
             
             tasks = subprocess.check_output('tasklist', shell=True).decode('cp866', errors='ignore')
@@ -370,13 +370,13 @@ class SensorTab(QWidget):
                 )
                 
                 if result.returncode != 0:
-                    debuglog.error(f"[SENSOR] Failed to start OHM: {result.stderr}")
+                    logger.error(f"[SENSOR] Failed to start OHM: {result.stderr}")
                     return
             
             QTimer.singleShot(3000, self._start_sensor_worker)
             
         except Exception as e:
-            debuglog.error(f"[SENSOR] OHM init error: {e}")
+            logger.error(f"[SENSOR] OHM init error: {e}")
     
     def _start_sensor_worker(self):
         """Запуск потока сбора данных"""
@@ -388,12 +388,12 @@ class SensorTab(QWidget):
             self.sensor_worker.start()
             
         except Exception as e:
-            debuglog.error(f"[SENSOR] Failed to start worker: {e}")
+            logger.error(f"[SENSOR] Failed to start worker: {e}")
 
     @Slot()
     def _on_worker_finished(self):
         """Поток завершился"""
-        debuglog.debug("[SENSOR] Worker thread finished")
+        logger.debug("[SENSOR] Worker thread finished")
         self.sensor_worker = None
     
     @Slot(dict)
@@ -422,12 +422,12 @@ class SensorTab(QWidget):
                 self.ram_labels['total'].setText(f"{total} GB" if total != '--' else "-- GB")
                 
         except Exception as e:
-            debuglog.error(f"[SENSOR] UI update error: {e}")
+            logger.error(f"[SENSOR] UI update error: {e}")
     
     @Slot(str)
     def _handle_sensor_error(self, error_msg):
         """Обработка ошибок сенсоров"""
-        debuglog.error(f"[SENSOR] Error: {error_msg}")
+        logger.error(f"[SENSOR] Error: {error_msg}")
         self._set_default_values()
     
     def _set_default_values(self):

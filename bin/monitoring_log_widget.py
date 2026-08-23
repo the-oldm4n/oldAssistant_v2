@@ -2,7 +2,7 @@ from collections import deque
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QTextEdit
 import os
-from log_config import logger
+from log_config import assist_log
 
 
 class MonitorLogWidget(QTextEdit):
@@ -80,7 +80,7 @@ class MonitorLogWidget(QTextEdit):
                 self.last_file_size = file_size
                 
         except Exception as e:
-            logger.error(f"Ошибка загрузки последних строк: {e}")
+            assist_log.error(f"Ошибка загрузки последних строк: {e}")
     
     def _update_display(self):
         """Обновляет отображение на основе буфера."""
@@ -105,7 +105,7 @@ class MonitorLogWidget(QTextEdit):
                     self._read_and_display_new_data()
         
         except Exception as e:
-            logger.error(f"Ошибка проверки лог-файла: {e}")
+            assist_log.error(f"Ошибка проверки лог-файла: {e}")
     
     def _read_and_display_new_data(self):
         """Чтение и отображение новых данных."""
@@ -129,7 +129,7 @@ class MonitorLogWidget(QTextEdit):
                     self.last_read_position = f.tell()
         
         except Exception as e:
-            logger.error(f"Ошибка чтения лог-файла: {e}")
+            assist_log.error(f"Ошибка чтения лог-файла: {e}")
     
     def clear_display(self):
         """Очищает только отображение (не трогает файл)."""
@@ -148,10 +148,10 @@ class MonitorLogWidget(QTextEdit):
                 
                 if len(lines) > self.max_lines:
                     self.clear_logs()
-                    logger.info("Автоочистка логов...")
+                    assist_log.info("Автоочистка логов...")
         
         except Exception as e:
-            logger.error(f"Ошибка очистки лог-файла: {e}")
+            assist_log.error(f"Ошибка очистки лог-файла: {e}")
 
     def clear_logs(self):
         try:
@@ -167,23 +167,23 @@ class MonitorLogWidget(QTextEdit):
             self.last_read_position = 0
             self.last_file_size = 0
             
-            logger.info("Лог-файл очищен")
+            assist_log.info("Лог-файл очищен")
         except Exception as e:
-            logger.error(f"Ошибка при очистке логов: {e}")
+            assist_log.error(f"Ошибка при очистке логов: {e}")
     
     def start_active_mode(self):
         """Запустить активный режим (окно видно)."""
         self.is_active_mode = True
         self.check_timer.start(self.active_interval)
-        logger.info("Активный режим мониторинга логов запущен")
+        assist_log.info("Активный режим мониторинга логов запущен")
     
     def start_background_mode(self):
         """Запустить фоновый режим (окно скрыто)."""
         self.is_active_mode = False
         self.check_timer.start(self.background_interval)
-        logger.info("Фоновый режим мониторинга логов запущен")
+        assist_log.info("Фоновый режим мониторинга логов запущен")
     
     def stop_monitoring(self):
         """Остановить мониторинг."""
         self.check_timer.stop()
-        logger.info("Мониторинг логов остановлен")
+        assist_log.info("Мониторинг логов остановлен")

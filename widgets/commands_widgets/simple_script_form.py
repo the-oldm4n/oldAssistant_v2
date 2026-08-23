@@ -8,7 +8,7 @@ from bin.commands_manager import main_commands_manager
 from mygui import CustomSvgWidget, main_apply_colors
 from bin.utils import setup_custom_font_label
 from bin.signals import commands_signal
-from log_config import debuglog
+from log_config import logger
 from path_builder import get_path
 
 
@@ -472,12 +472,12 @@ class SimpleScriptForm(QWidget):
         
         # Добавляем 5 секунд на выполнение команд
         cleanup_delay_ms = int((total_delay + 5) * 1000)
-        debuglog.info(f"Общая задержка скрипта: {total_delay}с, очистка через {cleanup_delay_ms}мс")
+        logger.info(f"Общая задержка скрипта: {total_delay}с, очистка через {cleanup_delay_ms}мс")
         
         try:
             # Временно сохраняем в commands_manager
             self.commands_manager.commands[temp_script_key] = script_data
-            debuglog.info(f"Тестовый скрипт сохранен как: {temp_script_key}")
+            logger.info(f"Тестовый скрипт сохранен как: {temp_script_key}")
             
             # Запоминаем время начала
             self._test_start_time = time.time()
@@ -489,7 +489,7 @@ class SimpleScriptForm(QWidget):
             QTimer.singleShot(cleanup_delay_ms, lambda: self._cleanup_temp_script(temp_script_key))
             
         except Exception as e:
-            debuglog.error(f"Ошибка запуска теста: {e}")
+            logger.error(f"Ошибка запуска теста: {e}")
             self._cleanup_temp_script(temp_script_key)
             self.lbl_status.setText(f"Ошибка: {e}")
 
@@ -500,9 +500,9 @@ class SimpleScriptForm(QWidget):
             elapsed = getattr(self, '_test_start_time', None)
             if elapsed:
                 elapsed = time.time() - self._test_start_time
-                debuglog.info(f"Тестовый скрипт удален: {temp_key} (выполнялся {elapsed:.1f}с)")
+                logger.info(f"Тестовый скрипт удален: {temp_key} (выполнялся {elapsed:.1f}с)")
             else:
-                debuglog.info(f"Тестовый скрипт удален: {temp_key}")
+                logger.info(f"Тестовый скрипт удален: {temp_key}")
         
     def save_script(self):
         """Сохранить сценарий"""

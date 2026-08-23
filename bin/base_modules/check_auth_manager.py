@@ -41,23 +41,21 @@ class CheckAuthManager(QObject):
         try:
             if self.auth.is_guest():
                 self.session_manager.set_local_session()
-            elif self.auth.user_data:
+            else:
                 username = self.auth.user_data['username']
                 self.session_manager.set_user_session(username)
-            else:
-                raise RuntimeError("Неизвестное состояние авторизации")
 
             self.set_user_data(self.auth.user_data)
             self.main.check_up()
             
         except ValueError as e:
-            self.show_message(str(e), "Ошибка", "error")
+            self.main.show_message(str(e), "Ошибка", "error")
             self.open_login()
 
     def on_login_cancelled(self):
         """Обработка отмены логина"""
         logger.info("[MAIN] Логин отменен")
-        self.close()
+        self.main.close()
         
     def check_auth(self, auth):
         self.auth = auth
@@ -115,7 +113,7 @@ class CheckAuthManager(QObject):
     def set_default_avatar_svg(self):
         """Установить SVG аватарку по умолчанию"""
         if hasattr(self.main, 'avatar_svg'):
-            self.style_manager.apply_color_svg(self.main.avatar_svg)
+            self.main.style_manager.apply_color_svg(self.main.avatar_svg)
 
     def load_user_avatar(self, avatar_path):
         """Загрузить пользовательскую аватарку"""
@@ -212,3 +210,6 @@ class CheckAuthManager(QObject):
         """Перезапуск приложения"""
         self.restart_dialog = UpdateApp(self.main)
         self.restart_dialog.restart_app()
+
+    def set_local_session(self):
+        self.session_manager.set_local_session()

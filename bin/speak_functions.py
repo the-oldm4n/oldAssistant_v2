@@ -2,7 +2,7 @@ import json
 import os
 import random
 import threading
-from log_config import logger, debuglog
+from log_config import assist_log, logger
 
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 import pygame
@@ -24,11 +24,11 @@ def load_volume_assist():
                 settings = json.load(f)
                 return settings.get('volume_assist', 0.2)  # Возвращаем значение по умолчанию, если ключ отсутствует
         except json.JSONDecodeError:
+            assist_log.error(f"Ошибка: файл {settings_file_path} содержит некорректный JSON.")
             logger.error(f"Ошибка: файл {settings_file_path} содержит некорректный JSON.")
-            debuglog.error(f"Ошибка: файл {settings_file_path} содержит некорректный JSON.")
     else:
+        assist_log.error(f"Файл настроек {settings_file_path} не найден.")
         logger.error(f"Файл настроек {settings_file_path} не найден.")
-        debuglog.error(f"Файл настроек {settings_file_path} не найден.")
     return 0.2
 
 def react(folder_path, trace):
@@ -43,15 +43,15 @@ def react(folder_path, trace):
         audio_files = [os.path.join(folder_path, f) for f in os.listdir(folder_path) if f.endswith('.ogg')]
 
         if not audio_files:
+            assist_log.info(f"В папке {folder_path} нет аудиофайлов.")
             logger.info(f"В папке {folder_path} нет аудиофайлов.")
-            debuglog.info(f"В папке {folder_path} нет аудиофайлов.")
             return
 
         # Выбор случайного файла
         random_audio_file = random.choice(audio_files)
         random_filename = os.path.basename(random_audio_file)[:-4]
-        logger.info(f"Ответ ассистента: {random_filename}")
-        debuglog.info(f"Ответ ассистента: {random_filename}. Traceback: {trace}")
+        assist_log.info(f"Ответ ассистента: {random_filename}")
+        logger.info(f"Ответ ассистента: {random_filename}. Traceback: {trace}")
 
         pygame.mixer.init()
         # Загрузка и воспроизведение аудиофайла
@@ -63,8 +63,8 @@ def react(folder_path, trace):
             pygame.time.Clock().tick(10)
 
     except Exception as e:
+        assist_log.error(f"Ошибка при воспроизведении аудио: {e}")
         logger.error(f"Ошибка при воспроизведении аудио: {e}")
-        debuglog.error(f"Ошибка при воспроизведении аудио: {e}")
 
 
 def react_detail(file_path, trace=""):
@@ -76,8 +76,8 @@ def react_detail(file_path, trace=""):
     volume_reduction_factor = load_volume_assist()  # Загружаем из файла настроек значение громкости
     try:
         file_name = os.path.basename(file_path)[:-4]
-        logger.info(f"Ответ ассистента: {file_name}")
-        debuglog.info(f"Ответ ассистента: {file_name}. Traceback: {trace}")
+        assist_log.info(f"Ответ ассистента: {file_name}")
+        logger.info(f"Ответ ассистента: {file_name}. Traceback: {trace}")
 
         pygame.mixer.init()
         # Остановить текущее воспроизведение
@@ -92,8 +92,8 @@ def react_detail(file_path, trace=""):
             pygame.time.Clock().tick(10)
 
     except Exception as e:
+        assist_log.error(f"Ошибка при воспроизведении аудио: {e}")
         logger.error(f"Ошибка при воспроизведении аудио: {e}")
-        debuglog.error(f"Ошибка при воспроизведении аудио: {e}")
 
 def thread_react(folder_path, trace=""):
     """
@@ -135,8 +135,8 @@ def play_sound(type_sound):
         pygame.mixer.music.play()
 
     except Exception as e:
+        assist_log.error(f"Ошибка при воспроизведении аудио: {e}")
         logger.error(f"Ошибка при воспроизведении аудио: {e}")
-        debuglog.error(f"Ошибка при воспроизведении аудио: {e}")
         
 def thread_play_sound(type_sound):
     thread = threading.Thread(target=play_sound, args=(type_sound,), daemon=True)

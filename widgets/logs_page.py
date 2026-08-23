@@ -5,7 +5,7 @@ from PySide6.QtCore import Qt
 
 from bin.monitoring_log_widget import MonitorLogWidget
 from bin.ram_monitor import DualRAMProgressWidget
-from log_config import logger
+from log_config import assist_log
 
 
 class LogsPage(QWidget):
@@ -81,4 +81,4 @@ class LogsPage(QWidget):
 
         except Exception as e:
             self.send_msg(f"Ошибка при открытии папки: {e}")
-            logger.error(f"[LOGSPAGE] Ошибка при открытии папки с логами: {e}")
+            assist_log.error(f"[LOGSPAGE] Ошибка при открытии папки с логами: {e}")

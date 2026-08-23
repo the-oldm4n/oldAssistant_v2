@@ -1,7 +1,7 @@
 import uuid
 from PySide6.QtGui import QFontDatabase, QFont
 from PySide6.QtWidgets import QLabel
-from log_config import logger
+from log_config import assist_log
 from path_builder import get_path
 
 def setup_custom_font_label(text: str, font_style="Comfortaa", weight="Medium"):
@@ -75,7 +75,7 @@ def setup_global_font(app, font_family="Open Sans", size=12, weight="Normal"):
                 families = QFontDatabase.applicationFontFamilies(font_id)
                 if families:
                     loaded_families[name] = families[0]  # Сохраняем реальное имя
-                    logger.info(f"Загружен: {name} -> {families[0]}")
+                    assist_log.info(f"Загружен: {name} -> {families[0]}")
         app._loaded_font_families = loaded_families
         app._fonts_loaded = True
     
@@ -89,9 +89,9 @@ def setup_global_font(app, font_family="Open Sans", size=12, weight="Normal"):
     if font_family in app._loaded_font_families:
         real_family = app._loaded_font_families[font_family]
         font = QFont(real_family, size, weight_map.get(weight, 400))
-        logger.info(f"Установлен: {real_family}, размер: {size}, вес: {weight}")
+        assist_log.info(f"Установлен: {real_family}, размер: {size}, вес: {weight}")
     else:
         font = QFont("Arial", size)
-        logger.error(f"Шрифт {font_family} не найден, используется Arial")
+        assist_log.error(f"Шрифт {font_family} не найден, используется Arial")
     
     app.setFont(font)

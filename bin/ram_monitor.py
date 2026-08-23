@@ -3,7 +3,7 @@ import psutil
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 from PySide6.QtCore import Signal, QTimer, Qt, QObject
 import os
-from log_config import debuglog
+from log_config import logger
 
 
 class AppRAMMonitor(QObject):
@@ -128,7 +128,7 @@ class DualRAMProgressWidget(QWidget):
             self.app_ram_bar.set_progress_color("#FFA500")
         else:
             self.app_ram_bar.set_progress_color("#FF0000")
-            debuglog.warning("[MAIN] Превышен лимит памяти")
+            logger.warning("[MAIN] Превышен лимит памяти")
             self.show_toast(f"Прозошла утечка памяти. Превышен лимит (1024Мб).")
     
     def update_system_ram(self, percent, used_gb):

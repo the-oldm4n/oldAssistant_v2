@@ -8,7 +8,7 @@ from PySide6.QtCore import Signal, QTimer, Qt, QThread
 from bin.base_modules.toast_notification import SimpleNotif
 from mygui import main_apply_colors, CustomSvgWidget, SVGProgressBar
 from path_builder import get_app_data_dir, get_path
-from log_config import debuglog
+from log_config import logger
 from config import dev_mode 
 
 if dev_mode:
@@ -107,7 +107,7 @@ class InitScreen(QWidget):
             self.setStyleSheet(style_sheet)
             self.main_widget.setStyleSheet("""border-radius:20px""")
         except Exception as e:
-            debuglog.error(f"[INIT] Ошибка в методе apply_styles: {e}")
+            logger.error(f"[INIT] Ошибка в методе apply_styles: {e}")
 
     def show_message(self, text, title="Уведомление", message_type="info", buttons=QMessageBox.StandardButton.Ok):
         try:
@@ -120,7 +120,7 @@ class InitScreen(QWidget):
             )
             return message.exec_()
         except Exception as e:
-            debuglog.error(f"[INIT] Ошибка при показе уведомления(оконного): {e}")
+            logger.error(f"[INIT] Ошибка при показе уведомления(оконного): {e}")
             return QDialog.DialogCode.Rejected
 
     def start_checks(self):

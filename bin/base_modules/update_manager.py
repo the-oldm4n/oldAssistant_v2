@@ -160,10 +160,10 @@ class UpdateManager(QObject):
         logger.info(f"[MAIN] Values: {file_path}, {success}, {skipped}, {error}")
         self.main.update_label.setText("New version")
         if success:
-            self.show_toast(f"Доступно обновление (v.{self.latest_version})")
+            self.main.show_toast(f"Доступно обновление (v.{self.latest_version})")
             self.stop_checking = True
             if skipped:
-                self.show_toast("Подготовка к процедуре обновления...\n Не закрывайте приложение")
+                self.main.show_toast("Подготовка к процедуре обновления...\n Не закрывайте приложение")
                 logger.info(f"[MAIN][SKIP] Файл уже существует")
                 self.open_window_and_update()
             else:
@@ -175,11 +175,11 @@ class UpdateManager(QObject):
 
     def open_window_and_update(self):
         """Обработка действия, если апдейт уже был скачан (активация окна)"""
-        if not self.isVisible():
-            self.show()
-        if self.isMinimized():
-            self.showNormal()
-        self.raise_()
-        self.activateWindow()
+        if not self.main.isVisible():
+            self.main.show()
+        if self.main.isMinimized():
+            self.main.showNormal()
+        self.main.raise_()
+        self.main.activateWindow()
         QApplication.processEvents()
         QTimer.singleShot(500, lambda: self.update_app())

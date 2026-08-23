@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QDateTime
 
 
 class ColorChangeSignal(QObject):
@@ -37,6 +37,8 @@ class ToolWidgetSignal(QObject):
     trigger_capture_area = Signal()
     trigger_open_shortcuts = Signal()
     run_command = Signal(str, str, str)
+    add_reminder = Signal(str, QDateTime)
+    show_reminders = Signal()
 
 tool_widget_signal = ToolWidgetSignal()
 

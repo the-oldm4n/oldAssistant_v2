@@ -17,7 +17,7 @@ def get_base_directory():
 
 def get_debuglog_path():
     base = get_base_directory() if dev_mode else get_app_data_dir()
-    file_path = os.path.join(base, "log", "debuglog.log")
+    file_path = os.path.join(base, "log", "logger.log")
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     return file_path
 
@@ -27,8 +27,8 @@ def get_log_path():
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     return file_path
 
-logger = logging.getLogger("main")
-logger.setLevel(logging.INFO)
+assist_log = logging.getLogger("main")
+assist_log.setLevel(logging.INFO)
 handler = RotatingFileHandler(
     get_log_path(),
     maxBytes=0.5 * 1024 * 1024,
@@ -37,10 +37,10 @@ handler = RotatingFileHandler(
 )
 formatter = logging.Formatter("%(message)s")
 handler.setFormatter(formatter)
-logger.addHandler(handler)
+assist_log.addHandler(handler)
 
-debuglog = logging.getLogger("debuglog")
-debuglog.setLevel(logging.DEBUG)
+logger = logging.getLogger("logger")
+logger.setLevel(logging.DEBUG)
 debug_handler = RotatingFileHandler(
     get_debuglog_path(),
     maxBytes=2 * 1024 * 1024,
@@ -49,4 +49,4 @@ debug_handler = RotatingFileHandler(
 )
 debug_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 debug_handler.setFormatter(debug_formatter)
-debuglog.addHandler(debug_handler)
+logger.addHandler(debug_handler)

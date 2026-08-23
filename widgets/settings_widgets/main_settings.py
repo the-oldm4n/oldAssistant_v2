@@ -2,7 +2,7 @@ import json
 import os
 from bin.utils import setup_custom_font_label
 from bin.speak_functions import thread_react
-from log_config import logger, debuglog
+from log_config import assist_log, logger
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget, QLineEdit, QComboBox, QSlider, QFileDialog
 from PySide6.QtCore import Signal, Qt
 
@@ -46,7 +46,7 @@ class SettingsWidget(QWidget):
         if hasattr(self.main, 'hide_widget'):
             self.main.hide_widget()
         else:
-            debuglog.error("[SETTINGS-WIDGET] Метод close_settings не найден в main")
+            logger.error("[SETTINGS-WIDGET] Метод close_settings не найден в main")
             
     def showEvent(self, event):
         """При показе панели настраиваем help system"""
@@ -190,8 +190,8 @@ class SettingsWidget(QWidget):
             get_path = path.get("echo_folder")
             thread_react(get_path)
         except Exception as e:
-            logger.error(f"При тесте голоса произошла ошибка:{e}")
-            debuglog.error(f"[SETTINGS-WIDGET] При тесте голоса произошла ошибка:{e}")
+            assist_log.error(f"При тесте голоса произошла ошибка:{e}")
+            logger.error(f"[SETTINGS-WIDGET] При тесте голоса произошла ошибка:{e}")
 
     def update_ui(self):
         """Обновляет UI виджета текущими настройками"""

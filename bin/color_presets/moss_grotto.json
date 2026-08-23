@@ -407,16 +407,6 @@
     "GradientGroup": {
         "background-color": "transparent"
     },
-    "CustomPage": {
-        "background-color": "transparent"
-    },
-    "CustomPageWidget": {
-        "background-color": "qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 rgba(10, 59, 44, 0.59), stop:1 rgba(22, 46, 8, 0.59))",
-        "border-radius": "10px"
-    },
-    "CustomPageContent": {
-        "background-color": "transparent"
-    },
     "TabPanel": {
         "background": "transparent"
     },
@@ -431,6 +421,16 @@
     "TabBtn[active='true']": {
         "background": "qlineargradient(x1:0.10, y1:0.79, x2:0.90, y2:0.21, stop:0 rgba(16, 106, 75, 1.0), stop:1 rgba(58, 80, 18, 1.0))",
         "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #23cf99, stop:1 #4da11c)"
+    },
+    "CustomPage": {
+        "background-color": "transparent"
+    },
+    "CustomPageWidget": {
+        "background-color": "qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 rgba(10, 59, 44, 0.59), stop:1 rgba(22, 46, 8, 0.59))",
+        "border-radius": "10px"
+    },
+    "CustomPageContent": {
+        "background-color": "transparent"
     },
     "SlidingStackedWidget": {
         "background-color": "transparent"
@@ -474,5 +474,57 @@
     },
     "ToolPanelTab:pressed": {
         "background": "rgba(40, 110, 230, 200)"
+    },
+    "QDateTimeEdit": {
+        "background-color": "transparent",
+        "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #23cf99, stop:1 #4da11c)",
+        "border-radius": "10px",
+        "color": "#cbffb9",
+        "height": "30px"
+    },
+    "ReminderTextEdit": {
+        "background-color": "transparent",
+        "border": "1px solid qlineargradient(x1:0.00, y1:0.50, x2:1.00, y2:0.50, stop:0 #23cf99, stop:1 #4da11c)",
+        "border-radius": "10px",
+        "color": "#cbffb9"
+    },
+    "ToolNotes": {
+        "background-color": "transparent",
+        "border": "none",
+        "color": "#ffffff",
+        "font-size": "15px",
+        "padding": "0 0 20px 0"
+    },
+    "ToolNoticeButton": {
+        "background-color": "qlineargradient(x1:0.10, y1:0.79, x2:0.90, y2:0.21, stop:0 rgba(16, 106, 75, 0.39), stop:1 rgba(58, 80, 18, 0.39))",
+        "border-radius": "10px",
+        "color": "#cbffb9",
+        "padding": "3px 0px"
+    },
+    "ToolNoticeButton:hover": {
+        "background-color": "qlineargradient(x1:0.10, y1:0.79, x2:0.90, y2:0.21, stop:0 rgba(16, 106, 75, 0.78), stop:1 rgba(58, 80, 18, 0.78))"
+    },
+    "ActionSVGBtn": {
+        "background-color": "transparent",
+        "border": "none",
+        "border-radius": "10px"
+    },
+    "ActionSVGBtn:hover": {
+        "background-color": "qlineargradient(x1:0.10, y1:0.79, x2:0.90, y2:0.21, stop:0 rgba(10, 71, 50, 1.0), stop:1 rgba(38, 53, 12, 1.0))"
+    },
+    "ActiveReminder": {
+        "background-color": "rgba(76, 255, 65, 0.15)",
+        "border": "none",
+        "border-radius": "10px"
+    },
+    "CompletedReminder": {
+        "background-color": "rgba(88, 88, 88, 0.15)",
+        "border": "none",
+        "border-radius": "10px"
+    },
+    "ExpiredReminder": {
+        "background-color": "rgba(255, 81, 65, 0.15);",
+        "border": "none",
+        "border-radius": "10px"
     }
 }

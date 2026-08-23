@@ -1,7 +1,7 @@
 
 from typing import Optional, Dict
 import pygame
-from log_config import logger, debuglog
+from log_config import assist_log, logger
 import json
 from pathlib import Path
 from vgamepad import VX360Gamepad
@@ -164,7 +164,7 @@ class GamepadManager:
                         self.handle_axis(event.code, event.state)
 
             except Exception as e:
-                logger.error(f"Ошибка чтения геймпада: {e}")
+                assist_log.error(f"Ошибка чтения геймпада: {e}")
                 time.sleep(1)  # На случай частых ошибок
 
     def handle_button(self, btn_name, pressed):
@@ -216,7 +216,7 @@ class GamepadManager:
             self.gamepad.update()
 
         except Exception as e:
-            logger.error(f"[ERROR] Не удалось обработать ось {axis_name}: {e}")
+            assist_log.error(f"[ERROR] Не удалось обработать ось {axis_name}: {e}")
 
     def handle_pov(self, axis, value):
         dpad_map = {

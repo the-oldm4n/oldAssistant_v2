@@ -4,6 +4,8 @@ dev_server = False
 skip_splash_screen = False
 is_login_widget = True
 
+current_version = "3.2.0"
+
 if dev_server:
     domain = "http://127.0.0.1:5000"
 else:
@@ -14,3 +16,4 @@ base_name = "Voxodium.exe"
 update_name = "Voxodium-new.exe"
 user_agent = 'VOXODIUM'
 prefix_url = 'voxodium'
+socket_name = "voxodium_app"

@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, \
     QDialog, QLabel, QStackedWidget, QSizePolicy, QTextEdit, QApplication, QSpacerItem
 from PySide6.QtCore import Qt, QPoint, QSize, QPropertyAnimation, QRect, QTimer, QTime, QEasingCurve
 
+from bin.reminder_manager import AddRemindDialog
 from mygui import main_apply_colors, CustomSvgWidget, color_signal
 from bin.custom_widgets import CustomToggleSimple
 from bin.audio_control import controller
@@ -14,7 +15,7 @@ from bin.lists import fonts_list
 from bin.sensors_monitor import SensorTab
 from bin.signals import widget_btns_signal, tool_widget_signal
 from bin.toggle_mute_discord import ToggleMuteDiscord
-from log_config import debuglog
+from log_config import logger
 from path_builder import get_path, get_app_data_dir
 from config import dev_mode
 
@@ -107,7 +108,7 @@ class WindowStateManager:
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(state, f, indent=4)
         except IOError as e:
-            debuglog.error(f"[PANEL] Ошибка сохранения состояния: {e}")
+            logger.error(f"[PANEL] Ошибка сохранения состояния: {e}")
 
     def save_window_state(self, window, pos_x=None, pos_y=None):
         """Специальный метод для сохранения состояния QWidget"""
@@ -327,7 +328,7 @@ class SmartWidget(QWidget):
 
             self.setStyleSheet(style_sheet)
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в методе apply_styles: {e}")
+            logger.error(f"[PANEL] Ошибка в методе apply_styles: {e}")
 
     def update_colors(self):
         self.styles = self.style_manager.load_styles()
@@ -484,7 +485,7 @@ class SmartWidget(QWidget):
             self.switch_tab(1)
 
         self.minimum_size = self.minimumSizeHint()
-        debuglog.debug(f"[PANEL] Минимальный размер контента: {self.minimum_size.width()}x{self.minimum_size.height()}")   
+        logger.debug(f"[PANEL] Минимальный размер контента: {self.minimum_size.width()}x{self.minimum_size.height()}")   
     
     def get_cursor_region(self, pos):
         """Определяем область курсора для изменения размера"""
@@ -744,7 +745,7 @@ class SmartWidget(QWidget):
             custom_buttons = settings_data.get("custom_buttons", [])
             
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка чтения настроек: {e}")
+            logger.error(f"[PANEL] Ошибка чтения настроек: {e}")
             buttons_order = {}
             custom_buttons = []
 
@@ -831,14 +832,13 @@ class SmartWidget(QWidget):
 
     def create_tabs_widget(self):
         widget = QWidget()
-        widget.setStyleSheet("background: transparent;")
+        widget.setObjectName("TransparentWidget")
+        widget.setMinimumHeight(250)
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Кнопки вкладок
-        tab_buttons = QWidget()
-        tab_buttons_layout = QHBoxLayout(tab_buttons)
+        tab_buttons_layout = QHBoxLayout()
         tab_buttons_layout.setContentsMargins(5, 0, 5, 0)
         tab_buttons_layout.setSpacing(5)
 
@@ -850,6 +850,7 @@ class SmartWidget(QWidget):
         for btn in [self.btn_sensors, self.btn_notes]:
             btn.setCheckable(True)
             btn.setFixedHeight(25)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         tab_buttons_layout.addWidget(self.btn_sensors)
@@ -857,7 +858,7 @@ class SmartWidget(QWidget):
 
         # Контент вкладок
         self.tab_content = QStackedWidget()
-        self.tab_content.setStyleSheet("background: transparent; padding: 0 0 20px 0;")
+        self.tab_content.setObjectName("TransparentWidget")
         self.tab_content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Вкладка датчиков
@@ -870,18 +871,38 @@ class SmartWidget(QWidget):
         self.sensors_tab.showEvent = self._on_sensor_tab_show
         self.sensors_tab.hideEvent = self._on_sensor_tab_hide
 
+        notes_widget = QWidget()
+        notes_widget.setObjectName("TransparentWidget")
+        notes_layout = QVBoxLayout(notes_widget)
+        notes_layout.setContentsMargins(0, 0, 0, 0)
+        notes_layout.setSpacing(0)
+
         # Вкладка заметок
         self.notes_tab = QTextEdit("Тут можно писать заметки")
+        self.notes_tab.setObjectName("ToolNotes")
         self.notes_tab.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.notes_tab.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.notes_tab.setStyleSheet("""
-            QTextEdit {
-                border: none;
-                font-size: 15px;
-                color: white;
-            }
-        """)
-        self.tab_content.addWidget(self.notes_tab)
+
+        reminders_layout = QHBoxLayout()
+        reminders_layout.setContentsMargins(2, 2, 2, 2)
+        reminders_layout.setSpacing(2)
+
+        self.create_notice = QPushButton("+ Напоминание")
+        self.create_notice.setObjectName("ToolNoticeButton")
+        self.create_notice.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.create_notice.clicked.connect(self.add_reminder)
+        reminders_layout.addWidget(self.create_notice)
+
+        self.show_notices = QPushButton("Все напоминалки")
+        self.show_notices.setObjectName("ToolNoticeButton")
+        self.show_notices.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.show_notices.clicked.connect(self.show_reminders_list)
+        reminders_layout.addWidget(self.show_notices)
+
+        notes_layout.addLayout(reminders_layout)
+        notes_layout.addWidget(self.notes_tab, 1)
+
+        self.tab_content.addWidget(notes_widget)
 
         # Таймер автосохранения
         self.notes_save_timer = QTimer(self)
@@ -889,7 +910,7 @@ class SmartWidget(QWidget):
         self.notes_save_timer.timeout.connect(self.save_notes)
         self.notes_tab.textChanged.connect(self.start_notes_save_timer)
 
-        layout.addWidget(tab_buttons)
+        layout.addLayout(tab_buttons_layout)
         layout.addWidget(self.tab_content)
 
         self.btn_sensors.clicked.connect(lambda: self.switch_tab(0))
@@ -919,7 +940,7 @@ class SmartWidget(QWidget):
             else:
                 content_layout.addWidget(self.buttons_widget, alignment=Qt.AlignmentFlag.AlignCenter)
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в relayout_buttons: {e}")
+            logger.error(f"[PANEL] Ошибка в relayout_buttons: {e}")
 
     # Методы для перемещения окна
     def mousePressEvent(self, event):
@@ -1020,8 +1041,8 @@ class SmartWidget(QWidget):
             saved_width = state["window_size"]["width"]
             saved_height = state["window_size"]["height"]
             
-            debuglog.info(f"[PANEL] Сохраненная позиция: ({saved_x}, {saved_y})")
-            debuglog.info(f"[PANEL] Сохраненный размер: {saved_width}x{saved_height}")
+            logger.info(f"[PANEL] Сохраненная позиция: ({saved_x}, {saved_y})")
+            logger.info(f"[PANEL] Сохраненный размер: {saved_width}x{saved_height}")
             
             # Создаем прямоугольник виджета на основе сохраненных данных
             widget_rect = QRect(saved_x, saved_y, saved_width, saved_height)
@@ -1033,7 +1054,7 @@ class SmartWidget(QWidget):
             
             for screen in screens:
                 screen_geometry = screen.availableGeometry()
-                debuglog.info(f"[PANEL] Экран: {screen_geometry}")
+                logger.info(f"[PANEL] Экран: {screen_geometry}")
                 
                 if screen_geometry.intersects(widget_rect):
                     # Вычисляем сколько процентов виджета видно
@@ -1042,26 +1063,26 @@ class SmartWidget(QWidget):
                     total_area = saved_width * saved_height
                     visibility_percent = (visible_area / total_area) * 100
                     
-                    debuglog.info(f"[PANEL] Видимость на экране: {visibility_percent:.1f}%")
+                    logger.info(f"[PANEL] Видимость на экране: {visibility_percent:.1f}%")
                     
                     # Запоминаем максимальную видимость
                     if visibility_percent > max_visibility:
                         max_visibility = visibility_percent
                         best_screen = screen
             
-            debuglog.info(f"[PANEL] Максимальная видимость виджета: {max_visibility:.1f}%")
+            logger.info(f"[PANEL] Максимальная видимость виджета: {max_visibility:.1f}%")
             
             # Проверяем достаточно ли видно
             if max_visibility < min_visibility_percent:
-                debuglog.info(f"[PANEL] Видимость менее {min_visibility_percent}%! Центрируем...")
+                logger.info(f"[PANEL] Видимость менее {min_visibility_percent}%! Центрируем...")
                 self.center_widget()
                 return False
             else:
-                debuglog.info(f"[PANEL] Виджет в пределах экрана (видимость: {max_visibility:.1f}%)")
+                logger.info(f"[PANEL] Виджет в пределах экрана (видимость: {max_visibility:.1f}%)")
                 return True
                 
         except Exception as e:
-            debuglog.info(f"[PANEL] Ошибка при проверке положения виджета: {e}")
+            logger.info(f"[PANEL] Ошибка при проверке положения виджета: {e}")
             return False
 
     def center_widget(self):
@@ -1105,7 +1126,7 @@ class SmartWidget(QWidget):
         """Применить шрифт с индивидуальным размером для каждого семейства"""
         font_size = self.get_font_size_for_family(font_name)
         text_color = self.style_manager.get_raw_text_color("text_edit")
-        debuglog.info(f"[PANEL] Применение шрифта: {font_family} с размером: {font_size}")
+        logger.info(f"[PANEL] Применение шрифта: {font_family} с размером: {font_size}")
 
         styles = f"""
             /* Основные часы */
@@ -1157,11 +1178,11 @@ class SmartWidget(QWidget):
                     if font_families:
                         font_family_name = font_families[0]
                         self.apply_font_styles(font_family_name, font_name)
-                        debuglog.info(f"[PANEL] Шрифт '{font_name}' успешно загружен и применен")
+                        logger.info(f"[PANEL] Шрифт '{font_name}' успешно загружен и применен")
                         return True
 
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в load_font_clock: {e}")
+            logger.error(f"[PANEL] Ошибка в load_font_clock: {e}")
             self.apply_fallback_styles()
         return False
 
@@ -1212,7 +1233,7 @@ class SmartWidget(QWidget):
             # Применяем цвет к SVG
             self.style_manager.apply_color_svg(svg, strength=0.95)
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в toggle_mute: {e}")
+            logger.error(f"[PANEL] Ошибка в toggle_mute: {e}")
 
     def pin_widget(self):
         try:
@@ -1235,7 +1256,7 @@ class SmartWidget(QWidget):
 
             self.state_manager.save_window_state(self)
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка pin widget: {e}")
+            logger.error(f"[PANEL] Ошибка pin widget: {e}")
 
     def update_ui_for_mode(self):
         """Обновляет UI в зависимости от режима"""
@@ -1402,7 +1423,7 @@ class SmartWidget(QWidget):
                 QTimer.singleShot(1000, self.start_hide_countdown)
 
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в hide_main_btns: {e}")
+            logger.error(f"[PANEL] Ошибка в hide_main_btns: {e}")
 
     def resize_widget(self):
         """Переключает между компактным и нормальным режимом"""
@@ -1444,7 +1465,7 @@ class SmartWidget(QWidget):
             self.animation.start()
 
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в resize_widget: {e}")
+            logger.error(f"[PANEL] Ошибка в resize_widget: {e}")
 
     def shutdown_system(self):
         """Выключает компьютер после подтверждения"""
@@ -1535,7 +1556,7 @@ class SmartWidget(QWidget):
             self.confirm_dialog.activateWindow()
 
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка диалога: {e}")
+            logger.error(f"[PANEL] Ошибка диалога: {e}")
 
     def on_shutdown_yes(self):
         """Обработчик кнопки Да"""
@@ -1544,7 +1565,7 @@ class SmartWidget(QWidget):
                 self.cleanup_dialog()
                 shutdown_windows()
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка выключения: {e}")
+            logger.error(f"[PANEL] Ошибка выключения: {e}")
 
     def on_shutdown_no(self):
         """Обработчик кнопки Нет"""
@@ -1618,7 +1639,7 @@ class SmartWidget(QWidget):
             # Сохраняем состояние блокировки
             self.save_state()
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в методе lock_state: {e}")
+            logger.error(f"[PANEL] Ошибка в методе lock_state: {e}")
 
     def _set_widgets_enabled(self, audio_enabled, buttons_enabled, tabs_enabled):
         """Вспомогательный метод для управления состоянием виджетов"""
@@ -1648,7 +1669,7 @@ class SmartWidget(QWidget):
         try:
             controller.previous_track()
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка при переключении трека: {e}")
+            logger.error(f"[PANEL] Ошибка при переключении трека: {e}")
 
     def pause_track_action(self):
         try:
@@ -1670,13 +1691,13 @@ class SmartWidget(QWidget):
             self.style_manager.apply_color_svg(svg, strength=0.95)
             controller.play_pause()
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка при попытке поставить паузу: {e}")
+            logger.error(f"[PANEL] Ошибка при попытке поставить паузу: {e}")
 
     def next_track_action(self):
         try:
             controller.next_track()
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка при переключении трека: {e}")
+            logger.error(f"[PANEL] Ошибка при переключении трека: {e}")
 
     def closeEvent(self, event):
         self.save_state()
@@ -1757,7 +1778,7 @@ class SmartWidget(QWidget):
             if hasattr(self, 'sensor_tab'):
                 self.sensors_tab.start_monitoring()
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в open_sensors: {e}")
+            logger.error(f"[PANEL] Ошибка в open_sensors: {e}")
 
     def close_sensors(self):
         try:
@@ -1765,7 +1786,7 @@ class SmartWidget(QWidget):
                 self.sensors_tab.stop_monitoring()
             self.sensors_tab.hide()
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка в close_sensors: {e}")
+            logger.error(f"[PANEL] Ошибка в close_sensors: {e}")
 
     def start_notes_save_timer(self):
         """Запускает таймер автосохранения при изменении текста"""
@@ -1779,7 +1800,7 @@ class SmartWidget(QWidget):
             with open(self.notes_file, 'w', encoding='utf-8') as f:
                 f.write(notes_text)
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка сохранения заметок: {e}")
+            logger.error(f"[PANEL] Ошибка сохранения заметок: {e}")
 
     def load_notes(self):
         """Загружает заметки из файла"""
@@ -1789,5 +1810,21 @@ class SmartWidget(QWidget):
                     notes_text = f.read()
                     self.notes_tab.setPlainText(notes_text)
         except Exception as e:
-            debuglog.error(f"[PANEL] Ошибка загрузки заметок: {e}")
+            logger.error(f"[PANEL] Ошибка загрузки заметок: {e}")
             self.notes_tab.setPlainText("Тут можно писать заметки")
+
+    def add_reminder(self):
+        dialog = AddRemindDialog(self)
+        
+        if dialog.exec_() == QDialog.Accepted:
+            text = dialog.get_text()
+            dt = dialog.datetime_edit.dateTime()
+            dt.setTime(QTime(dt.time().hour(), dt.time().minute(), 0))
+            
+            if text:
+                tool_widget_signal.add_reminder.emit(text, dt)
+                logger.info(f"[PANEL][add_reminder] Напоминание {text} создано и сработает в {dt}")
+
+    def show_reminders_list(self):
+        tool_widget_signal.show_reminders.emit()
+                

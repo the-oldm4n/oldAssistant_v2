@@ -9,7 +9,7 @@ from bin.shortcut_monitor import ShortcutMonitor
 from bin.signals import widget_btns_signal
 from bin.widget_window import WindowStateManager
 from path_builder import get_path, get_app_data_dir
-from log_config import debuglog
+from log_config import logger
 from PySide6.QtGui import QAction, QFontDatabase, QRegularExpressionValidator
 from PySide6.QtWidgets import QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QApplication, QWidget,\
     QDialog, QMenu, QLineEdit, QComboBox, QScrollArea, QFrame,QCheckBox
@@ -383,8 +383,41 @@ class SettingsWidgetPanel(QWidget):
         self._help_initialized = False
         self.fonts_list = fonts_list
         self.init_ui()
+        self.ensure_default_settings()
         self.load_saved_font()
         self.load_buttons_settings()
+
+    def ensure_default_settings(self):
+        """Создает файл с дефолтными настройками если его нет"""
+        if not os.path.exists(self.widget_state):
+            default_data = {
+                "default_buttons": self.get_default_list(),
+                "buttons": self.get_default_btns_states(),
+                "custom_buttons": []
+            }
+            with open(self.widget_state, 'w', encoding='utf-8') as f:
+                json.dump(default_data, f, indent=4, ensure_ascii=False)
+
+        try:
+            with open(self.widget_state, 'r', encoding='utf-8') as f:
+                settings_data = json.load(f)
+
+            need_save = False
+        
+            if "default_buttons" not in settings_data or not settings_data["default_buttons"]:
+                settings_data["default_buttons"] = self.get_default_list()
+                need_save = True
+            
+            if "buttons" not in settings_data or not settings_data["buttons"]:
+                settings_data["buttons"] = self.get_default_btns_states()
+                need_save = True
+
+            if need_save:
+                with open(self.widget_state, 'w', encoding='utf-8') as f:
+                    json.dump(settings_data, f, indent=4, ensure_ascii=False)
+
+        except Exception as e:
+            logger.error(f"[SETTINGS] Ошибка проверки настроек: {e}")
         
     def showEvent(self, event):
         """При показе панели настраиваем help system"""
@@ -557,7 +590,7 @@ class SettingsWidgetPanel(QWidget):
         """Применить шрифт с индивидуальным размером для каждого семейства"""
         font_size = self.get_font_size_for_family(font_name)
 
-        debuglog.info(f"[SETTINGS-WIDGET] Применение шрифта для превью: {font_family} с размером: {font_size}")
+        logger.info(f"[SETTINGS-WIDGET] Применение шрифта для превью: {font_family} с размером: {font_size}")
 
         styles = f"""
             #preview_clock {{
@@ -624,7 +657,7 @@ class SettingsWidgetPanel(QWidget):
                         self.font_combo.setCurrentIndex(index)
 
         except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
-            debuglog.warning(f"[SETTINGS-WIDGET] Не удалось загрузить сохраненный шрифт: {e}")
+            logger.warning(f"[SETTINGS-WIDGET] Не удалось загрузить сохраненный шрифт: {e}")
             # Устанавливаем шрифт по умолчанию
             default_index = self.font_combo.findText("digital")
             if default_index >= 0:
@@ -699,7 +732,6 @@ class SettingsWidgetPanel(QWidget):
             widget = self.drag_container.layout.itemAt(i).widget()
             
             if widget and isinstance(widget, DraggableCheckbox):
-                # Находим ключ
                 for key, checkbox in self.checkboxes.items():
                     if checkbox == widget:
                         buttons_data[key] = checkbox.isChecked()
@@ -709,13 +741,11 @@ class SettingsWidgetPanel(QWidget):
     
     def reorder_checkboxes_by_buttons(self, buttons_order):
         """Переставляет чекбоксы в порядке из buttons"""
-        # Удаляем все из layout
         for i in reversed(range(self.drag_container.layout.count())):
             widget = self.drag_container.layout.itemAt(i).widget()
             if widget:
                 self.drag_container.layout.removeWidget(widget)
         
-        # Добавляем обратно в порядке из buttons
         for key in buttons_order.keys():
             if key in self.checkboxes:
                 checkbox = self.checkboxes[key]
@@ -730,47 +760,45 @@ class SettingsWidgetPanel(QWidget):
             buttons_states = settings_data.get("buttons", {})
             custom_buttons = settings_data.get("custom_buttons", [])
 
-            # Очищаем
+            if not default_buttons:
+                default_buttons = self.get_default_list()
+                settings_data["default_buttons"] = default_buttons
+
+            if not buttons_states:
+                buttons_states = self.get_default_btns_states()
+                settings_data["buttons"] = buttons_states
+
             self.checkboxes.clear()
             for i in reversed(range(self.drag_container.layout.count())):
                 widget = self.drag_container.layout.itemAt(i).widget()
                 if widget:
                     widget.setParent(None)
 
-            # 1. Создаем ВСЕ возможные кнопки
-            
-            # Стандартные кнопки
             for key, btn_data in default_buttons.items():
                 text = btn_data.get('tooltip', key)
                 checkbox = DraggableCheckbox(text)
                 self.checkboxes[key] = checkbox
-            
-            # Кастомные кнопки
-            for custom_data in custom_buttons:
-                key = f"custom_{custom_data['id']}"
-                checkbox = DraggableCheckbox(custom_data['name'])
-                checkbox.is_custom = True
-                checkbox.custom_data = custom_data
-                checkbox.custom_id = custom_data['id']
-                self.checkboxes[key] = checkbox
 
-            # 2. Обновляем buttons_states чтобы включить ВСЕ кнопки
+            if custom_buttons:
+                for custom_data in custom_buttons:
+                    key = f"custom_{custom_data['id']}"
+                    checkbox = DraggableCheckbox(custom_data['name'])
+                    checkbox.is_custom = True
+                    checkbox.custom_data = custom_data
+                    checkbox.custom_id = custom_data['id']
+                    self.checkboxes[key] = checkbox
+
             updated_buttons_states = buttons_states.copy()
             
             for key in self.checkboxes.keys():
                 if key not in updated_buttons_states:
                     updated_buttons_states[key] = True
-            
-            # Если добавились новые кнопки - сохраняем
+
             if updated_buttons_states != buttons_states:
                 settings_data["buttons"] = updated_buttons_states
                 with open(self.widget_state, 'w', encoding='utf-8') as f:
                     json.dump(settings_data, f, indent=4, ensure_ascii=False)
-            
-            # 3. Добавляем ВСЕ чекбоксы в layout и устанавливаем состояния
-            # Порядок: сначала стандартные как в default_buttons, потом кастомные
-            
-            # Сначала стандартные в порядке из default_buttons
+
             for key in default_buttons.keys():
                 if key in self.checkboxes:
                     checkbox = self.checkboxes[key]
@@ -778,7 +806,6 @@ class SettingsWidgetPanel(QWidget):
                     checkbox.setChecked(state)
                     self.drag_container.layout.addWidget(checkbox)
             
-            # Потом кастомные в порядке из custom_buttons
             for custom_data in custom_buttons:
                 key = f"custom_{custom_data['id']}"
                 if key in self.checkboxes:
@@ -792,44 +819,54 @@ class SettingsWidgetPanel(QWidget):
             return True
 
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка загрузки кнопок: {e}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка загрузки кнопок: {e}")
             import traceback
             traceback.print_exc()
             return False
         
-    def default_list(self):
+    def get_default_list(self):
         data = {
-            "default_buttons": {
-                "turnoff_check": {
-                    "tooltip": "Выключение компьютера",
-                    "icon_rel_path": "power.svg"
-                },
-                "settings_check": {
-                    "tooltip": "Открыть настройки",
-                    "icon_rel_path": "settings.svg"
-                },
-                "screenshot_check": {
-                    "tooltip": "Сделать скриншот",
-                    "icon_rel_path": "camera.svg"
-                },
-                "open_youtube": {
-                    "tooltip": "Запустить YouTube",
-                    "icon_rel_path": "logo-youtube.svg"
-                },
-                "microphone_check": {
-                    "tooltip": "Управление микрофоном в Discord",
-                    "icon_rel_path": "mic_on.svg"
-                },
-                "links_check": {
-                    "tooltip": "Открыть папку с ярлыками",
-                    "icon_rel_path": "shortcut.svg"
-                },
-                "resize_check": {
-                    "tooltip": "Развернуть окно ассистента",
-                    "icon_rel_path": "open_main.svg"
-                }
+            "turnoff_check": {
+                "tooltip": "Выключение компьютера",
+                "icon_rel_path": "power.svg"
+            },
+            "settings_check": {
+                "tooltip": "Открыть настройки",
+                "icon_rel_path": "settings.svg"
+            },
+            "screenshot_check": {
+                "tooltip": "Сделать скриншот",
+                "icon_rel_path": "camera.svg"
+            },
+            "open_youtube": {
+                "tooltip": "Запустить YouTube",
+                "icon_rel_path": "logo-youtube.svg"
+            },
+            "microphone_check": {
+                "tooltip": "Управление микрофоном в Discord",
+                "icon_rel_path": "mic_on.svg"
+            },
+            "links_check": {
+                "tooltip": "Открыть папку с ярлыками",
+                "icon_rel_path": "shortcut.svg"
+            },
+            "resize_check": {
+                "tooltip": "Развернуть окно ассистента",
+                "icon_rel_path": "open_main.svg"
             }
         }
+        return data
+    
+    def get_default_btns_states(self):
+        data = {
+            "turnoff_check": True,
+            "settings_check": True,
+            "screenshot_check": True,
+            "open_youtube": True,
+            "microphone_check": True,
+            "links_check": True,
+            "resize_check": True
+        }   
         return data
 
     def set_default_buttons_settings(self):
@@ -861,7 +898,7 @@ class SettingsWidgetPanel(QWidget):
             self.load_buttons_settings()
             
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка сброса настроек: {e}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка сброса настроек: {e}")
 
     def save_order(self):
         try:
@@ -887,7 +924,7 @@ class SettingsWidgetPanel(QWidget):
             QTimer.singleShot(100, widget_btns_signal.buttons_updated.emit)
             
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка сохранения порядка: {e}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка сохранения порядка: {e}")
 
     def show_create_custom_widget(self):
         """Показывает виджет создания кастомной кнопки"""
@@ -912,9 +949,7 @@ class SettingsWidgetPanel(QWidget):
                 self.add_custom_button(button_data)
                 
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка загрузки кастомных кнопок: {e}")
-
-    
+            logger.error(f"[SETTINGS-WIDGET] Ошибка загрузки кастомных кнопок: {e}")
 
     def add_custom_button(self, button_data):
         """Добавляет кастомную кнопку в список"""
@@ -964,7 +999,7 @@ class SettingsWidgetPanel(QWidget):
                     button_data = btn
                     break
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка загрузки данных кнопки: {e}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка загрузки данных кнопки: {e}")
         
         if not button_data:
             self.main.show_message("Кнопка не найдена", "Ошибка", "warning")
@@ -1017,7 +1052,7 @@ class SettingsWidgetPanel(QWidget):
                 json.dump(data, f, indent=4, ensure_ascii=False)
                 
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка обновления кнопки в JSON: {e}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка обновления кнопки в JSON: {e}")
 
 
     def remove_btn_from_json(self, custom_id):
@@ -1045,7 +1080,7 @@ class SettingsWidgetPanel(QWidget):
                 json.dump(data, f, indent=4, ensure_ascii=False)
                 
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка удаления кастомной кнопки из JSON: {e}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка удаления кастомной кнопки из JSON: {e}")
 
 
 class CustomBtnForPanel(QDialog):
@@ -1297,7 +1332,7 @@ class CustomBtnForPanel(QDialog):
                 self.style_manager.apply_color_svg(self.preview_svg, strength=0.9)
                 self.preview_svg.update()
             except Exception as e:
-                debuglog.error(f"[SETTINGS-WIDGET] Ошибка загрузки превью: {e}")
+                logger.error(f"[SETTINGS-WIDGET] Ошибка загрузки превью: {e}")
                 self.preview_svg.load("")
         else:
             self.preview_svg.load("")
@@ -1318,15 +1353,15 @@ class CustomBtnForPanel(QDialog):
                     pass
                 else:
                     os.makedirs(path)
-                    debuglog.info(f'[SETTINGS-WIDGET] Папка "{path}" была создана.')
+                    logger.info(f'[SETTINGS-WIDGET] Папка "{path}" была создана.')
         except Exception as e:
-            debuglog.error(f'[SETTINGS-WIDGET] Ошибка при создании папки: {e}')
+            logger.error(f'[SETTINGS-WIDGET] Ошибка при создании папки: {e}')
 
     def open_folder(self, path):
         try:
             os.startfile(path)
         except Exception as e:
-            debuglog.error(f'[SETTINGS-WIDGET] Ошибка при открытии папки: {e}')
+            logger.error(f'[SETTINGS-WIDGET] Ошибка при открытии папки: {e}')
 
     def save_button(self):
         """Создает или обновляет объект кастомной кнопки"""
@@ -1393,7 +1428,7 @@ class CustomBtnForPanel(QDialog):
                 json.dump(existing_data, f, indent=4, ensure_ascii=False)
                 
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка сохранения кнопки: {e}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка сохранения кнопки: {e}")
 
     def update_btn_data(self, custom_data):
         """Обновляет существующую кнопку в JSON"""
@@ -1422,7 +1457,7 @@ class CustomBtnForPanel(QDialog):
                 json.dump(existing_data, f, indent=4, ensure_ascii=False)
                 
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка обновления кнопки: {e}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка обновления кнопки: {e}")
 
     def generate_unique_id(self, length=8):
         """Генерирует уникальный ID с проверкой на существование"""
@@ -1444,7 +1479,7 @@ class CustomBtnForPanel(QDialog):
                     return new_id
                     
         except Exception as e:
-            debuglog.error(f"[SETTINGS-WIDGET] Ошибка генерации ID: {e}")
+            logger.error(f"[SETTINGS-WIDGET] Ошибка генерации ID: {e}")
             # Fallback: обычная генерация без проверки
             alphabet = string.ascii_lowercase + string.digits
             return ''.join(secrets.choice(alphabet) for _ in range(length))

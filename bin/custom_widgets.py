@@ -7,7 +7,7 @@ from PySide6.QtCore import Signal, QPropertyAnimation, Qt, QRectF, QPointF, QEas
 from PySide6.QtGui import QColor, QCursor, QBrush, QPen, QLinearGradient, QPainter,\
     QPainterPath, QRadialGradient
 from mygui import main_apply_colors, color_signal
-from log_config import debuglog
+from log_config import logger
 
 
 class _CustomToggleSimple(QWidget):

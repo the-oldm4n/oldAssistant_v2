@@ -2,7 +2,7 @@ import os
 import sys
 from PySide6.QtGui import QFontDatabase, QFont
 from PySide6.QtWidgets import QLabel
-from log_config import debuglog
+from log_config import logger
 from path_builder import get_path
 
 default_keywords_data = {

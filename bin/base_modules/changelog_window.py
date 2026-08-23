@@ -71,16 +71,16 @@ class ChangelogWindow(QMainWindow):
 
         self.content_widget = QWidget()
         self.content_widget.setObjectName("ContentWidget")
-        main_layout = QVBoxLayout(self.content_widget)
-        main_layout.setContentsMargins(15, 15, 15, 15)
-        main_layout.setSpacing(10)
+        content_layout = QVBoxLayout(self.content_widget)
+        content_layout.setContentsMargins(15, 15, 15, 15)
+        content_layout.setSpacing(10)
 
         # Текстовый браузер
         self.text_browser = QTextBrowser()
-        self.text_browser.setStyleSheet("background: transparent;")
+        self.text_browser.setObjectName("TransparentWidget")
         self.text_browser.setOpenExternalLinks(True)
         self.text_browser.setReadOnly(True)
-        main_layout.addWidget(self.text_browser)
+        content_layout.addWidget(self.text_browser)
 
         # Стили для Markdown
         self.text_browser.document().setDefaultStyleSheet("""
@@ -144,14 +144,12 @@ class ChangelogWindow(QMainWindow):
 
         ps = QLabel("Powered by theoldman")
         ps.setStyleSheet("background: transparent; font-size: 12px; padding: 5px;")
-        main_layout.addWidget(ps, alignment=Qt.AlignmentFlag.AlignRight)
+        content_layout.addWidget(ps, alignment=Qt.AlignmentFlag.AlignRight)
 
         # Кнопка закрытия
         close_button = QPushButton("Закрыть")
         close_button.clicked.connect(self.close)
-        main_layout.addWidget(close_button)
-
-        root_layout.addWidget(self.content_widget)
+        content_layout.addWidget(close_button)
 
         footer_widget = QWidget()
         footer_widget.setObjectName("TransparentWidget")
@@ -159,27 +157,29 @@ class ChangelogWindow(QMainWindow):
         footer_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # Внутренний виджет с фоном
-        content_widget = QWidget()
-        content_widget.setObjectName("FooterChangelog")  # здесь будет фон
-        content_layout = QHBoxLayout(content_widget)
-        content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        content_layout.setContentsMargins(10, 5, 10, 5)
-        content_layout.setSpacing(10)
+        footer_content_widget = QWidget()
+        footer_content_widget.setObjectName("FooterChangelog")  # здесь будет фон
+        footer_content_layout = QHBoxLayout(footer_content_widget)
+        footer_content_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        footer_content_layout.setContentsMargins(10, 5, 10, 5)
+        footer_content_layout.setSpacing(0)
 
         # Иконка
         self.svg_icon = CustomSvgWidget(self.main.owlapp_logo_path)
         self.svg_icon.setFixedSize(20, 20)
-        content_layout.addWidget(self.svg_icon)
+        footer_content_layout.addWidget(self.svg_icon)
 
         # Ссылка
         link_label = QLabel()
         link_label.setStyleSheet("background: transparent;")
         link_label.setText('<a href="https://owl-app.ru" style="color: #ffffff; text-decoration: none;">owl-app.ru</a>')
         link_label.setOpenExternalLinks(True)
-        content_layout.addWidget(link_label)
+        footer_content_layout.addWidget(link_label)
 
         # Добавляем внутренний виджет во внешний
-        footer_layout.addWidget(content_widget)
+        footer_layout.addWidget(footer_content_widget)
+
+        root_layout.addWidget(self.content_widget)
 
         root_layout.addWidget(footer_widget)
 

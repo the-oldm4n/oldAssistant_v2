@@ -136,7 +136,7 @@ class SpeechHookManagerWidget(QWidget):
         """Сохраняет пользовательские настройки"""
         with open(self.user_path, 'w', encoding='utf-8') as f:
             json.dump(self.user_keywords, f, ensure_ascii=False, indent=2)
-        self.main.apply_keywords_for_values()
+        self.main.assist_manager.apply_keywords_for_values()
     
     def get_display_name(self, key):
         """Преобразует имя списка в читаемое название"""

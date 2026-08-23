@@ -17,7 +17,7 @@ from win32com.client import Dispatch
 from bin.lists import get_audio_paths, commands_list
 from bin.default_commands_data import system_commands_data
 from bin.run_scripts_thread import ScriptExecutionThread
-from log_config import logger, debuglog
+from log_config import assist_log, logger
 from bin.speak_functions import thread_react, thread_react_detail
 from path_builder import get_path, get_app_data_dir
 from PySide6.QtCore import QObject
@@ -53,7 +53,7 @@ class CommandsManager(QObject):
         self.process_names_path = process_names
         self.commands = self.load_commands()
         converted = self.reduction_commands()
-        debuglog.info(f"Преобразование в новый формат команд: {converted}")
+        logger.info(f"Преобразование в новый формат команд: {converted}")
         commands_signal.commands_updated.connect(self.reload_commands)
 
     def load_commands(self):
@@ -73,7 +73,7 @@ class CommandsManager(QObject):
         self.commands = self.load_commands()  # Обновляем self.commands
         new_count = len(self.commands)
         
-        debuglog.info(f"Команды обновлены: было {old_count}, стало {new_count}")
+        logger.info(f"Команды обновлены: было {old_count}, стало {new_count}")
         self.save_commands()
 
         commands_signal.commands_reloaded.emit()
@@ -101,7 +101,7 @@ class CommandsManager(QObject):
     
     def execute_script(self, script_key, action="open", callback=None):
         """Запуск скрипта"""
-        debuglog.info(f"[SCRIPT] Запуск: {script_key}")
+        logger.info(f"[SCRIPT] Запуск: {script_key}")
         
         # Останавливаем предыдущий если есть
         if script_key in self._script_threads:
@@ -123,7 +123,7 @@ class CommandsManager(QObject):
             )
         
         thread.script_error.connect(
-            lambda msg: debuglog.info(f"[SCRIPT ERROR] {msg}")
+            lambda msg: logger.info(f"[SCRIPT ERROR] {msg}")
         )
         
         # Сохраняем
@@ -139,7 +139,7 @@ class CommandsManager(QObject):
         
     def _handle_script_command(self, cmd_type, value, action, move, args):
         """Обработчик команды из скрипта (выполняется в основном потоке!)"""
-        debuglog.info(f"[MAIN] Выполняю команду из скрипта: {cmd_type} -> {value}")
+        logger.info(f"[MAIN] Выполняю команду из скрипта: {cmd_type} -> {value}")
         
         if cmd_type == 'folder':
             self.handler_folder(value, move, react=False)
@@ -148,7 +148,7 @@ class CommandsManager(QObject):
         elif cmd_type == 'system':
             self.handler_system_commands(value, move, react=False)
         else:
-            debuglog.info(f"[MAIN] Неверный тип команды: {cmd_type}")
+            logger.info(f"[MAIN] Неверный тип команды: {cmd_type}")
             
     def stop_script(self, script_key):
         """Остановить скрипт"""
@@ -326,11 +326,11 @@ class CommandsManager(QObject):
                     settings = json.load(f)
                     return settings  # Возвращаем все настройки
             except json.JSONDecodeError:
+                assist_log.error(f"Ошибка: файл {self.settings_file_path} содержит некорректный JSON.")
                 logger.error(f"Ошибка: файл {self.settings_file_path} содержит некорректный JSON.")
-                debuglog.error(f"Ошибка: файл {self.settings_file_path} содержит некорректный JSON.")
         else:
+            assist_log.error(f"Файл настроек {self.settings_file_path} не найден.")
             logger.error(f"Файл настроек {self.settings_file_path} не найден.")
-            debuglog.error(f"Файл настроек {self.settings_file_path} не найден.")
 
         return {}  # Возвращаем пустой словарь, если файл не найден или ошибка
 
@@ -347,8 +347,8 @@ class CommandsManager(QObject):
             shortcut = shell.CreateShortCut(shortcut_path)
             return shortcut.Targetpath, shortcut.Arguments, shortcut.WorkingDirectory
         except Exception as e:
+            assist_log.error(f"Ошибка при извлечении данных из ярлыка {shortcut_path}: {e}")
             logger.error(f"Ошибка при извлечении данных из ярлыка {shortcut_path}: {e}")
-            debuglog.error(f"Ошибка при извлечении данных из ярлыка {shortcut_path}: {e}")
             return None, None, None
 
     def fix_path(self, path):
@@ -418,11 +418,11 @@ class CommandsManager(QObject):
                 json.dump(existing_data, file, indent=4, ensure_ascii=False)
                 file.write('\n')
 
+            assist_log.info(f"Имена процессов для ярлыка '{shortcut_name}' сохранены в файл.")
             logger.info(f"Имена процессов для ярлыка '{shortcut_name}' сохранены в файл.")
-            debuglog.info(f"Имена процессов для ярлыка '{shortcut_name}' сохранены в файл.")
         except Exception as e:
+            assist_log.error(f"Ошибка при сохранении имен процессов: {e}")
             logger.error(f"Ошибка при сохранении имен процессов: {e}")
-            debuglog.error(f"Ошибка при сохранении имен процессов: {e}")
 
     def remove_process_names(self, shortcut_name):
         """
@@ -432,7 +432,7 @@ class CommandsManager(QObject):
         """
         try:
             if not os.path.exists(self.process_names_path):
-                logger.debug(f"Файл процессов не найден: {self.process_names_path}")
+                assist_log.debug(f"Файл процессов не найден: {self.process_names_path}")
                 return False
             
             # Читаем текущие данные
@@ -452,16 +452,16 @@ class CommandsManager(QObject):
                     json.dump(existing_data, file, indent=4, ensure_ascii=False)
                     file.write('\n')
                 
-                logger.info(f"Процессы для удаленного ярлыка '{shortcut_name}' удалены из файла.")
-                debuglog.info(f"Процессы для удаленного ярлыка '{shortcut_name}' удалены.")
+                assist_log.info(f"Процессы для удаленного ярлыка '{shortcut_name}' удалены из файла.")
+                logger.info(f"Процессы для удаленного ярлыка '{shortcut_name}' удалены.")
                 return True
             else:
-                logger.debug(f"Запись для ярлыка '{shortcut_name}' не найдена в файле процессов.")
+                assist_log.debug(f"Запись для ярлыка '{shortcut_name}' не найдена в файле процессов.")
                 return False
                 
         except Exception as e:
-            logger.error(f"Ошибка при удалении процессов для ярлыка '{shortcut_name}': {e}")
-            debuglog.error(f"Ошибка при удалении процессов: {e}")
+            assist_log.error(f"Ошибка при удалении процессов для ярлыка '{shortcut_name}': {e}")
+            logger.error(f"Ошибка при удалении процессов: {e}")
             return False
 
     def get_process_names_from_file(self, shortcut_name):
@@ -477,12 +477,12 @@ class CommandsManager(QObject):
                                 process_names = entry[shortcut_name]
                                 break
                     except json.JSONDecodeError:
+                        assist_log.error("Ошибка: файл содержит некорректный JSON.")
                         logger.error("Ошибка: файл содержит некорректный JSON.")
-                        debuglog.error("Ошибка: файл содержит некорректный JSON.")
             return process_names
         except Exception as e:
+            assist_log.error(f"Ошибка при чтении имен процессов: {e}")
             logger.error(f"Ошибка при чтении имен процессов: {e}")
-            debuglog.error(f"Ошибка при чтении имен процессов: {e}")
             return []
 
     def close_program(self, process_name):
@@ -496,15 +496,15 @@ class CommandsManager(QObject):
                 text=True,
                 encoding='cp866'
             )
-            debuglog.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
+            logger.info(f"Вывод subprocess:{result.stdout.strip()}. Ошибки:{result.stderr.strip()}")
             # subprocess.run(['taskkill', '/IM', process_name, '/F'], check=True)
-            debuglog.info(f"Процесс {process_name} успешно завершен.")
+            logger.info(f"Процесс {process_name} успешно завершен.")
         except subprocess.CalledProcessError:
+            assist_log.error(f"Не удалось завершить процесс {process_name}.")
             logger.error(f"Не удалось завершить процесс {process_name}.")
-            debuglog.error(f"Не удалось завершить процесс {process_name}.")
         except Exception as e:
+            assist_log.error(f"Ошибка: {e}")
             logger.error(f"Ошибка: {e}")
-            debuglog.error(f"Ошибка: {e}")
 
     def search_links(self):
         """
@@ -533,12 +533,12 @@ class CommandsManager(QObject):
         if removed_shortcuts:
             for shortcut_name in removed_shortcuts:
                 self.remove_process_names(shortcut_name)
-                debuglog.info(f"Ярлык '{shortcut_name}' удален, очистка процессов.")
+                logger.info(f"Ярлык '{shortcut_name}' удален, очистка процессов.")
 
         with open(links_file, 'w', encoding='utf-8') as file:
             json.dump(current_shortcuts, file, ensure_ascii=False, indent=4)
         
-        debuglog.info(f"Ярлыки обновлены. Найдено: {len(current_shortcuts)}, удалено: {len(removed_shortcuts)}")
+        logger.info(f"Ярлыки обновлены. Найдено: {len(current_shortcuts)}, удалено: {len(removed_shortcuts)}")
 
 
     def handler_links(self, filename, action, added_args=None, react=True):
@@ -575,8 +575,8 @@ class CommandsManager(QObject):
                 elif action == 'close':
                     self.close_link(filename, react)
             except Exception as e:
+                assist_log.info(f"Ошибка при извлечении пути из ярлыка {filename}: {e}")
                 logger.info(f"Ошибка при извлечении пути из ярлыка {filename}: {e}")
-                debuglog.info(f"Ошибка при извлечении пути из ярлыка {filename}: {e}")
 
         # Обработка .url файлов (Steam и Epic Games)
 
@@ -584,8 +584,8 @@ class CommandsManager(QObject):
             try:
                 game_id_or_url = self.read_url_shortcut(shortcut_path)
                 if not game_id_or_url:
+                    assist_log.info(f"Не удалось извлечь game_id или URL из файла {filename}")
                     logger.info(f"Не удалось извлечь game_id или URL из файла {filename}")
-                    debuglog.info(f"Не удалось извлечь game_id или URL из файла {filename}")
                     return  # Прекращаем выполнение, если не удалось извлечь URL
 
                 if action == 'open':
@@ -594,8 +594,8 @@ class CommandsManager(QObject):
                     self.close_link(filename, react)
 
             except Exception as e:
+                assist_log.info(f"Ошибка при чтении .url файла {filename}: {e}")
                 logger.info(f"Ошибка при чтении .url файла {filename}: {e}")
-                debuglog.info(f"Ошибка при чтении .url файла {filename}: {e}")
 
         elif self.is_url_string(filename):
             try:
@@ -603,8 +603,8 @@ class CommandsManager(QObject):
                     self.open_browser_link(filename, react)
 
             except Exception as e:
+                assist_log.info(f"Ошибка при обработке ссылки: {filename}: {e}")
                 logger.info(f"Ошибка при обработке ссылки: {filename}: {e}")
-                debuglog.info(f"Ошибка при обработке ссылки: {filename}: {e}")
             return
 
     def handler_folder(self, folder_path, action, react=True):
@@ -621,8 +621,8 @@ class CommandsManager(QObject):
                     thread_react(self.audio_paths['start_folder'])
                 return True
             except Exception as e:
+                assist_log.error(f"Не удалось открыть папку {folder_path}: {e}")
                 logger.error(f"Не удалось открыть папку {folder_path}: {e}")
-                debuglog.error(f"Не удалось открыть папку {folder_path}: {e}")
                 return False
 
         if action == 'close':
@@ -638,27 +638,27 @@ class CommandsManager(QObject):
                             window.close()
                             if react:
                                 thread_react(self.audio_paths.get('close_folder'))
-                            logger.info(f"Окно '{title}' закрыто.")
+                            assist_log.info(f"Окно '{title}' закрыто.")
                             return True
                         else:
-                            debuglog.warning(f"Окно с заголовком '{title}' найдено,"
+                            logger.warning(f"Окно с заголовком '{title}' найдено,"
                                                  f"но не удалось получить объект.")
-                debuglog.warning(f"Окно с названием '{folder_title}' не найдено среди открытых.")
+                logger.warning(f"Окно с названием '{folder_title}' не найдено среди открытых.")
                 return False
 
             except Exception as e:
                 error_file = self.audio_paths.get('error_file')
                 if error_file:
                     thread_react_detail(error_file)
+                assist_log.error(f"Ошибка при попытке закрыть окно: {e}")
                 logger.error(f"Ошибка при попытке закрыть окно: {e}")
-                debuglog.error(f"Ошибка при попытке закрыть окно: {e}")
                 return False
 
     def open_url_link(self, game_id_or_url, filename, react):
         existing_processes = self.get_process_names_from_file(filename)
         try:
             if existing_processes:
-                debuglog.info(f"Используем сохраненные процессы для '{filename}'")
+                logger.info(f"Используем сохраненные процессы для '{filename}'")
 
                 if game_id_or_url.startswith("com.epicgames.launcher://"):
                     subprocess.Popen(["start", game_id_or_url], shell=True)
@@ -682,8 +682,8 @@ class CommandsManager(QObject):
                 thread_react_detail(self.audio_paths['wait_load_file'])
 
         except Exception as e:
+            assist_log.error(f"Ошибка при открытии игры: {e}")
             logger.error(f"Ошибка при открытии игры: {e}")
-            debuglog.error(f"Ошибка при открытии игры: {e}")
             thread_react_detail(self.audio_paths['error_file'])
 
     def on_monitoring_done(self, processes, filename, audio_paths):
@@ -692,8 +692,8 @@ class CommandsManager(QObject):
             self.save_process_names(filename, processes)
             thread_react_detail(audio_paths['done_load_file'])
         else:
+            assist_log.info("Новые процессы не обнаружены")
             logger.info("Новые процессы не обнаружены")
-            debuglog.info("Новые процессы не обнаружены")
             thread_react_detail(audio_paths['error_file'])
 
     def open_link(self, filename, target_path, arguments, workdir, react):
@@ -703,14 +703,14 @@ class CommandsManager(QObject):
         try:
             # Проверки файла
             if not os.path.exists(target_path):
+                assist_log.error(f"Целевой файл не существует: {target_path}")
                 logger.error(f"Целевой файл не существует: {target_path}")
-                debuglog.error(f"Целевой файл не существует: {target_path}")
                 thread_react_detail(self.audio_paths['error_file'])
                 return False
 
             if not os.access(target_path, os.R_OK | os.X_OK):
+                assist_log.error(f"Нет доступа к файлу: {target_path}")
                 logger.error(f"Нет доступа к файлу: {target_path}")
-                debuglog.error(f"Нет доступа к файлу: {target_path}")
                 thread_react_detail(self.audio_paths['error_file'])
                 return False
 
@@ -736,19 +736,19 @@ class CommandsManager(QObject):
             # Логирование в фоне
             threading.Thread(
                 target=self.log_stream,
-                args=(process.stdout, debuglog),
+                args=(process.stdout, logger),
                 daemon=True
             ).start()
 
             threading.Thread(
                 target=self.log_stream,
-                args=(process.stderr, debuglog),
+                args=(process.stderr, logger),
                 daemon=True
             ).start()
 
             # Если процессы известны - просто запускаем
             if existing_processes:
-                debuglog.info(f"Используем сохраненные процессы для '{filename}'")
+                logger.info(f"Используем сохраненные процессы для '{filename}'")
                 if react:
                     thread_react(self.audio_paths['start_folder'])
                 return True
@@ -762,20 +762,20 @@ class CommandsManager(QObject):
             return True
 
         except FileNotFoundError as e:
+            assist_log.error(f"Файл не найден: {e}")
             logger.error(f"Файл не найден: {e}")
-            debuglog.error(f"Файл не найден: {e}")
             thread_react_detail(self.audio_paths['error_file'])
             return False
 
         except PermissionError as e:
+            assist_log.error(f"Ошибка доступа: {e}")
             logger.error(f"Ошибка доступа: {e}")
-            debuglog.error(f"Ошибка доступа: {e}")
             thread_react_detail(self.audio_paths['error_file'])
             return False
 
         except Exception as e:
+            assist_log.error(f"Неожиданная ошибка: {e}", exc_info=True)
             logger.error(f"Неожиданная ошибка: {e}", exc_info=True)
-            debuglog.error(f"Неожиданная ошибка: {e}", exc_info=True)
             thread_react_detail(self.audio_paths['error_file'])
             return False
 
@@ -789,14 +789,14 @@ class CommandsManager(QObject):
             for process_name in process_names:
                 self.close_program(process_name)  # Завершаем каждый процесс по имени
         else:
+            assist_log.error("Имена процессов не найдены.")
             logger.error("Имена процессов не найдены.")
-            debuglog.error("Имена процессов не найдены.")
             error_file = self.audio_paths['error_file']
             thread_react_detail(error_file)
         if react:
             thread_react(self.audio_paths['close_folder'])
+        assist_log.info("Все процессы завершены.")
         logger.info("Все процессы завершены.")
-        debuglog.info("Все процессы завершены.")
 
     def create_shortcut(self, target_path, shortcut_path, description=""):
         """Создаёт ярлык для target_path и сохраняет его в shortcut_path."""
@@ -809,7 +809,7 @@ class CommandsManager(QObject):
             shortcut.save()
             return True
         except Exception as e:
-            debuglog.error(f"Ошибка создания ярлыка {shortcut_path}: {str(e)}")
+            logger.error(f"Ошибка создания ярлыка {shortcut_path}: {str(e)}")
             return False
 
     def should_skip_file(self, filename):
@@ -835,15 +835,15 @@ class CommandsManager(QObject):
         programs_folder = os.path.join(os.environ['APPDATA'], 'Microsoft', 'Windows', 'Start Menu', 'Programs')
 
         if not os.path.exists(programs_folder):
-            debuglog.warning(f"Папка Programs не найдена: {programs_folder}")
+            logger.warning(f"Папка Programs не найдена: {programs_folder}")
             return False
 
-        debuglog.info(f"Сканирую папку Programs: {programs_folder}")
+        logger.info(f"Сканирую папку Programs: {programs_folder}")
 
         try:
             items = os.listdir(programs_folder)
         except PermissionError:
-            debuglog.error(f"Нет доступа к папке: {programs_folder}")
+            logger.error(f"Нет доступа к папке: {programs_folder}")
             return False
 
         for item in items:
@@ -856,7 +856,7 @@ class CommandsManager(QObject):
             file_ext = os.path.splitext(item)[1].lower()
 
             if self.should_skip_file(item):
-                debuglog.info(f"Пропускаем системный файл: {item}")
+                logger.info(f"Пропускаем системный файл: {item}")
                 continue
 
             try:
@@ -865,7 +865,7 @@ class CommandsManager(QObject):
                     # Копируем ярлык
                     dest_path = os.path.join(target_dir, item)
                     shutil.copy2(item_path, dest_path)
-                    debuglog.info(f"Скопирован ярлык из Programs: {item}")
+                    logger.info(f"Скопирован ярлык из Programs: {item}")
                 elif file_ext == '.exe':
                     # Создаём ярлык для exe
                     shortcut_name = f"{os.path.splitext(item)[0]}.lnk"
@@ -873,9 +873,9 @@ class CommandsManager(QObject):
 
                     if not os.path.exists(shortcut_path):
                         self.create_shortcut(item_path, shortcut_path)
-                        debuglog.info(f"Создан ярлык для exe из Programs: {item}")
+                        logger.info(f"Создан ярлык для exe из Programs: {item}")
             except Exception as e:
-                debuglog.error(f"Ошибка обработки {item}: {str(e)}")
+                logger.error(f"Ошибка обработки {item}: {str(e)}")
                 continue
 
         return True
@@ -892,17 +892,17 @@ class CommandsManager(QObject):
 
         for desktop_path in desktop_paths:
             if not os.path.exists(desktop_path):
-                debuglog.warning(f"Папка рабочего стола не найдена: {desktop_path}")
+                logger.warning(f"Папка рабочего стола не найдена: {desktop_path}")
                 continue
 
-            debuglog.info(f"Сканирую рабочий стол: {desktop_path}")
+            logger.info(f"Сканирую рабочий стол: {desktop_path}")
 
             for root, _, files in os.walk(desktop_path):
                 for file in files:
                     file_path = os.path.join(root, file)
 
                     if self.should_skip_file(file):
-                        debuglog.info(f"Пропускаем системный файл: {file}")
+                        logger.info(f"Пропускаем системный файл: {file}")
                         continue
 
                     file_ext = os.path.splitext(file)[1].lower()
@@ -911,16 +911,16 @@ class CommandsManager(QObject):
                         if file_ext == ".lnk" or file_ext == ".url":
                             dest_path = os.path.join(target_dir, file)
                             shutil.copy2(file_path, dest_path)
-                            debuglog.info(f"Скопирован ярлык с рабочего стола: {file}")
+                            logger.info(f"Скопирован ярлык с рабочего стола: {file}")
                         elif file_ext == ".exe":
                             shortcut_name = f"{os.path.splitext(file)[0]}.lnk"
                             shortcut_path = os.path.join(target_dir, shortcut_name)
 
                             if not os.path.exists(shortcut_path):
                                 self.create_shortcut(file_path, shortcut_path)
-                                debuglog.info(f"Создан ярлык для exe с рабочего стола: {file}")
+                                logger.info(f"Создан ярлык для exe с рабочего стола: {file}")
                     except Exception as e:
-                        debuglog.error(f"Ошибка обработки {file}: {str(e)}")
+                        logger.error(f"Ошибка обработки {file}: {str(e)}")
                         continue
 
         return True
@@ -931,7 +931,7 @@ class CommandsManager(QObject):
             try:
                 os.makedirs(folder_links)
             except PermissionError:
-                debuglog.error(f"Нет прав на создание папки: {folder_links}")
+                logger.error(f"Нет прав на создание папки: {folder_links}")
                 return False
 
         # Сканируем папку Programs без подпапок
@@ -940,12 +940,12 @@ class CommandsManager(QObject):
         # Сканируем рабочие столы с подпапками
         self.scan_desktop_folders(folder_links)
 
-        debuglog.info(f"Готово! Ярлыки сохранены в: {folder_links}")
+        logger.info(f"Готово! Ярлыки сохранены в: {folder_links}")
         return True
 
-    def log_stream(self, stream, logger):
+    def log_stream(self, stream, assist_log):
         for line in stream:
-            logger.info(line.decode('cp866', errors='replace').strip())
+            assist_log.info(line.decode('cp866', errors='replace').strip())
 
     def monitor_processes(self, filename, callback):
         """Мониторинг процессов в отдельном потоке"""
@@ -963,7 +963,7 @@ class CommandsManager(QObject):
                 for proc in new:
                     if proc not in found:
                         found.append(proc)
-                        logger.info(f"Найден новый процесс: {proc}")
+                        assist_log.info(f"Найден новый процесс: {proc}")
 
                 if new:
                     before = current
@@ -997,8 +997,8 @@ class CommandsManager(QObject):
             return True
 
         except Exception as e:
+            assist_log.error(f"Ошибка при открытии ссылки '{url}': {e}")
             logger.error(f"Ошибка при открытии ссылки '{url}': {e}")
-            debuglog.error(f"Ошибка при открытии ссылки '{url}': {e}")
             return False
 
     def is_url_string(self, text):
@@ -1009,7 +1009,7 @@ class CommandsManager(QObject):
             return False
 
         text = text.strip()
-        debuglog.info(f"Проверка сайта: {text}")
+        logger.info(f"Проверка сайта: {text}")
         # Проверка на признаки URL
         url_indicators = [
             # Протоколы

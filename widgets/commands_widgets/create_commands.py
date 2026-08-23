@@ -9,7 +9,7 @@ from bin.commands_manager import main_commands_manager
 from bin.utils import setup_custom_font_label
 from bin.shortcut_monitor import ShortcutMonitor
 from bin.signals import commands_signal
-from log_config import debuglog
+from log_config import logger
 
 
 class CreateCommandsWidget(QWidget):
@@ -151,7 +151,7 @@ class CreateCommandsWidget(QWidget):
         
     def on_folder_changed(self):
         """Общее изменение в папке"""
-        debuglog.info("Обнаружены изменения в папке")
+        logger.info("Обнаружены изменения в папке")
         self.refresh_file_list()
     
     def refresh_file_list(self):
@@ -215,7 +215,7 @@ class AppCommandForm(QWidget):
                 links = json.load(file)
                 self.shortcut_combo.updateModel(links)
         except Exception as e:
-            debuglog.error(f"Ошибка загрузки ярлыков: {e}")
+            logger.error(f"Ошибка загрузки ярлыков: {e}")
 
     def refresh_shortcuts(self):
         self.load_shortcuts()
@@ -227,7 +227,7 @@ class AppCommandForm(QWidget):
                 if current_selection in links:
                     self.shortcut_combo.setCurrentText(current_selection)
         except Exception as e:
-            debuglog.error(f"Ошибка загрузки ярлыков: {e}")
+            logger.error(f"Ошибка загрузки ярлыков: {e}")
 
     def apply_command(self):
         key = self.key_input.text().strip().lower()
