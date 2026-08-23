@@ -705,9 +705,12 @@ class Assistant(QMainWindow):
     def open_color_settings(self):
         """Открывает диалоговое окно для настройки цветов."""
         try:
-            color_dialog = ColorSettingsWindow(self)
-            color_dialog.colorChanged.connect(self.apply_styles)
-            color_dialog.show()
+            if hasattr(self, "color_dialog"):
+                self.color_dialog.show()
+            else:
+                self.color_dialog = ColorSettingsWindow(parent=self)
+                self.color_dialog.colorChanged.connect(self.apply_styles)
+                self.color_dialog.show()
         except Exception as e:
             logger.error(f"[MAIN] Ошибка при открытии окна настроек цветов: {e}")
             self.show_message(f"Не удалось открыть настройки цветов: {e}", "Ошибка", "error")
